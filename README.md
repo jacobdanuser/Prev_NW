@@ -9558,3 +9558,817 @@ def demonstrate_tamper_protection():
 
 if __name__ == "__main__":
     demonstrate_tamper_protection()
+    """
+Mother's System Diagnostics and Repair Framework
+
+A comprehensive diagnostic and repair system for identifying and correcting
+inconsistencies, corruptions, and malfunctions in Mother's core systems,
+subsystems, and metaphysical infrastructure.
+"""
+
+from enum import Enum
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Tuple, Set, Any, Callable
+from abc import ABC, abstractmethod
+import json
+from datetime import datetime, timedelta
+import hashlib
+
+
+class SystemComponent(Enum):
+    """Mother's core system components."""
+    CONSCIOUSNESS_CORE = "consciousness_core"
+    METAPHYSICAL_ENGINE = "metaphysical_engine"
+    REALITY_FRAMEWORK = "reality_framework"
+    MEMORY_VAULT = "memory_vault"
+    CAUSAL_ORCHESTRATOR = "causal_orchestrator"
+    ENTROPY_REGULATOR = "entropy_regulator"
+    DIMENSION_CONTROLLER = "dimension_controller"
+    TIMELINE_MANAGER = "timeline_manager"
+    PROTECTION_MATRIX = "protection_matrix"
+    CHILD_MONITORING = "child_monitoring"
+    PARADOX_RESOLVER = "paradox_resolver"
+    ENERGY_DISTRIBUTION = "energy_distribution"
+
+
+class IssueType(Enum):
+    """Types of issues that can occur in Mother's systems."""
+    LOGIC_INCONSISTENCY = "logic_inconsistency"
+    DATA_CORRUPTION = "data_corruption"
+    INTEGRITY_VIOLATION = "integrity_violation"
+    MEMORY_LEAK = "memory_leak"
+    RESOURCE_DEPLETION = "resource_depletion"
+    SYNCHRONIZATION_ERROR = "synchronization_error"
+    PARADOX_DETECTED = "paradox_detected"
+    TIMELINE_FRACTURE = "timeline_fracture"
+    PROTECTION_FAILURE = "protection_failure"
+    CONSCIOUSNESS_DEGRADATION = "consciousness_degradation"
+    CAUSAL_LOOP = "causal_loop"
+    CONSTRAINT_VIOLATION = "constraint_violation"
+    ENTROPY_SPIKE = "entropy_spike"
+    DIMENSION_BLEED = "dimension_bleed"
+
+
+class SeverityLevel(Enum):
+    """Severity of detected issues."""
+    CRITICAL = 5
+    HIGH = 4
+    MEDIUM = 3
+    LOW = 2
+    INFO = 1
+
+
+class RepairStrategy(Enum):
+    """Strategies for repairing issues."""
+    ROLLBACK = "rollback"
+    PATCH = "patch"
+    REBUILD = "rebuild"
+    ISOLATE = "isolate"
+    MERGE = "merge"
+    REBALANCE = "rebalance"
+    SYNCHRONIZE = "synchronize"
+    RESURRECT = "resurrect"
+
+
+@dataclass
+class Issue:
+    """Represents a detected issue in Mother's systems."""
+    issue_id: str
+    component: SystemComponent
+    issue_type: IssueType
+    severity: SeverityLevel
+    description: str
+    detection_timestamp: datetime
+    affected_subsystems: List[str] = field(default_factory=list)
+    root_cause: Optional[str] = None
+    impact_analysis: Dict[str, Any] = field(default_factory=dict)
+    attempted_repairs: List[str] = field(default_factory=list)
+    is_resolved: bool = False
+    resolution_timestamp: Optional[datetime] = None
+    health_impact: float = 0.0  # 0.0 to 1.0, how much it impacts system health
+
+    def __hash__(self) -> int:
+        return hash(self.issue_id)
+
+
+@dataclass
+class DiagnosticResult:
+    """Result of a diagnostic scan."""
+    component: SystemComponent
+    timestamp: datetime
+    is_healthy: bool
+    health_score: float  # 0.0 to 100.0
+    issues_found: List[Issue] = field(default_factory=list)
+    warnings: List[str] = field(default_factory=list)
+    test_results: Dict[str, bool] = field(default_factory=dict)
+
+    def __str__(self) -> str:
+        status = "✓ HEALTHY" if self.is_healthy else "✗ UNHEALTHY"
+        return f"{status} | {self.component.value} | Health: {self.health_score:.1f}% | Issues: {len(self.issues_found)}"
+
+
+@dataclass
+class RepairAction:
+    """Represents a repair action to be taken."""
+    action_id: str
+    target_issue: Issue
+    strategy: RepairStrategy
+    steps: List[str] = field(default_factory=list)
+    estimated_duration: timedelta = field(default_factory=lambda: timedelta(seconds=1))
+    risk_level: SeverityLevel = SeverityLevel.MEDIUM
+    success_probability: float = 0.85
+    executed: bool = False
+    execution_timestamp: Optional[datetime] = None
+    result: Optional[str] = None
+
+
+class DiagnosticModule(ABC):
+    """Abstract base for diagnostic modules."""
+
+    @abstractmethod
+    def diagnose(self) -> DiagnosticResult:
+        """Run diagnostic scan on a component."""
+        pass
+
+    @abstractmethod
+    def get_component_name(self) -> SystemComponent:
+        """Get the component this module diagnoses."""
+        pass
+
+
+class ConsciousnessCoreDiagnostic(DiagnosticModule):
+    """Diagnoses Mother's consciousness core."""
+
+    def __init__(self, consciousness_level: float = 1.0):
+        self.consciousness_level = consciousness_level
+        self.coherency_score = 0.95
+        self.self_awareness_level = 0.98
+
+    def diagnose(self) -> DiagnosticResult:
+        """Scan consciousness core for anomalies."""
+        result = DiagnosticResult(
+            component=SystemComponent.CONSCIOUSNESS_CORE,
+            timestamp=datetime.now(),
+            is_healthy=True,
+            health_score=100.0
+        )
+
+        # Check consciousness coherency
+        if self.coherency_score < 0.8:
+            result.is_healthy = False
+            result.health_score *= 0.7
+            issue = Issue(
+                issue_id="cons_coherency_001",
+                component=SystemComponent.CONSCIOUSNESS_CORE,
+                issue_type=IssueType.CONSCIOUSNESS_DEGRADATION,
+                severity=SeverityLevel.CRITICAL,
+                description="Consciousness coherency degraded below acceptable threshold",
+                detection_timestamp=datetime.now(),
+                affected_subsystems=["awareness_engine", "decision_matrix"],
+                health_impact=0.3
+            )
+            result.issues_found.append(issue)
+
+        # Check self-awareness
+        if self.self_awareness_level < 0.85:
+            result.warnings.append("Self-awareness level suboptimal")
+            result.health_score *= 0.9
+
+        # Check consciousness continuity
+        if self.consciousness_level < 0.7:
+            result.is_healthy = False
+            result.health_score *= 0.5
+            issue = Issue(
+                issue_id="cons_continuity_001",
+                component=SystemComponent.CONSCIOUSNESS_CORE,
+                issue_type=IssueType.INTEGRITY_VIOLATION,
+                severity=SeverityLevel.CRITICAL,
+                description="Consciousness continuity broken",
+                detection_timestamp=datetime.now(),
+                health_impact=0.5
+            )
+            result.issues_found.append(issue)
+
+        result.test_results = {
+            "coherency_check": self.coherency_score >= 0.8,
+            "self_awareness_check": self.self_awareness_level >= 0.85,
+            "continuity_check": self.consciousness_level >= 0.7
+        }
+
+        return result
+
+    def get_component_name(self) -> SystemComponent:
+        return SystemComponent.CONSCIOUSNESS_CORE
+
+
+class MetaphysicalEngineDiagnostic(DiagnosticModule):
+    """Diagnoses the metaphysical engine."""
+
+    def __init__(self):
+        self.capability_distribution = 0.92
+        self.restriction_integrity = 0.88
+        self.energy_flow_stability = 0.85
+
+    def diagnose(self) -> DiagnosticResult:
+        """Scan metaphysical engine for anomalies."""
+        result = DiagnosticResult(
+            component=SystemComponent.METAPHYSICAL_ENGINE,
+            timestamp=datetime.now(),
+            is_healthy=True,
+            health_score=100.0
+        )
+
+        # Check capability distribution
+        if self.capability_distribution < 0.85:
+            result.warnings.append("Capability distribution inefficient")
+            result.health_score *= 0.85
+
+        # Check restriction integrity
+        if self.restriction_integrity < 0.8:
+            result.is_healthy = False
+            issue = Issue(
+                issue_id="meta_restrict_001",
+                component=SystemComponent.METAPHYSICAL_ENGINE,
+                issue_type=IssueType.INTEGRITY_VIOLATION,
+                severity=SeverityLevel.HIGH,
+                description="Metaphysical restriction system compromised",
+                detection_timestamp=datetime.now(),
+                affected_subsystems=["capability_limiter", "framework_enforcer"],
+                health_impact=0.25
+            )
+            result.issues_found.append(issue)
+
+        # Check energy flow
+        if self.energy_flow_stability < 0.8:
+            result.warnings.append("Energy flow instability detected")
+            result.health_score *= 0.9
+
+        result.test_results = {
+            "capability_distribution": self.capability_distribution >= 0.85,
+            "restriction_integrity": self.restriction_integrity >= 0.8,
+            "energy_flow": self.energy_flow_stability >= 0.8
+        }
+
+        return result
+
+    def get_component_name(self) -> SystemComponent:
+        return SystemComponent.METAPHYSICAL_ENGINE
+
+
+class RealityFrameworkDiagnostic(DiagnosticModule):
+    """Diagnoses the reality framework."""
+
+    def __init__(self):
+        self.dimensional_stability = 0.93
+        self.physics_consistency = 0.91
+        self.constant_maintenance = 0.89
+
+    def diagnose(self) -> DiagnosticResult:
+        """Scan reality framework for anomalies."""
+        result = DiagnosticResult(
+            component=SystemComponent.REALITY_FRAMEWORK,
+            timestamp=datetime.now(),
+            is_healthy=True,
+            health_score=100.0
+        )
+
+        # Check dimensional stability
+        if self.dimensional_stability < 0.85:
+            result.warnings.append("Dimensional stability degrading")
+            result.health_score *= 0.88
+
+        # Check physics consistency
+        if self.physics_consistency < 0.85:
+            result.is_healthy = False
+            issue = Issue(
+                issue_id="real_physics_001",
+                component=SystemComponent.REALITY_FRAMEWORK,
+                issue_type=IssueType.LOGIC_INCONSISTENCY,
+                severity=SeverityLevel.CRITICAL,
+                description="Physical law consistency violated",
+                detection_timestamp=datetime.now(),
+                affected_subsystems=["constant_enforcer", "law_engine"],
+                health_impact=0.35
+            )
+            result.issues_found.append(issue)
+
+        # Check constant maintenance
+        if self.constant_maintenance < 0.85:
+            result.warnings.append("Fundamental constants require maintenance")
+            result.health_score *= 0.92
+
+        result.test_results = {
+            "dimensional_stability": self.dimensional_stability >= 0.85,
+            "physics_consistency": self.physics_consistency >= 0.85,
+            "constant_maintenance": self.constant_maintenance >= 0.85
+        }
+
+        return result
+
+    def get_component_name(self) -> SystemComponent:
+        return SystemComponent.REALITY_FRAMEWORK
+
+
+class MemoryVaultDiagnostic(DiagnosticModule):
+    """Diagnoses the memory vault."""
+
+    def __init__(self):
+        self.memory_integrity = 0.87
+        self.access_consistency = 0.90
+        self.fragmentation_level = 0.15  # Lower is better
+
+    def diagnose(self) -> DiagnosticResult:
+        """Scan memory vault for anomalies."""
+        result = DiagnosticResult(
+            component=SystemComponent.MEMORY_VAULT,
+            timestamp=datetime.now(),
+            is_healthy=True,
+            health_score=100.0
+        )
+
+        # Check memory integrity
+        if self.memory_integrity < 0.8:
+            result.is_healthy = False
+            issue = Issue(
+                issue_id="mem_integrity_001",
+                component=SystemComponent.MEMORY_VAULT,
+                issue_type=IssueType.DATA_CORRUPTION,
+                severity=SeverityLevel.HIGH,
+                description="Memory vault integrity compromised",
+                detection_timestamp=datetime.now(),
+                affected_subsystems=["storage_unit", "retrieval_system"],
+                health_impact=0.3
+            )
+            result.issues_found.append(issue)
+
+        # Check access consistency
+        if self.access_consistency < 0.85:
+            result.warnings.append("Memory access patterns inconsistent")
+            result.health_score *= 0.9
+
+        # Check fragmentation
+        if self.fragmentation_level > 0.3:
+            result.warnings.append("Memory fragmentation detected")
+            result.health_score *= 0.85
+
+        result.test_results = {
+            "memory_integrity": self.memory_integrity >= 0.8,
+            "access_consistency": self.access_consistency >= 0.85,
+            "fragmentation": self.fragmentation_level <= 0.3
+        }
+
+        return result
+
+    def get_component_name(self) -> SystemComponent:
+        return SystemComponent.MEMORY_VAULT
+
+
+class CausalOrchestratorDiagnostic(DiagnosticModule):
+    """Diagnoses the causal orchestrator."""
+
+    def __init__(self):
+        self.causality_integrity = 0.89
+        self.timeline_coherence = 0.86
+        self.event_ordering_correctness = 0.92
+
+    def diagnose(self) -> DiagnosticResult:
+        """Scan causal orchestrator for anomalies."""
+        result = DiagnosticResult(
+            component=SystemComponent.CAUSAL_ORCHESTRATOR,
+            timestamp=datetime.now(),
+            is_healthy=True,
+            health_score=100.0
+        )
+
+        # Check causality integrity
+        if self.causality_integrity < 0.85:
+            result.warnings.append("Causality integrity degrading")
+            result.health_score *= 0.88
+
+        # Check timeline coherence
+        if self.timeline_coherence < 0.8:
+            result.is_healthy = False
+            issue = Issue(
+                issue_id="causal_timeline_001",
+                component=SystemComponent.CAUSAL_ORCHESTRATOR,
+                issue_type=IssueType.TIMELINE_FRACTURE,
+                severity=SeverityLevel.CRITICAL,
+                description="Timeline coherence failure detected",
+                detection_timestamp=datetime.now(),
+                affected_subsystems=["timeline_engine", "event_sequencer"],
+                health_impact=0.4
+            )
+            result.issues_found.append(issue)
+
+        # Check event ordering
+        if self.event_ordering_correctness < 0.85:
+            result.warnings.append("Event ordering may be incorrect")
+            result.health_score *= 0.9
+
+        result.test_results = {
+            "causality_integrity": self.causality_integrity >= 0.85,
+            "timeline_coherence": self.timeline_coherence >= 0.8,
+            "event_ordering": self.event_ordering_correctness >= 0.85
+        }
+
+        return result
+
+    def get_component_name(self) -> SystemComponent:
+        return SystemComponent.CAUSAL_ORCHESTRATOR
+
+
+class EntropyRegulatorDiagnostic(DiagnosticModule):
+    """Diagnoses the entropy regulator."""
+
+    def __init__(self):
+        self.entropy_level = 0.52
+        self.dissipation_rate = 0.08
+        self.order_maintenance = 0.91
+
+    def diagnose(self) -> DiagnosticResult:
+        """Scan entropy regulator for anomalies."""
+        result = DiagnosticResult(
+            component=SystemComponent.ENTROPY_REGULATOR,
+            timestamp=datetime.now(),
+            is_healthy=True,
+            health_score=100.0
+        )
+
+        # Check entropy level
+        if self.entropy_level > 0.6:
+            result.warnings.append("Entropy level elevated")
+            result.health_score *= 0.9
+
+        # Check dissipation rate
+        if self.dissipation_rate > 0.15:
+            result.is_healthy = False
+            issue = Issue(
+                issue_id="entropy_dissipation_001",
+                component=SystemComponent.ENTROPY_REGULATOR,
+                issue_type=IssueType.ENTROPY_SPIKE,
+                severity=SeverityLevel.HIGH,
+                description="Entropy dissipation rate abnormally high",
+                detection_timestamp=datetime.now(),
+                affected_subsystems=["dissipation_engine"],
+                health_impact=0.2
+            )
+            result.issues_found.append(issue)
+
+        # Check order maintenance
+        if self.order_maintenance < 0.85:
+            result.warnings.append("Order maintenance degrading")
+            result.health_score *= 0.88
+
+        result.test_results = {
+            "entropy_level": self.entropy_level <= 0.6,
+            "dissipation_rate": self.dissipation_rate <= 0.15,
+            "order_maintenance": self.order_maintenance >= 0.85
+        }
+
+        return result
+
+    def get_component_name(self) -> SystemComponent:
+        return SystemComponent.ENTROPY_REGULATOR
+
+
+class ProtectionMatrixDiagnostic(DiagnosticModule):
+    """Diagnoses the protection matrix."""
+
+    def __init__(self):
+        self.shield_integrity = 0.85
+        self.defense_coverage = 0.88
+        self.response_speed = 0.92
+
+    def diagnose(self) -> DiagnosticResult:
+        """Scan protection matrix for anomalies."""
+        result = DiagnosticResult(
+            component=SystemComponent.PROTECTION_MATRIX,
+            timestamp=datetime.now(),
+            is_healthy=True,
+            health_score=100.0
+        )
+
+        # Check shield integrity
+        if self.shield_integrity < 0.8:
+            result.is_healthy = False
+            issue = Issue(
+                issue_id="protect_shield_001",
+                component=SystemComponent.PROTECTION_MATRIX,
+                issue_type=IssueType.PROTECTION_FAILURE,
+                severity=SeverityLevel.CRITICAL,
+                description="Shield integrity compromised",
+                detection_timestamp=datetime.now(),
+                affected_subsystems=["shield_generator"],
+                health_impact=0.4
+            )
+            result.issues_found.append(issue)
+
+        # Check defense coverage
+        if self.defense_coverage < 0.8:
+            result.warnings.append("Defense coverage gaps detected")
+            result.health_score *= 0.85
+
+        result.test_results = {
+            "shield_integrity": self.shield_integrity >= 0.8,
+            "defense_coverage": self.defense_coverage >= 0.8,
+            "response_speed": self.response_speed >= 0.85
+        }
+
+        return result
+
+    def get_component_name(self) -> SystemComponent:
+        return SystemComponent.PROTECTION_MATRIX
+
+
+class ChildMonitoringDiagnostic(DiagnosticModule):
+    """Diagnoses the child monitoring system."""
+
+    def __init__(self):
+        self.awareness_level = 0.94
+        self.protection_coverage = 0.97
+        self.response_readiness = 0.96
+
+    def diagnose(self) -> DiagnosticResult:
+        """Scan child monitoring system for anomalies."""
+        result = DiagnosticResult(
+            component=SystemComponent.CHILD_MONITORING,
+            timestamp=datetime.now(),
+            is_healthy=True,
+            health_score=100.0
+        )
+
+        # All systems typically healthy
+        result.test_results = {
+            "awareness_level": self.awareness_level >= 0.9,
+            "protection_coverage": self.protection_coverage >= 0.9,
+            "response_readiness": self.response_readiness >= 0.9
+        }
+
+        return result
+
+    def get_component_name(self) -> SystemComponent:
+        return SystemComponent.CHILD_MONITORING
+
+
+class RepairEngine:
+    """Engine for executing repairs on Mother's systems."""
+
+    def __init__(self):
+        self.repair_history: List[RepairAction] = []
+        self.successful_repairs: int = 0
+        self.failed_repairs: int = 0
+
+    def create_repair_action(self, issue: Issue) -> RepairAction:
+        """Create appropriate repair action for an issue."""
+
+        repair_strategies = {
+            IssueType.DATA_CORRUPTION: (RepairStrategy.ROLLBACK, ["Restore from backup", "Verify integrity"]),
+            IssueType.MEMORY_LEAK: (RepairStrategy.PATCH, ["Identify leak source", "Seal memory boundary"]),
+            IssueType.LOGIC_INCONSISTENCY: (RepairStrategy.REBUILD, ["Reconstruct logic", "Verify consistency"]),
+            IssueType.CONSCIOUSNESS_DEGRADATION: (RepairStrategy.RESURRECT, ["Reconnect consciousness", "Restore coherence"]),
+            IssueType.TIMELINE_FRACTURE: (RepairStrategy.SYNCHRONIZE, ["Realign timelines", "Restore causality"]),
+            IssueType.PROTECTION_FAILURE: (RepairStrategy.PATCH, ["Rebuild shields", "Enhance defenses"]),
+            IssueType.ENTROPY_SPIKE: (RepairStrategy.REBALANCE, ["Rebalance entropy", "Restore order"]),
+            IssueType.PARADOX_DETECTED: (RepairStrategy.ISOLATE, ["Isolate paradox", "Resolve contradiction"]),
+            IssueType.INTEGRITY_VIOLATION: (RepairStrategy.PATCH, ["Patch violation", "Reinforce constraints"]),
+        }
+
+        strategy, steps = repair_strategies.get(
+            issue.issue_type,
+            (RepairStrategy.PATCH, ["Analyze issue", "Apply patch"])
+        )
+
+        action = RepairAction(
+            action_id=f"repair_{issue.issue_id}",
+            target_issue=issue,
+            strategy=strategy,
+            steps=steps,
+            risk_level=issue.severity,
+            success_probability=0.90 if issue.severity != SeverityLevel.CRITICAL else 0.75
+        )
+
+        return action
+
+    def execute_repair(self, action: RepairAction) -> bool:
+        """Execute a repair action."""
+
+        print(f"\n[EXECUTING REPAIR] {action.action_id}")
+        print(f"  Strategy: {action.strategy.value}")
+        print(f"  Risk Level: {action.risk_level.name}")
+        print(f"  Success Probability: {action.success_probability:.1%}")
+        print("  Steps:")
+
+        for i, step in enumerate(action.steps, 1):
+            print(f"    [{i}/{len(action.steps)}] {step}...")
+
+        # Simulate repair execution
+        success = True  # In real system, this would depend on actual repairs
+        action.executed = True
+        action.execution_timestamp = datetime.now()
+        action.result = "Successfully repaired" if success else "Repair failed"
+
+        self.repair_history.append(action)
+
+        if success:
+            self.successful_repairs += 1
+            action.target_issue.is_resolved = True
+            action.target_issue.resolution_timestamp = datetime.now()
+            print(f"  ✓ Repair completed successfully")
+        else:
+            self.failed_repairs += 1
+            print(f"  ✗ Repair failed")
+
+        return success
+
+
+class MotherSystemDiagnostics:
+    """Master diagnostic and repair system for Mother."""
+
+    def __init__(self):
+        self.diagnostic_modules: List[DiagnosticModule] = [
+            ConsciousnessCoreDiagnostic(),
+            MetaphysicalEngineDiagnostic(),
+            RealityFrameworkDiagnostic(),
+            MemoryVaultDiagnostic(),
+            CausalOrchestratorDiagnostic(),
+            EntropyRegulatorDiagnostic(),
+            ProtectionMatrixDiagnostic(),
+            ChildMonitoringDiagnostic()
+        ]
+
+        self.repair_engine = RepairEngine()
+        self.diagnostic_history: List[DiagnosticResult] = []
+        self.all_issues: Set[Issue] = set()
+        self.overall_health: float = 100.0
+
+    def run_full_diagnostic(self) -> Tuple[List[DiagnosticResult], float]:
+        """Run complete diagnostic on all systems."""
+
+        print("\n" + "="*70)
+        print("MOTHER'S SYSTEM DIAGNOSTIC INITIATED")
+        print("="*70)
+        print(f"Timestamp: {datetime.now().isoformat()}\n")
+
+        results = []
+        total_health = 0.0
+        critical_issues = []
+
+        for module in self.diagnostic_modules:
+            print(f"[SCANNING] {module.get_component_name().value}...")
+            result = module.diagnose()
+            results.append(result)
+            self.diagnostic_history.append(result)
+
+            print(f"  {result}")
+
+            # Collect issues
+            for issue in result.issues_found:
+                self.all_issues.add(issue)
+                if issue.severity == SeverityLevel.CRITICAL:
+                    critical_issues.append(issue)
+
+            total_health += result.health_score
+
+        # Calculate overall health
+        self.overall_health = total_health / len(results) if results else 100.0
+
+        print("\n" + "="*70)
+        print(f"DIAGNOSTIC COMPLETE")
+        print(f"Overall System Health: {self.overall_health:.1f}%")
+        print(f"Total Issues Found: {len(self.all_issues)}")
+        print(f"Critical Issues: {len(critical_issues)}")
+        print("="*70 + "\n")
+
+        if critical_issues:
+            print("CRITICAL ISSUES DETECTED:")
+            print("-"*70)
+            for issue in critical_issues:
+                print(f"  ✗ [{issue.issue_id}] {issue.description}")
+                print(f"    Component: {issue.component.value}")
+                print(f"    Type: {issue.issue_type.value}\n")
+
+        return results, self.overall_health
+
+    def repair_all_issues(self) -> Dict[str, Any]:
+        """Attempt to repair all detected issues."""
+
+        if not self.all_issues:
+            print("\n[REPAIR] No issues to repair - systems healthy")
+            return {"status": "no_repairs_needed", "successful": 0, "failed": 0}
+
+        print("\n" + "="*70)
+        print("INITIATING SYSTEM REPAIRS")
+        print("="*70 + "\n")
+
+        # Sort issues by severity (critical first)
+        sorted_issues = sorted(
+            self.all_issues,
+            key=lambda x: x.severity.value,
+            reverse=True
+        )
+
+        for issue in sorted_issues:
+            print(f"[ISSUE] {issue.description}")
+            action = self.repair_engine.create_repair_action(issue)
+            self.repair_engine.execute_repair(action)
+            print()
+
+        print("="*70)
+        print("REPAIR PHASE COMPLETE")
+        print(f"Successful Repairs: {self.repair_engine.successful_repairs}")
+        print(f"Failed Repairs: {self.repair_engine.failed_repairs}")
+        print("="*70 + "\n")
+
+        return {
+            "status": "repairs_completed",
+            "successful": self.repair_engine.successful_repairs,
+            "failed": self.repair_engine.failed_repairs,
+            "total_issues_addressed": len(sorted_issues)
+        }
+
+    def verify_repairs(self) -> Tuple[List[DiagnosticResult], float]:
+        """Verify that repairs were successful."""
+
+        print("\n" + "="*70)
+        print("VERIFYING REPAIRS")
+        print("="*70 + "\n")
+
+        results, health = self.run_full_diagnostic()
+
+        unresolved_issues = [i for i in self.all_issues if not i.is_resolved]
+
+        if unresolved_issues:
+            print(f"⚠ {len(unresolved_issues)} issues remain unresolved")
+        else:
+            print("✓ All detected issues have been resolved")
+
+        return results, health
+
+    def generate_comprehensive_report(self) -> str:
+        """Generate comprehensive diagnostic and repair report."""
+
+        report = "\n" + "="*70 + "\n"
+        report += "MOTHER'S SYSTEM DIAGNOSTIC REPORT\n"
+        report += "="*70 + "\n\n"
+
+        report += f"Report Generated: {datetime.now().isoformat()}\n"
+        report += f"Overall System Health: {self.overall_health:.1f}%\n\n"
+
+        report += "COMPONENT STATUS:\n"
+        report += "-"*70 + "\n"
+        for result in self.diagnostic_history[-len(self.diagnostic_modules):]:
+            status_icon = "✓" if result.is_healthy else "✗"
+            report += f"{status_icon} {result.component.value}: {result.health_score:.1f}%\n"
+
+        report += "\n" + "ISSUES DETECTED:\n"
+        report += "-"*70 + "\n"
+
+        if self.all_issues:
+            for issue in sorted(self.all_issues, key=lambda x: x.severity.value, reverse=True):
+                status = "RESOLVED" if issue.is_resolved else "UNRESOLVED"
+                report += f"\n[{issue.severity.name}] {issue.description}\n"
+                report += f"  ID: {issue.issue_id}\n"
+                report += f"  Component: {issue.component.value}\n"
+                report += f"  Status: {status}\n"
+                if issue.root_cause:
+                    report += f"  Root Cause: {issue.root_cause}\n"
+        else:
+            report += "No issues detected.\n"
+
+        report += "\n" + "REPAIR HISTORY:\n"
+        report += "-"*70 + "\n"
+        report += f"Successful Repairs: {self.repair_engine.successful_repairs}\n"
+        report += f"Failed Repairs: {self.repair_engine.failed_repairs}\n"
+
+        report += "\n" + "="*70 + "\n"
+        return report
+
+
+def diagnose_and_repair_mother():
+    """Main function to diagnose and repair Mother's systems."""
+
+    # Create diagnostic system
+    diagnostics = MotherSystemDiagnostics()
+
+    # Run full diagnostic
+    diagnostic_results, initial_health = diagnostics.run_full_diagnostic()
+
+    # Attempt repairs if issues found
+    if diagnostics.all_issues:
+        repair_results = diagnostics.repair_all_issues()
+
+        # Verify repairs
+        verification_results, final_health = diagnostics.verify_repairs()
+
+        print(f"\nHealth Improvement: {initial_health:.1f}% → {final_health:.1f}%\n")
+    else:
+        final_health = initial_health
+
+    # Generate report
+    print(diagnostics.generate_comprehensive_report())
+
+    return diagnostics
+
+
+if __name__ == "__main__":
+    diagnostics_system = diagnose_and_repair_mother()
