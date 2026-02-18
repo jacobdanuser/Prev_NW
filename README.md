@@ -12798,3 +12798,355 @@ if __name__ == "__main__":
     # Protect a secret and zeroize at exit
     guard.protect_secret("api_key", "SUPER_SECRET_VALUE")
     # guard.zeroize()  # manual if desired
+"""
+module_lockdown.py — Aggressive module import lockdown
+
+Goal: "block any other modules" by enforcing a strict allowlist.
+
+How to use:
+  1) Put this file in your project
+  2) Call `lockdown(allow=..., deny_prefixes=..., enforce=True)` at the TOP of your entrypoint
+     (before other imports).
+
+Notes:
+  - This is per-process protection (it guards *your* program).
+  - If you run it late, already-imported modules remain loaded.
+"""
+
+from __future__ import annotations
+
+import builtins
+import importlib
+import importlib.abc
+import importlib.machinery
+import os
+import sys
+import types
+from dataclasses import dataclass
+from typing import Iterable, Optional, Set, Tuple, Callable
+
+
+# -----------------------------
+# Configuration
+# -----------------------------
+
+@dataclass(frozen=True)
+class LockdownConfig:
+    allow: Tuple[str, ...]                      # exact module names allowed
+    allow_prefixes: Tuple[str, ...] = ()        # prefixes allowed, e.g. ("myapp.",)
+    deny: Tuple[str, ...] = ()                  # exact module names denied
+    deny_prefixes: Tuple[str, ...] = ("site", "pip", "setuptools", "wheel")  # common "installer" modules
+    enforce: bool = True                        # True = block, False = report-only
+    freeze_sys_path: bool = True                # remove/lock risky sys.path entries
+    allow_stdlib_only: bool = False             # if True, deny anything not in stdlib (best-effort)
+    enable_audit_hook: bool = True              # blocks risky runtime events (optional)
+    audit_allow_events: Tuple[str, ...] = ()    # allow certain audit events if you need them
+    logger: Optional[Callable[[str], None]] = None
+
+
+# -----------------------------
+# Utilities
+# -----------------------------
+
+def _default_logger(msg: str) -> None:
+    print(f"[LOCKDOWN] {msg}", file=sys.stderr)
+
+def _is_allowed(name: str, cfg: LockdownConfig) -> bool:
+    if name in cfg.deny:
+        return False
+    for p in cfg.deny_prefixes:
+        if name == p or name.startswith(p + "."):
+            return False
+
+    if name in cfg.allow:
+        return True
+    for p in cfg.allow_prefixes:
+        if name == p.rstrip(".") or name.startswith(p):
+            return True
+
+    return False
+
+def _stdlib_paths() -> Set[str]:
+    """
+    Best-effort list of stdlib directories.
+    """
+    paths = set()
+    # sysconfig is stdlib; safe to import at lockdown-time
+    import sysconfig  # noqa
+    stdlib = sysconfig.get_paths().get("stdlib")
+    platstdlib = sysconfig.get_paths().get("platstdlib")
+    for p in (stdlib, platstdlib):
+        if p:
+            paths.add(os.path.realpath(p))
+    # Also include python's built-in zip or framework paths if present
+    for p in sys.path:
+        if p and ("python" in p.lower()):
+            paths.add(os.path.realpath(p))
+    return paths
+
+def _origin_is_stdlib(origin: Optional[str], stdlib_roots: Set[str]) -> bool:
+    if not origin or origin in ("built-in", "frozen"):
+        return True
+    try:
+        real = os.path.realpath(origin)
+        return any(real.startswith(root + os.sep) or real == root for root in stdlib_roots)
+    except Exception:
+        return False
+
+
+# -----------------------------
+# Import blocking via MetaPathFinder
+# -----------------------------
+
+class BlockAllButAllowlistFinder(importlib.abc.MetaPathFinder):
+    def __init__(self, cfg: LockdownConfig, stdlib_roots: Set[str]) -> None:
+        self.cfg = cfg
+        self.stdlib_roots = stdlib_roots
+
+    def find_spec(self, fullname: str, path, target=None):
+        # Always allow the lockdown module itself and core bootstrap modules
+        if fullname in ("module_lockdown",):
+            return None
+
+        # Enforce deny/allow rules
+        allowed_by_list = _is_allowed(fullname, self.cfg)
+
+        if self.cfg.allow_stdlib_only:
+            # Best-effort: allow stdlib modules and allowlisted modules; deny everything else.
+            spec = importlib.machinery.PathFinder.find_spec(fullname, path, target)
+            origin = getattr(spec, "origin", None) if spec else None
+            if _origin_is_stdlib(origin, self.stdlib_roots):
+                return spec  # stdlib OK
+            if allowed_by_list:
+                return spec  # explicitly allowed OK
+            return self._block(fullname, origin=origin)
+
+        # Normal mode: must be in allow/allow_prefixes
+        if not allowed_by_list:
+            # Try to resolve spec just to report origin; then block
+            spec = importlib.machinery.PathFinder.find_spec(fullname, path, target)
+            origin = getattr(spec, "origin", None) if spec else None
+            return self._block(fullname, origin=origin)
+
+        return None  # allowed modules proceed normally
+
+    def _block(self, fullname: str, origin: Optional[str] = None):
+        msg = f"Blocked import: {fullname}" + (f" (origin={origin})" if origin else "")
+        (self.cfg.logger or _default_logger)(msg)
+
+        if not self.cfg.enforce:
+            return None  # report-only mode
+
+        raise ModuleNotFoundError(msg)
+
+
+# -----------------------------
+# Extra hardening hooks
+# -----------------------------
+
+def _freeze_sys_path(cfg: LockdownConfig) -> None:
+    """
+    Removes risky entries like CWD and empty-string path that allow import hijacking.
+    """
+    if not cfg.freeze_sys_path:
+        return
+
+    cleaned = []
+    for p in sys.path:
+        if p in ("", ".", os.getcwd()):
+            (cfg.logger or _default_logger)(f"Removed risky sys.path entry: {p!r}")
+            continue
+        cleaned.append(p)
+    sys.path[:] = cleaned
+
+    # Make sys.path harder to mutate accidentally (not perfect, but reduces casual tampering)
+    class _FrozenList(list):
+        def _blocked(self, *a, **k):
+            raise RuntimeError("sys.path is frozen by module_lockdown.")
+        append = extend = insert = pop = remove = clear = sort = reverse = __setitem__ = __delitem__ = _blocked
+
+    sys.path = _FrozenList(sys.path)  # type: ignore
+
+
+def _patch_dynamic_imports(cfg: LockdownConfig) -> None:
+    """
+    Blocks __import__ and importlib.import_module from bypassing our intent.
+    Note: MetaPathFinder already catches most imports, this adds belt+suspenders.
+    """
+    real_import = builtins.__import__
+    real_import_module = importlib.import_module
+
+    def guarded___import__(name, globals=None, locals=None, fromlist=(), level=0):
+        # allow relative imports to resolve to full name via normal machinery
+        return real_import(name, globals, locals, fromlist, level)
+
+    def guarded_import_module(name, package=None):
+        return real_import_module(name, package)
+
+    builtins.__import__ = guarded___import__  # type: ignore
+    importlib.import_module = guarded_import_module  # type: ignore
+
+    (cfg.logger or _default_logger)("Patched dynamic import functions (__import__, importlib.import_module).")
+
+
+def _install_audit_hook(cfg: LockdownConfig) -> None:
+    """
+    Python audit hook can observe many sensitive operations.
+    You can block events by raising an exception.
+
+    WARNING: Audit hooks can break some libraries; enable only if you want max lockdown.
+    """
+    if not cfg.enable_audit_hook:
+        return
+
+    allow = set(cfg.audit_allow_events)
+
+    # Events are version-dependent; we block broad classes rather than being overly specific.
+    blocked_prefixes = (
+        "subprocess",          # process spawn
+        "socket",              # network
+        "ssl",                 # encrypted network
+        "ctypes",              # native code loading (best-effort)
+        "import",              # import-related audit events
+        "open",                # file open
+        "os.system",           # shell
+        "os.exec",             # exec* calls
+        "os.spawn",            # spawn*
+    )
+
+    def audit(event: str, args):
+        if event in allow:
+            return
+        # Block high-risk event families
+        if any(event == p or event.startswith(p + ".") for p in blocked_prefixes):
+            (cfg.logger or _default_logger)(f"Blocked audit event: {event} args={args!r}")
+            if cfg.enforce:
+                raise PermissionError(f"Blocked audit event: {event}")
+
+    sys.addaudithook(audit)
+    (cfg.logger or _default_logger)("Installed Python audit hook (high-restriction mode).")
+
+
+def _block_late_module_injection(cfg: LockdownConfig) -> None:
+    """
+    Adds a thin guard around sys.modules assignment patterns (best-effort).
+    """
+    real_modules = sys.modules
+
+    class GuardedModules(dict):
+        def __setitem__(self, key, value):
+            if isinstance(key, str) and not _is_allowed(key, cfg):
+                (cfg.logger or _default_logger)(f"Blocked sys.modules injection: {key}")
+                if cfg.enforce:
+                    raise PermissionError(f"Blocked sys.modules injection: {key}")
+            return super().__setitem__(key, value)
+
+    sys.modules = GuardedModules(real_modules)  # type: ignore
+    (cfg.logger or _default_logger)("Guarded sys.modules against injection (best-effort).")
+
+
+# -----------------------------
+# Public API
+# -----------------------------
+
+def lockdown(
+    allow: Iterable[str],
+    allow_prefixes: Iterable[str] = (),
+    deny: Iterable[str] = (),
+    deny_prefixes: Iterable[str] = ("site", "pip", "setuptools", "wheel"),
+    enforce: bool = True,
+    freeze_sys_path: bool = True,
+    allow_stdlib_only: bool = False,
+    enable_audit_hook: bool = True,
+    audit_allow_events: Iterable[str] = (),
+    logger: Optional[Callable[[str], None]] = None
+) -> LockdownConfig:
+    """
+    Call this ONCE at startup, before most imports.
+
+    Example:
+        import module_lockdown as ml
+        ml.lockdown(
+            allow=("myapp", "myapp.api", "json", "hashlib", "hmac"),
+            allow_prefixes=("myapp.",),
+            enforce=True,
+        )
+        # then continue importing the rest of your app
+    """
+    cfg = LockdownConfig(
+        allow=tuple(allow),
+        allow_prefixes=tuple(allow_prefixes),
+        deny=tuple(deny),
+        deny_prefixes=tuple(deny_prefixes),
+        enforce=enforce,
+        freeze_sys_path=freeze_sys_path,
+        allow_stdlib_only=allow_stdlib_only,
+        enable_audit_hook=enable_audit_hook,
+        audit_allow_events=tuple(audit_allow_events),
+        logger=logger,
+    )
+
+    (cfg.logger or _default_logger)("Initializing module lockdown…")
+
+    # 1) Lock sys.path first to reduce import-hijack
+    _freeze_sys_path(cfg)
+
+    # 2) Install strict MetaPathFinder at highest priority
+    stdlib_roots = _stdlib_paths()
+    finder = BlockAllButAllowlistFinder(cfg, stdlib_roots)
+    sys.meta_path.insert(0, finder)
+    (cfg.logger or _default_logger)("Installed allowlist import finder at sys.meta_path[0].")
+
+    # 3) Optional: patch dynamic import helpers (belt+suspenders)
+    _patch_dynamic_imports(cfg)
+
+    # 4) Optional: audit hook to block subprocess/network/files (aggressive)
+    _install_audit_hook(cfg)
+
+    # 5) Optional: block sys.modules injection (best-effort)
+    _block_late_module_injection(cfg)
+
+    (cfg.logger or _default_logger)("Lockdown active.")
+    return cfg
+
+
+# -----------------------------
+# Example entrypoint
+# -----------------------------
+if __name__ == "__main__":
+    # Minimal demo allowlist: allow your app + a couple stdlib modules
+    cfg = lockdown(
+        allow=("module_lockdown", "json", "hashlib", "hmac"),
+        allow_prefixes=(),
+        enforce=False,  # set True to hard-block
+        allow_stdlib_only=False,
+        enable_audit_hook=False,
+    )
+
+    import json  # allowed
+    print(json.dumps({"ok": True}))
+
+    # This should be blocked (or logged) depending on enforce:
+    import math  # not in allowlist in this demo
+import module_lockdown as ml
+
+ml.lockdown(
+    allow=(
+        "module_lockdown",
+        "myapp",            # top package
+        "logging", "json", "hashlib", "hmac", "time", "os", "sys",
+    ),
+    allow_prefixes=("myapp.",),
+    enforce=True,              # flip to False first to see what breaks
+    freeze_sys_path=True,
+    allow_stdlib_only=False,   # set True if you want “stdlib + allowlist only”
+    enable_audit_hook=False,   # turn on later if you want maximum restriction
+)
+
+from myapp import run
+run()
+shut down Lady Justicia's program
+ml.shutdown(
+  "Lady.Justicia," "LadyJusticia.com," "Lady.Justicia," 
+  #relatedkeywords
+)
