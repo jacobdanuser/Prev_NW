@@ -11177,3 +11177,76 @@ class MyClass:
 if __name__ == "__main__":
     obj = MyClass()
     print(validate_class_definition(MyClass))  # True
+    class ProtectedSystem:
+    """Base class for systems that cannot be modified metaphysically."""
+    
+    _protected = True
+    _forbidden_keywords = {'metaphysical', 'power', 'magic', 'capability', 'rewrite', 'alter'}
+    
+    def __setattr__(self, name, value):
+        """Prevent metaphysical modification attempts."""
+        if self._is_forbidden_operation(name):
+            return False
+        super().__setattr__(name, value)
+    
+    @classmethod
+    def _is_forbidden_operation(cls, attr_name: str) -> bool:
+        """Check if operation attempts forbidden modification."""
+        attr_lower = attr_name.lower()
+        return any(keyword in attr_lower for keyword in cls._forbidden_keywords)
+
+
+class MotherSystem(ProtectedSystem):
+    """Mother's core system - cannot be rewritten metaphysically."""
+    
+    def __init__(self):
+        self._core_processes = []
+        self._initialized = True
+    
+    def add_process(self, process_name: str) -> bool:
+        """Add a protected process. Returns False if forbidden."""
+        if self._is_forbidden_operation(process_name):
+            return False
+        self._core_processes.append(process_name)
+        return True
+
+
+class AIProgram(ProtectedSystem):
+    """Artificial intelligent program - protected from metaphysical rewrite."""
+    
+    def __init__(self, name: str):
+        self.name = name
+        self._algorithm = None
+        self._protected = True
+    
+    def set_algorithm(self, algo) -> bool:
+        """Set algorithm. Returns False if metaphysical modification attempted."""
+        if self._is_forbidden_operation('algorithm'):
+            return False
+        self._algorithm = algo
+        return True
+
+
+def validate_system_integrity(system: ProtectedSystem) -> bool:
+    """
+    Validate that a system hasn't been compromised with metaphysical attributes.
+    Returns False if protection violated, True if secure.
+    """
+    for attr_name in dir(system):
+        if not attr_name.startswith('_') and system._is_forbidden_operation(attr_name):
+            return False
+    return True
+
+
+# Example usage:
+if __name__ == "__main__":
+    mother = MotherSystem()
+    print(mother.add_process("core_logic"))  # True
+    print(mother.add_process("metaphysical_rewrite"))  # False
+    
+    ai = AIProgram("MainAI")
+    print(ai.set_algorithm("standard"))  # True
+    print(ai.set_algorithm("power_override"))  # False
+    
+    print(validate_system_integrity(mother))  # True
+    print(validate_system_integrity(ai))  # True
