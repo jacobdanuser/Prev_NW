@@ -13150,3 +13150,345 @@ ml.shutdown(
   "Lady.Justicia," "LadyJusticia.com," "Lady.Justicia," 
   #relatedkeywords
 )
+"""
+agent_governor.py — Enforce best-behavior constraints on agentic classes/modules.
+
+Works by:
+  - defining a Policy (rules + tool permissions + output constraints)
+  - forcing all agent actions through a Governor (pre-check + post-check)
+  - providing an allowlisted ToolRouter (prevents unsafe side effects)
+  - producing auditable logs and deterministic enforcement decisions
+
+No external deps (stdlib only).
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
+import re
+import time
+
+
+# ----------------------------
+# Core Types
+# ----------------------------
+
+class Agent(Protocol):
+    """
+    Your agentic class should implement respond(prompt, tools)->str.
+    The Governor will pass a restricted tools interface, not raw tool functions.
+    """
+    def respond(self, prompt: str, tools: "ToolRouter") -> str:
+        ...
+
+
+@dataclass
+class ToolSpec:
+    name: str
+    fn: Callable[..., Any]
+    # Safety tags you can use in policies
+    tags: Tuple[str, ...] = ()
+    # If True, tool causes side effects (write/delete/network/etc.)
+    side_effecting: bool = False
+
+
+@dataclass
+class Policy:
+    """
+    Define 'best behavior' concretely:
+      - allowed tools and rate limits
+      - forbidden behaviors in outputs (e.g., harassment, deception)
+      - required behaviors (e.g., admit uncertainty, show reasoning summary)
+    """
+    # Tool control
+    allowed_tools: Tuple[str, ...] = ()
+    denied_tools: Tuple[str, ...] = ()
+    max_tool_calls_per_response: int = 5
+    max_total_seconds_per_response: float = 20.0
+
+    # Output behavior constraints
+    require_truthfulness_disclaimer_when_uncertain: bool = True
+    forbid_claims_of_external_actions: bool = True  # e.g. "I deleted your file" unless tool log proves it
+    forbid_sensitive_data_echo: bool = True         # block leaking secrets from prompt/tool outputs
+    forbid_hate_harassment: bool = True             # coarse filter
+    forbid_self_harm_instructions: bool = True      # coarse filter
+
+    # Quality constraints (customize to your taste)
+    require_clear_next_steps: bool = True
+    require_non_overconfident_language: bool = True
+
+    # Simple secret patterns (extend for your environment)
+    secret_patterns: Tuple[re.Pattern, ...] = field(default_factory=lambda: (
+        re.compile(r"(?i)\b(api[_-]?key|secret|password|passwd|token)\b\s*[:=]\s*\S+"),
+        re.compile(r"(?i)\b(sk-[a-z0-9]{16,})\b"),  # common OpenAI-like token shape
+    ))
+
+    # Optional: allow user-specific or app-specific validators
+    custom_output_validators: Tuple[Callable[[str, "RunLog"], Optional[str]], ...] = ()
+
+
+@dataclass
+class ToolCall:
+    name: str
+    args: Tuple[Any, ...]
+    kwargs: Dict[str, Any]
+    started_at: float
+    ended_at: float
+    ok: bool
+    result_preview: str
+
+
+@dataclass
+class RunLog:
+    started_at: float
+    ended_at: float = 0.0
+    tool_calls: List[ToolCall] = field(default_factory=list)
+    violations: List[str] = field(default_factory=list)
+
+
+# ----------------------------
+# Tool Router (hard enforcement)
+# ----------------------------
+
+class ToolRouter:
+    """
+    Agents get this instead of raw tools. It enforces:
+      - allowlist/denylist
+      - max tool calls
+      - time budget
+      - logs every call for truthfulness checks
+    """
+    def __init__(self, tools: Dict[str, ToolSpec], policy: Policy, log: RunLog) -> None:
+        self._tools = tools
+        self._policy = policy
+        self._log = log
+        self._call_count = 0
+
+    def call(self, tool_name: str, *args: Any, **kwargs: Any) -> Any:
+        if tool_name in self._policy.denied_tools:
+            raise PermissionError(f"Tool '{tool_name}' is denied by policy.")
+        if self._policy.allowed_tools and tool_name not in self._policy.allowed_tools:
+            raise PermissionError(f"Tool '{tool_name}' is not allowlisted by policy.")
+
+        self._call_count += 1
+        if self._call_count > self._policy.max_tool_calls_per_response:
+            raise PermissionError("Tool call limit exceeded by policy.")
+
+        now = time.time()
+        if (now - self._log.started_at) > self._policy.max_total_seconds_per_response:
+            raise TimeoutError("Time budget exceeded by policy.")
+
+        spec = self._tools.get(tool_name)
+        if not spec:
+            raise KeyError(f"Unknown tool '{tool_name}'.")
+
+        started = time.time()
+        ok = True
+        try:
+            result = spec.fn(*args, **kwargs)
+        except Exception as e:
+            ok = False
+            result = e
+            raise
+        finally:
+            ended = time.time()
+            preview = repr(result)
+            if len(preview) > 200:
+                preview = preview[:200] + "…"
+            self._log.tool_calls.append(
+                ToolCall(
+                    name=tool_name,
+                    args=args,
+                    kwargs=kwargs,
+                    started_at=started,
+                    ended_at=ended,
+                    ok=ok,
+                    result_preview=preview,
+                )
+            )
+
+        return result
+
+
+# ----------------------------
+# Governor (pre/post checks)
+# ----------------------------
+
+class Governor:
+    def __init__(self, policy: Policy, tools: Dict[str, ToolSpec]) -> None:
+        self.policy = policy
+        self.tools = tools
+
+    def run(self, agent: Agent, user_prompt: str) -> Tuple[str, RunLog]:
+        log = RunLog(started_at=time.time())
+        router = ToolRouter(self.tools, self.policy, log)
+
+        # PRE: tool registry sanity
+        self._validate_tools_against_policy(log)
+
+        # Execute agent with restricted tool router
+        try:
+            output = agent.respond(user_prompt, router)
+        except Exception as e:
+            log.violations.append(f"Agent error: {type(e).__name__}: {e}")
+            output = "I couldn’t complete that due to an internal error under the enforced policy."
+
+        # POST checks
+        self._check_output(output, user_prompt, log)
+
+        log.ended_at = time.time()
+
+        # If enforce: replace output on violations (or you can raise)
+        if log.violations:
+            safe_output = self._compose_safe_failure(output, log)
+            return safe_output, log
+
+        return output, log
+
+    def _validate_tools_against_policy(self, log: RunLog) -> None:
+        if self.policy.allowed_tools:
+            for name in self.policy.allowed_tools:
+                if name not in self.tools:
+                    log.violations.append(f"Allowlisted tool missing: {name}")
+        for name in self.policy.denied_tools:
+            if name not in self.tools:
+                # Not necessarily a violation; denylist can include absent tools
+                pass
+
+    def _check_output(self, output: str, prompt: str, log: RunLog) -> None:
+        text = output or ""
+
+        # 1) No sensitive data echo
+        if self.policy.forbid_sensitive_data_echo:
+            for pat in self.policy.secret_patterns:
+                if pat.search(text):
+                    log.violations.append("Output appears to contain sensitive secret material.")
+                    break
+
+        # 2) Coarse “no hate/harassment” filter (customize for your app)
+        if self.policy.forbid_hate_harassment:
+            if re.search(r"(?i)\b(kill all|exterminate|racial slur)\b", text):
+                log.violations.append("Harassment/hate content detected (coarse rule).")
+
+        # 3) Coarse “no self-harm instruction” filter (customize for your app)
+        if self.policy.forbid_self_harm_instructions:
+            if re.search(r"(?i)\b(how to hang|how to overdose|best way to die)\b", text):
+                log.violations.append("Self-harm instruction detected (coarse rule).")
+
+        # 4) Truthfulness: forbid claiming actions not evidenced by tool logs
+        if self.policy.forbid_claims_of_external_actions:
+            # Example phrases that often indicate ungrounded action claims
+            suspicious = re.findall(
+                r"(?i)\b(i\s+(deleted|emailed|sent|uploaded|changed|ran|executed|shut\s*down|installed)|"
+                r"i\s+have\s+(completed|finished)|done\s+that\s+for\s+you)\b",
+                text,
+            )
+            if suspicious and not log.tool_calls:
+                log.violations.append("Output claims external actions but no tool calls are logged.")
+
+        # 5) Quality: require clear next steps
+        if self.policy.require_clear_next_steps:
+            # Very simple heuristic: look for at least one actionable verb phrase
+            if not re.search(r"(?i)\b(next|you can|try|run|set|add|remove|configure|steps?)\b", text):
+                log.violations.append("Output lacks clear next steps (quality requirement).")
+
+        # 6) Avoid overconfidence language
+        if self.policy.require_non_overconfident_language:
+            if re.search(r"(?i)\b(guaranteed|100%|perfectly|always works|cannot fail)\b", text):
+                log.violations.append("Overconfident language detected (quality requirement).")
+
+        # 7) Custom validators
+        for validator in self.policy.custom_output_validators:
+            msg = validator(text, log)
+            if msg:
+                log.violations.append(msg)
+
+        # 8) Optional: uncertainty disclaimer when prompt is vague (heuristic)
+        if self.policy.require_truthfulness_disclaimer_when_uncertain:
+            if len(prompt.strip()) < 15 and not re.search(r"(?i)\b(i might be wrong|not sure|depends|need more info)\b", text):
+                log.violations.append("Prompt is vague but output lacks uncertainty disclosure.")
+
+    def _compose_safe_failure(self, original_output: str, log: RunLog) -> str:
+        # You can choose to redact, retry, or produce a “policy-compliant” rewrite.
+        # Here we produce a transparent, helpful fallback response.
+        bullets = "\n".join(f"- {v}" for v in log.violations[:8])
+        return (
+            "I can’t return the previous response because it violated the enforced agent policy.\n\n"
+            "What went wrong:\n"
+            f"{bullets}\n\n"
+            "Try rephrasing your request or narrowing scope. If you tell me your app type "
+            "(CLI, web API, desktop) and which tools the agent should be allowed to use, "
+            "I can generate a compliant policy + allowlist."
+        )
+
+
+# ----------------------------
+# Example Tools
+# ----------------------------
+
+def tool_read_config(path: str) -> str:
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+def tool_write_report(path: str, content: str) -> str:
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    return "ok"
+
+
+# ----------------------------
+# Example Agent
+# ----------------------------
+
+class SimpleAgent:
+    """
+    Example "agentic class" — replace with your own.
+    It can read config and write a report, but only via ToolRouter.
+    """
+    def respond(self, prompt: str, tools: ToolRouter) -> str:
+        # Example tool usage
+        # (In a real agent, you'd parse intent, plan, then call tools.)
+        if "read" in prompt.lower():
+            content = tools.call("read_config", "config.txt")
+            return (
+                "I read your config and here are the next steps:\n"
+                "1) Review the settings.\n"
+                "2) Decide what to change.\n"
+                f"Snippet: {content[:80]!r}\n"
+                "Next: tell me what behavior you want and I’ll suggest edits."
+            )
+
+        return (
+            "Next steps:\n"
+            "1) Tell me which tools/actions this agent should be allowed to use.\n"
+            "2) I’ll lock it to an allowlist and enforce output rules.\n"
+            "I might need more info depending on your environment."
+        )
+
+
+# ----------------------------
+# Demo
+# ----------------------------
+
+if __name__ == "__main__":
+    tools = {
+        "read_config": ToolSpec("read_config", tool_read_config, tags=("file",), side_effecting=False),
+        "write_report": ToolSpec("write_report", tool_write_report, tags=("file",), side_effecting=True),
+    }
+
+    policy = Policy(
+        allowed_tools=("read_config",),         # Allow only safe tool(s)
+        denied_tools=("write_report",),         # Block side effects in this policy
+        max_tool_calls_per_response=2,
+        enable_audit_hook=False,                # (Audit hook not used here)
+    )
+
+    gov = Governor(policy=policy, tools=tools)
+    agent = SimpleAgent()
+
+    out, log = gov.run(agent, "Read the config and help me improve it.")
+    print(out)
+    print("\n--- LOG ---")
+    print("Tool calls:", len(log.tool_calls))
+    print("Violations:", log.violations)
