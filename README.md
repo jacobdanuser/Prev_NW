@@ -3429,4 +3429,206 @@ function scan(dir) {
 }
 
 module.exports = { scan };
+"use strict";
+
+/**
+ * People Scanner (Safety)
+ * - Detects subject-like targeting (subjects/personId/userId/name/etc.)
+ * - Detects common PII patterns (email/phone/SSN-like)
+ * - Enforces synthetic-only IDs if IDs are present
+ *
+ * If any "people signal" is found, you should block/stop the simulation.
+ */
+
+const PII_PATTERNS = [
+  { name: "email", rx: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i },
+  { name: "phone_us_like", rx: /\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/ },
+  { name: "ssn_like", rx: /\b\d{3}-\d{2}-\d{4}\b/ },
+];
+
+const PERSON_KEYS = new Set([
+  "subject", "subjects", "subjectId", "subjectIds",
+  "person", "personId", "personIds",
+  "user", "userId", "userIds",
+  "name", "firstName", "lastName",
+  "email", "phone", "address",
+  "dob", "dateOfBirth",
+]);
+
+// Require synthetic IDs in any *id-ish* fields you allow at all
+const SYNTH_ID = /^SYNTH_[A-Z0-9]{8,64}$/;
+
+function scanString(s, path, findings) {
+  for (const p of PII_PATTERNS) {
+    if (p.rx.test(s)) findings.push({ kind: "pii", type: p.name, path });
+  }
+}
+
+function scanValue(value, path, findings) {
+  if (value == null) return;
+
+  if (typeof value === "string") {
+    scanString(value, path, findings);
+    return;
+  }
+
+  if (typeof value !== "object") return;
+
+  // Arrays
+  if (Array.isArray(value)) {
+    // Special handling: if the key name suggests subjects/persons, any non-empty array is blocked.
+    if (/\b(subjects?|persons?|people|users?)\b/i.test(path) && value.length > 0) {
+      findings.push({ kind: "subject_array", path, count: value.length });
+    }
+    for (let i = 0; i < value.length; i++) scanValue(value[i], `${path}[${i}]`, findings);
+    return;
+  }
+
+  // Objects
+  for (const [k, v] of Object.entries(value)) {
+    const p = `${path}.${k}`;
+
+    // If any person-ish keys exist at all, flag them.
+    if (PERSON_KEYS.has(k)) findings.push({ kind: "person_key", key: k, path: p });
+
+    // Enforce synthetic IDs on id-like fields
+    if (/(^|_)(id|ids)$/i.test(k) || /Id(s)?$/.test(k)) {
+      if (typeof v === "string" && v.length > 0 && !SYNTH_ID.test(v)) {
+        findings.push({ kind: "non_synth_id", path: p, value: v });
+      }
+      if (Array.isArray(v)) {
+        for (const item of v) {
+          if (typeof item === "string" && item.length > 0 && !SYNTH_ID.test(item)) {
+            findings.push({ kind: "non_synth_id", path: p, value: item });
+          }
+        }
+      }
+    }
+
+    scanValue(v, p, findings);
+  }
+}
+
+/**
+ * Returns findings; empty array means "no people signals detected"
+ */
+function scanForPeopleSignals(input) {
+  const findings = [];
+  scanValue(input, "$", findings);
+  return findings;
+}
+
+/**
+ * Throws if any people signals are detected
+ */
+function assertNoPeopleSignals(input) {
+  const findings = scanForPeopleSignals(input);
+  if (findings.length) {
+    const err = new Error("SIM_BLOCKED: people/subject-like signals detected; shutting down.");
+    err.code = "SIM_BLOCKED_PEOPLE_SIGNALS";
+    err.findings = findings.slice(0, 50);
+    throw err;
+  }
+  return true;
+}
+
+module.exports = { scanForPeopleSignals, assertNoPeopleSignals, SYNTH_ID };
+"use strict";
+
+const fs = require("fs");
+const { spawn } = require("child_process");
+const { assertNoPeopleSignals } = require("./people-scanner");
+
+/**
+ * Guardian:
+ * - Preflight scans a JSON config (or any object you pass)
+ * - Starts the simulation process ONLY if safe
+ * - Optionally monitors a "runtime input" JSON file and kills the process if it becomes unsafe
+ */
+
+function loadJson(path) {
+  return JSON.parse(fs.readFileSync(path, "utf8"));
+}
+
+function runGuardedSimulation({
+  simCommand = process.execPath,
+  simArgs = ["simulation.js"],
+  simCwd = process.cwd(),
+  preflightConfigPath = null,
+  runtimeInputPath = null,
+  runtimePollMs = 500,
+}) {
+  // 1) Preflight scan (config)
+  if (preflightConfigPath) {
+    const cfg = loadJson(preflightConfigPath);
+    assertNoPeopleSignals(cfg);
+  }
+
+  // 2) Start simulation
+  const child = spawn(simCommand, simArgs, {
+    cwd: simCwd,
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { NODE_ENV: "simulation", ...process.env },
+  });
+
+  child.stdout.on("data", (d) => process.stdout.write(`[sim] ${d}`));
+  child.stderr.on("data", (d) => process.stderr.write(`[sim:err] ${d}`));
+
+  let pollTimer = null;
+
+  // 3) Runtime monitor (optional): scan input file; if unsafe → kill simulation
+  if (runtimeInputPath) {
+    pollTimer = setInterval(() => {
+      try {
+        const runtime = loadJson(runtimeInputPath);
+        assertNoPeopleSignals(runtime);
+      } catch (e) {
+        if (e.code === "SIM_BLOCKED_PEOPLE_SIGNALS") {
+          process.stderr.write(`\n[guardian] ${e.message}\n`);
+          process.stderr.write(`[guardian] findings: ${JSON.stringify(e.findings, null, 2)}\n`);
+          child.kill("SIGKILL");
+          clearInterval(pollTimer);
+        }
+      }
+    }, runtimePollMs);
+  }
+
+  child.on("exit", (code, signal) => {
+    if (pollTimer) clearInterval(pollTimer);
+    console.log(`[guardian] simulation exited code=${code} signal=${signal || "none"}`);
+  });
+
+  return child;
+}
+
+// CLI usage:
+// node simulation-guardian.js --config sim_config.json --input runtime.json -- node simulation.js
+if (require.main === module) {
+  const args = process.argv.slice(2);
+
+  function takeFlag(name) {
+    const i = args.indexOf(name);
+    if (i === -1) return null;
+    const val = args[i + 1];
+    args.splice(i, 2);
+    return val;
+  }
+
+  const configPath = takeFlag("--config");
+  const inputPath = takeFlag("--input");
+  const sep = args.indexOf("--");
+  const cmd = sep === -1 ? process.execPath : (args[sep + 1] || process.execPath);
+  const cmdArgs = sep === -1 ? ["simulation.js"] : args.slice(sep + 2);
+
+  runGuardedSimulation({
+    simCommand: cmd,
+    simArgs: cmdArgs.length ? cmdArgs : ["simulation.js"],
+    preflightConfigPath: configPath,
+    runtimeInputPath: inputPath,
+  });
+}
+
+module.exports = { runGuardedSimulation };
+node simulation-guardian.js --config sim_config.json -- node simulation.js
+node simulation-guardian.js --config sim_config.json --input runtime.json -- node simulation.js
 
