@@ -3295,4 +3295,138 @@ docker run --rm -it \
   -w /sim \
   node:20-alpine \
   node standalone-sim-runner.js
+node --disallow-code-generation-from-strings --disable-proto no-extensions-cli.js
+// no-extensions-runner.js
+"use strict";
+
+const vm = require("vm");
+
+/**
+ * Standalone simulation runner:
+ * - No require by default
+ * - No dynamic import
+ * - No eval/new Function (via VM + flags recommended)
+ * - Optional: allowlist a tiny set of safe modules if you truly need them
+ */
+
+function runStandaloneSimulation(code, { timeoutMs = 200, allowedModules = [] } = {}) {
+  const allowed = new Set(allowedModules);
+
+  // Minimal sandbox
+  const sandbox = Object.create(null);
+  sandbox.console = Object.freeze({
+    log: (...a) => console.log("[sim]", ...a),
+    error: (...a) => console.error("[sim:err]", ...a),
+    warn: (...a) => console.warn("[sim:warn]", ...a),
+  });
+
+  // If you want ZERO extensions, do not expose require at all.
+  // If you must expose it, make it allowlist-only:
+  sandbox.require = (name) => {
+    if (!allowed.has(name)) {
+      const err = new Error(`EXT_BLOCKED: module "${name}" not allowlisted`);
+      err.code = "EXT_BLOCKED_MODULE";
+      throw err;
+    }
+    // Only allow built-ins you trust (example: "crypto")
+    return require(name);
+  };
+
+  // Remove common escape hatches
+  sandbox.process = undefined;
+  sandbox.global = undefined;
+  sandbox.globalThis = undefined;
+  sandbox.Function = undefined;
+  sandbox.eval = undefined;
+
+  const context = vm.createContext(sandbox, {
+    codeGeneration: { strings: false, wasm: false }, // blocks eval/new Function + wasm
+  });
+
+  const script = new vm.Script(code, { filename: "standalone-sim.js" });
+  return script.runInContext(context, { timeout: timeoutMs });
+}
+
+module.exports = { runStandaloneSimulation };
+// no-extensions-cli.js
+"use strict";
+const fs = require("fs");
+const { runStandaloneSimulation } = require("./no-extensions-runner");
+
+const file = process.argv[2];
+if (!file) throw new Error("Usage: node no-extensions-cli.js <simulation.js>");
+
+const code = fs.readFileSync(file, "utf8");
+
+// allowedModules: keep EMPTY to forbid all extensions completely
+runStandaloneSimulation(code, { allowedModules: [] });
+// reject-extensions-config.js
+"use strict";
+
+function rejectExtensionsKey(obj, path = "$") {
+  if (obj == null) return;
+  if (typeof obj !== "object") return;
+
+  for (const [k, v] of Object.entries(obj)) {
+    const p = `${path}.${k}`;
+    if (k.toLowerCase() === "extensions") {
+      const err = new Error(`EXT_BLOCKED: "extensions" not allowed (found at ${p})`);
+      err.code = "EXT_BLOCKED_CONFIG";
+      throw err;
+    }
+    rejectExtensionsKey(v, p);
+  }
+}
+
+module.exports = { rejectExtensionsKey };
+const { rejectExtensionsKey } = require("./reject-extensions-config");
+
+rejectExtensionsKey(configObject); // throws if extensions appears
+npm ci --ignore-scripts
+{
+  "scripts": {
+    "preinstall": "node -e \"process.exit(1)\""
+  }
+}
+docker run --rm -it \
+  --network none \
+  --read-only \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  --pids-limit 256 \
+  --memory 512m \
+  --cpus 1 \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=128m \
+  -v "$PWD:/sim:ro" \
+  -w /sim \
+  node:20-alpine \
+  node --disallow-code-generation-from-strings no-extensions-cli.js simulation.js
+// block-extension-files.js
+"use strict";
+const fs = require("fs");
+const path = require("path");
+
+const BLOCK_NAMES = [
+  /plugin/i,
+  /extension/i,
+  /hook/i,
+  /middleware/i,
+  /loader/i,
+];
+
+function scan(dir) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) scan(full);
+    if (e.isFile()) {
+      if (BLOCK_NAMES.some(rx => rx.test(e.name))) {
+        const err = new Error(`EXT_BLOCKED: suspicious extension-like file name: ${full}`);
+        err.code = "EXT_BLOCKED_FILE";
+        throw err;
+      }
+    }
+  }
+}
+
+module.exports = { scan };
 
