@@ -1204,3 +1204,5 @@ if (require.main === module) {
 }
 
 module.exports = { addCodeEntry, verifyVaultIntegrity };
+node permanent-vault.js verify
+chattr +i code_vault.json
