@@ -11578,3 +11578,131 @@ License
 
 Contact / issues
 - Open an issue or PR in this repository.
+"""
+Core protection primitives — rejects/denies forbidden identifiers at
+definition time and at runtime.
+"""
+FORBIDDEN = {
+    "metaphysical",
+    "power",
+    "magic",
+    "capability",
+    "rewrite",
+    "alter",
+    "override",
+    # newly added: block mind/brain scanning-related identifiers
+    "mind",
+    "brain",
+    "scan",
+    "scanner",
+    "neuro",
+    "neural",
+    "mindscan",
+    "brainscan",
+}
+
+
+def is_forbidden_name(name: str) -> bool:
+    n = (name or "").lower()
+    return any(tok in n for tok in FORBIDDEN)
+
+
+class ProtectedMeta(type):
+    """Reject classes that declare forbidden identifiers at definition time."""
+    def __new__(mcls, name, bases, namespace):
+        for key in namespace:
+            if not key.startswith("__") and is_forbidden_name(key):
+                raise TypeError(f"class '{name}' contains forbidden identifier '{key}'")
+        return super().__new__(mcls, name, bases, namespace)
+
+
+class ProtectedSystem(metaclass=ProtectedMeta):
+    """Base for systems that must NOT accept forbidden identifiers."""
+
+    def __init__(self):
+        self._audit = []
+
+    def set_attribute(self, name: str, value) -> bool:
+        """Public setter — returns False when denied (no silent writes)."""
+        if is_forbidden_name(name):
+            self._audit.append(("deny_set", name))
+            return False
+        super().__setattr__(name, value)
+        self._audit.append(("set", name))
+        return True
+
+    def __setattr__(self, name, value):
+        # block direct assignment of forbidden names (fail-fast)
+        if is_forbidden_name(name):
+            raise AttributeError(f"assignment to '{name}' denied")
+        return super().__setattr__(name, value)
+
+    def get_audit(self):
+        return list(self._audit)
+
+
+class MotherSystem(ProtectedSystem):
+    def add_core_process(self, proc_name: str) -> bool:
+        if is_forbidden_name(proc_name):
+            self._audit.append(("deny_add_process", proc_name))
+            return False
+        procs = getattr(self, "_core_processes", [])
+        procs.append(proc_name)
+        super().__setattr__("_core_processes", procs)
+        self._audit.append(("add_process", proc_name))
+        return True
+
+
+class AIProgram(ProtectedSystem):
+    def set_algorithm(self, algo_name: str) -> bool:
+        if is_forbidden_name(algo_name):
+            self._audit.append(("deny_set_algorithm", algo_name))
+            return False
+        super().__setattr__("_algorithm", algo_name)
+        self._audit.append(("set_algorithm", algo_name))
+        return True
+        """Central forbidden-token configuration and helpers."""
+from typing import Any
+
+FORBIDDEN = frozenset(
+    {
+        "metaphysical",
+        "power",
+        "magic",
+        "capability",
+        "override",
+        "rewrite",
+        "alter",
+        "mind",
+        "brain",
+        "scan",
+        "scanner",
+        "neuro",
+        "neural",
+    }
+)
+
+
+def is_forbidden_name(name: str) -> bool:
+    """Return True if any forbidden token appears in name (case-insensitive)."""
+    n = (name or "").lower()
+    return any(tok in n for tok in FORBIDDEN)
+
+
+def contains_forbidden(obj: Any) -> bool:
+    """Recursively inspect strings/containers/dicts for forbidden tokens."""
+    if isinstance(obj, str):
+        s = obj.lower()
+        return any(tok in s for tok in FORBIDDEN)
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if contains_forbidden(k) or contains_forbidden(v):
+                return True
+        return False
+    if isinstance(obj, (list, tuple, set)):
+        return any(contains_forbidden(i) for i in obj)
+    return False
+
+
+__all__ = ("FORBIDDEN", "is_forbidden_name", "contains_forbidden")
+Punani
