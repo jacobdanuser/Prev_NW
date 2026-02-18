@@ -11507,3 +11507,74 @@ def test_signature_and_forbidden_detection():
     r.create_checkpoint("cid", "cp3", {"danger": "contains power override"})
     res = r.simulate_restore("cid", "cp3")
     assert res["ok"] is False and res["reason"] == "forbidden_content_detected"
+    # Prev_NW
+
+Lightweight enforcement and recovery utilities to prevent any "metaphysical / power / magic / capability" involvement with protected systems (including Mother's systems and AI programs) and to perform non-destructive ("metaphysical") cloud-data restores.
+
+Key goals
+- Deny/return False on any operation that involves forbidden identifiers.
+- Prevent forbidden identifiers at class-definition time and at runtime.
+- Protect core systems (Mother, AIs) with audit logs and immutable-like operations.
+- Provide safe, non-destructive cloud restore flows (checkpoints, dry-run, canary, commit).
+- CI-friendly scanner to detect forbidden tokens in source and snapshots.
+
+Forbidden identifiers (checked everywhere): metaphysical, power, magic, capability, override, rewrite, alter.
+
+Features
+- Name-check enforcement (fail-fast + runtime guards).
+- ProtectedMeta metaclass to reject forbidden declarations at class creation.
+- ProtectedSystem base class — public setter returns False for denied operations; direct forbidden assignments raise AttributeError.
+- MotherSystem / AIProgram — specialized protected subclasses.
+- CloudDataRestoration — logical checkpoints, metaphysical_reset, simulate_restore, canary restore, signed checkpoints, commit workflow.
+- Repository scanner script to fail CI on forbidden identifiers.
+- Unit tests covering deny flows, canary/commit, and signature/scan verification.
+
+Quick start (dev container / Ubuntu)
+- Create venv, install dev deps (if any):
+  - python3 -m venv .venv && source .venv/bin/activate
+  - pip install -r requirements.txt  # if present
+- Run tests:
+  - pytest -q
+- Run repository scanner:
+  - python3 scripts/scan_forbidden.py
+- Run example (interactive / REPL):
+  - python3 -c "from src.cloud_restore import CloudDataRestoration; r=CloudDataRestoration(); r.create_checkpoint('cid','cp1',{'x':1}); print(r.simulate_restore('cid','cp1'))"
+
+Usage examples
+- Deny at runtime (returns False / raises on direct assignment)
+```python
+from src.protection import ProtectedSystem
+s = ProtectedSystem()
+assert s.set_attribute("name", "ok") is True
+assert s.set_attribute("power_level", 9000) is False
+# direct write fails:
+# s.power_level = 1  -> raises AttributeError
+```
+
+- Metaphysical cloud restore (non-destructive)
+```python
+from src.cloud_restore import CloudDataRestoration
+r = CloudDataRestoration()
+r.create_checkpoint("db1", "v1", {"users": [1,2]})
+r.metaphysical_reset("db1")                    # logical reset, non-destructive
+r.simulate_restore("db1", "v1")                # dry-run (denies if forbidden content)
+canary = r.canary_restore("db1", "v1")         # validate in canary
+r.commit_canary(canary["canary_id"], "db1", approvals=1, required_approvals=1)
+```
+
+Safety recommendations
+- Always run simulate_restore before committing.
+- Use canary restores + automated verification tests.
+- Sign checkpoints and verify signatures on restore.
+- Enforce scanner in CI and pre-commit hooks.
+
+Development & contribution
+- Add tests for any new enforcement or restore flow.
+- Update scanner rules if new forbidden tokens are introduced.
+- Open PRs and require approvals for changes to protected logic.
+
+License
+- MIT
+
+Contact / issues
+- Open an issue or PR in this repository.
