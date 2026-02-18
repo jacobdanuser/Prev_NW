@@ -4550,7 +4550,345 @@ done
 
 exit 0
 chmod +x hooks/pre-receive
-README.md
+# Metaphysical Capabilities Restriction System
+
+A comprehensive framework combining **game mechanics** and **philosophical theory** to realistically restrict supernatural, magical, and metaphysical abilities in games, stories, and theoretical models.
+
+## Overview
+
+This system provides:
+
+### 🎮 Game Mechanics
+- **Capability Management**: Define metaphysical abilities with base power levels
+- **Restriction System**: Apply multiple constraints to each ability (energy costs, cooldowns, range limits, etc.)
+- **Practitioner System**: Track entities using abilities with resource pools and frameworks
+- **Usage Tracking**: Monitor ability usage, energy consumption, and effectiveness
+
+### 🧠 Philosophical Framework
+- **Conservation Laws**: Energy and matter cannot be created/destroyed
+- **Thermodynamic Principles**: Entropy costs for order-creating acts
+- **Causality Constraints**: Prevents time paradoxes and logical violations
+- **Consciousness Requirements**: Mental clarity needed for metaphysical acts
+- **Identity Principles**: Restrictions on mind transfer and resurrection
+- **Quantum Mechanics**: Uncertainty and observer effects on reality-warping
+
+## Core Concepts
+
+### Capabilities
+Metaphysical abilities that entities can perform (telekinesis, telepathy, reality warping, etc.)
+
+```python
+ability = MetaphysicalCapability(
+    name="Telekinesis",
+    capability_type=CapabilityType.TELEKINESIS,
+    base_power_level=50.0
+)
+```
+
+### Restrictions
+Constraints applied to capabilities that reduce their effectiveness
+
+```python
+restriction = RestrictionRule(
+    restriction_type=RestrictionType.ENERGY_COST,
+    severity=0.3,  # 30% reduction
+    description="Moderate energy drain"
+)
+ability.add_restriction(restriction)
+```
+
+### Philosophical Frameworks
+Higher-order constraints based on physical/philosophical principles:
+- **ConservationOfEnergyFramework**: Energy pool management
+- **EntropicDecayFramework**: Reality resistance increases with disorder caused
+- **CausalityFramework**: Temporal logic enforcement
+- **ConsciousnessAnchorFramework**: Consciousness level requirement
+
+### Practitioners
+Entities that use abilities, subject to energy pools, consciousness levels, and frameworks
+
+```python
+mage = MetaphysicalPractitioner(
+    name="Archmage",
+    consciousness_level=0.95,
+    energy_pool=200.0,
+    max_energy=200.0
+)
+```
+
+## Restriction Types
+
+| Type | Effect | Use Case |
+|------|--------|----------|
+| `ENERGY_COST` | Drains energy pool | Every ability uses energy |
+| `TIME_COOLDOWN` | Must wait between uses | Prevent ability spam |
+| `RANGE_LIMIT` | Cannot affect distant targets | Telekinesis limited to ~100m |
+| `DURATION_LIMIT` | Effect expires after time | Buffs last 10 seconds |
+| `SIDE_EFFECTS` | Negative consequences | Backlash damage, mutation |
+| `PHILOSOPHICAL_PARADOX` | Violates logical rules | Cannot create contradictions |
+| `CONSERVATION_LAW` | Violates physics | Cannot create mass |
+| `ENTROPY_COST` | Increases world disorder | Reality warping costs high |
+| `CONSCIOUSNESS_REQUIREMENT` | Needs mental clarity | Sleep blocks all abilities |
+| `MATERIAL_ANCHOR` | Requires components | Rituals need rare materials |
+
+## Philosophical Restrictions in Detail
+
+### Conservation of Energy
+Energy cannot be created/destroyed, only transformed. Every metaphysical act draws from a finite pool.
+
+**Applied to**: All abilities  
+**Severity**: 0.3-0.5 (moderate to heavy)  
+**Exception**: Passive/channeled abilities can draw infinite energy if connected to external source
+
+### Thermodynamic Entropy
+Order-creating acts require energy to oppose entropy. The more ordered/improbable the effect, the higher the cost.
+
+**Applied to**: Reality warping, resurrection, complex transmutation  
+**Severity**: 0.4-0.7 (moderate to severe)  
+**Example**: Resurrection has 0.6 severity because creating perfect order has massive entropy cost
+
+### Causality Constraint
+Causes must precede effects. Time travel that creates paradoxes is forbidden. Prophecy limited because perfect foresight creates causal loops.
+
+**Applied to**: Time manipulation, prophecy, resurrection  
+**Severity**: 0.9-1.0 (near-total to complete prohibition)  
+**Exception**: Can allow time dilation or multiverse branching interpretations
+
+### Consciousness Anchor
+Metaphysical abilities require conscious will and mental focus. Unconsciousness, intoxication, or mental damage impairs abilities.
+
+**Applied to**: All abilities  
+**Severity**: Scaling (higher-power abilities have higher consciousness requirements)  
+**Example**: 70-point ability requires 70% consciousness to use
+
+### Personal Identity
+Consciousness is continuous. Mind transfer, resurrection via copied consciousness, and uploading create duplicates, not true restoration.
+
+**Applied to**: Consciousness transfer, resurrection, mind uploading  
+**Severity**: 0.8-1.0 (severe to impossible)
+
+### Information Conservation
+Information cannot be destroyed, only encoded. You cannot erase memories without leaving traces. You cannot perfectly destroy matter.
+
+**Applied to**: Memory erasure, matter annihilation, evidence destruction  
+**Severity**: 0.5-0.7
+
+### Consciousness Locality
+Consciousness is anchored to the physical body. Mental projection at range requires energy to maintain the link.
+
+**Applied to**: Telepathy, telekinesis, remote viewing  
+**Severity**: 0.2-0.4 (ranges increase cost/reduce effectiveness)
+
+### Observer Effect
+Observation affects the observed. Perfect prophecy is impossible because seeing the future collapses it to one timeline.
+
+**Applied to**: Perfect scrying, prophecy, quantum sensing  
+**Severity**: 0.5-0.8
+
+## Quick Start
+
+### 1. Create a Balanced Magic System
+
+```python
+from metaphysical_restrictions import create_balanced_magic_system
+
+# Pre-built system with standard restrictions
+mage = create_balanced_magic_system()
+
+print(mage.get_status())
+# Shows all capabilities and their effective power levels
+```
+
+### 2. Manually Build a System
+
+```python
+from metaphysical_restrictions import (
+    MetaphysicalPractitioner, MetaphysicalCapability,
+    RestrictionRule, RestrictionType, CapabilityType,
+    ConservationOfEnergyFramework, EntropicDecayFramework
+)
+
+# Create practitioner
+practitioner = MetaphysicalPractitioner(
+    name="Reality Warper",
+    consciousness_level=0.95,
+    energy_pool=500.0,
+    max_energy=500.0
+)
+
+# Add philosophical frameworks
+practitioner.add_framework(ConservationOfEnergyFramework(500.0))
+practitioner.add_framework(EntropicDecayFramework(0.7))
+
+# Create ability
+reality_warp = MetaphysicalCapability(
+    name="Reality Warping",
+    capability_type=CapabilityType.REALITY_WARPING,
+    base_power_level=85.0
+)
+
+# Add restrictions
+reality_warp.add_restriction(RestrictionRule(
+    restriction_type=RestrictionType.ENTROPY_COST,
+    severity=0.6,
+    description="Massive entropy increase"
+))
+
+practitioner.add_capability(reality_warp)
+```
+
+### 3. Use an Ability
+
+```python
+# Check if ability can be used
+can_use, reason = practitioner.can_use_capability(reality_warp)
+print(f"Can use: {can_use}")
+print(f"Reason: {reason}")
+
+# Use the ability
+if can_use:
+    result = practitioner.use_capability(reality_warp)
+    print(f"Success: {result['success']}")
+    print(f"Power discharged: {result['power_used']:.1f}")
+    print(f"Energy remaining: {result['remaining_energy']:.1f}")
+```
+
+### 4. Analyze Philosophical Restrictions
+
+```python
+from philosophical_framework import get_framework_for_capability, print_framework_analysis
+
+# See all restrictions on time manipulation
+frameworks = get_framework_for_capability("time_manipulation")
+for framework in frameworks:
+    print(framework.principle.value)
+    print(framework.description)
+
+# Detailed analysis
+print_framework_analysis("reality_warping")
+```
+
+## Examples
+
+Run the examples to see the system in action:
+
+```bash
+python examples.py
+```
+
+Includes:
+1. **Basic Restriction** - Adding multiple restrictions to a single ability
+2. **Balanced Magic System** - Pre-built system with standard restrictions
+3. **Philosophical Frameworks** - How frameworks constrain abilities
+4. **Reality Warper** - Heavily restricted powerful ability
+5. **Consciousness Degradation** - How consciousness level affects usage
+6. **Resource Management** - Energy pooling and depletion
+7. **Dynamic Restrictions** - Adding/removing restrictions at runtime
+
+## Design Philosophy
+
+This system balances gameplay with realism:
+
+- **Prevents Overpowering**: Powerful abilities have proportional costs
+- **Creates Choices**: Players must manage resources (energy, consciousness, etc.)
+- **Enforces Logic**: Philosophical principles prevent contradictions
+- **Scalable**: Works for D&D magic, video game powers, novel systems, or theoretical models
+- **Extensible**: Easy to add new ability types, restrictions, and frameworks
+
+## Use Cases
+
+### Game Development
+- **RPG Magic Systems**: Define spell costs, cooldowns, resource pools
+- **Superhero Games**: Limit superpowers with energy/consciousness requirements
+- **Strategy Games**: Balance unit powers with resource constraints
+- **Puzzle Games**: Restrict teleportation/reality warping with philosophical rules
+
+### Creative Writing
+- **Magic System Design**: Consistent, believable magical rules
+- **Physics of Magic**: Explain why abilities have limitations
+- **Character Constraints**: Show how consciousness/energy affects spellcasting
+- **World Building**: Create consistent metaphysical laws
+
+### Theoretical Exploration
+- **Philosophy of Mind**: Test theories about consciousness and identity
+- **Physics Education**: Demonstrate thermodynamics through magical analogy
+- **Game Design Theory**: Explore balance mechanics
+
+## File Structure
+
+```
+metaphysical_restrictions.py     # Core system: Capabilities, Restrictions, Practitioners
+philosophical_framework.py        # Theoretical underpinnings: Philosophy & physics
+examples.py                       # 7 detailed examples of system usage
+README.md                         # This file
+```
+
+## Key Features
+
+✅ **10+ Capability Types**: Telekinesis, telepathy, reality warping, time manipulation, resurrection, etc.
+
+✅ **10+ Restriction Types**: Energy costs, cooldowns, ranges, duration, side effects, philosophical paradoxes, etc.
+
+✅ **8 Philosophical Frameworks**: Based on real physics and philosophy
+
+✅ **Resource Management**: Energy pools, consciousness levels, cooldowns
+
+✅ **Dynamic Restrictions**: Add/remove restrictions at runtime
+
+✅ **Extensible Design**: Easy to add new capabilities, restrictions, and frameworks
+
+✅ **Well-Documented**: Detailed docstrings and philosophical explanations
+
+✅ **Production-Ready**: Type hints, error handling, and design patterns
+
+## Example: Reality Warper Build
+
+```python
+# Create a heavily restricted reality warper
+warper = create_restricted_reality_warper()
+
+# Reality warping has restrictions:
+# - Philosophical paradox (60% severity)
+# - Entropy cost (50% severity)  
+# - Material anchor requirement (40% severity)
+# - Causality constraints prevent time manipulation
+
+# Frameworks limiting usage:
+# - CausalityFramework prevents time travel
+# - EntropicDecayFramework: entropy tolerance 0.7
+# - Practitioner has high consciousness (0.95) and large energy pool (500)
+
+status = warper.get_status()
+# Shows all restrictions and why they apply
+```
+
+## Philosophy Behind Restrictions
+
+Rather than arbitrary game balance, this system grounds restrictions in:
+
+1. **Physics Laws**: Conservation of energy, thermodynamic entropy, causality
+2. **Philosophy of Mind**: Consciousness, identity, will
+3. **Quantum Mechanics**: Uncertainty, observer effects, information theory
+4. **Logic**: Paradoxes and contradiction prevention
+
+This makes restrictions feel natural and believable, not just mechanical balance.
+
+## Contributing
+
+This is a foundational framework. Extend it with:
+- Additional philosophical frameworks
+- New capability types
+- Domain-specific restriction rules
+- Integration with game engines
+- Visualization/UI tools
+
+## License
+
+Free to use and modify for any project.
+
+---
+
+Created as a comprehensive system for understanding and implementing metaphysical ability restriction in games, stories, and theoretical models.
 policy.json
 influence_policy.yml
 tools/anti_influence_scan.py
@@ -6751,5 +7089,1304 @@ Set-MpPreference -EnableControlledFolderAccess Enabled
 tools/
 policies/
 config/
+# Create an outbound block-by-default profile, then allow specific apps.
+# Run in elevated PowerShell.
 
+# 1) Set default outbound to Block (all profiles)
+Set-NetFirewallProfile -Profile Domain,Public,Private -DefaultOutboundAction Block
+
+# 2) Allow essential Windows services (DNS + Windows Update may need additional allowances)
+# Allow your browser (edit paths to match your browser)
+New-NetFirewallRule -DisplayName "ALLOW Chrome Outbound" -Direction Outbound -Action Allow `
+  -Program "C:\Program Files\Google\Chrome\Application\chrome.exe" -Profile Any
+
+New-NetFirewallRule -DisplayName "ALLOW Edge Outbound" -Direction Outbound -Action Allow `
+  -Program "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" -Profile Any
+
+# Allow Git (edit if needed)
+New-NetFirewallRule -DisplayName "ALLOW Git Outbound" -Direction Outbound -Action Allow `
+  -Program "C:\Program Files\Git\mingw64\bin\git.exe" -Profile Any
+
+Write-Host "Outbound is now BLOCK by default. Only allowlisted programs can access the network."
+"""
+Metaphysical Capabilities Restriction System
+
+A combined game mechanics and philosophical framework for restricting
+supernatural, magical, and metaphysical abilities.
+"""
+
+from enum import Enum
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Callable
+from abc import ABC, abstractmethod
+import json
+
+
+class CapabilityType(Enum):
+    """Categories of metaphysical capabilities."""
+    TELEKINESIS = "telekinesis"
+    TELEPATHY = "telepathy"
+    TIME_MANIPULATION = "time_manipulation"
+    REALITY_WARPING = "reality_warping"
+    SOUL_MANIPULATION = "soul_manipulation"
+    DIMENSIONAL_TRAVEL = "dimensional_travel"
+    ENERGY_PROJECTION = "energy_projection"
+    PROPHESY = "prophesy"
+    RESURRECTION = "resurrection"
+    CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+
+
+class RestrictionType(Enum):
+    """Types of restrictions that can be applied."""
+    ENERGY_COST = "energy_cost"
+    TIME_COOLDOWN = "time_cooldown"
+    RANGE_LIMIT = "range_limit"
+    DURATION_LIMIT = "duration_limit"
+    SIDE_EFFECTS = "side_effects"
+    PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+    CONSERVATION_LAW = "conservation_law"
+    ENTROPY_COST = "entropy_cost"
+    CONSCIOUSNESS_REQUIREMENT = "consciousness_requirement"
+    MATERIAL_ANCHOR = "material_anchor"
+
+
+@dataclass
+class RestrictionRule:
+    """A single restriction rule applied to a capability."""
+    restriction_type: RestrictionType
+    severity: float  # 0.0 (mild) to 1.0 (severe)
+    description: str
+    parameters: Dict = field(default_factory=dict)
+
+    def apply(self, base_value: float) -> float:
+        """Apply restriction multiplier to a base value."""
+        return base_value * (1.0 - self.severity)
+
+    def __str__(self) -> str:
+        return f"{self.restriction_type.value}: {self.description} (severity: {self.severity:.1%})"
+
+
+@dataclass
+class MetaphysicalCapability:
+    """Represents a metaphysical or magical capability."""
+    name: str
+    capability_type: CapabilityType
+    base_power_level: float  # 0.0 to 100.0
+    restrictions: List[RestrictionRule] = field(default_factory=list)
+    is_usable: bool = True
+    use_count: int = 0
+    last_used_timestamp: Optional[float] = None
+
+    def get_effective_power(self) -> float:
+        """Calculate effective power after applying all restrictions."""
+        power = self.base_power_level
+        for restriction in self.restrictions:
+            power = restriction.apply(power)
+        return power
+
+    def get_total_restriction_severity(self) -> float:
+        """Get cumulative restriction severity."""
+        if not self.restrictions:
+            return 0.0
+        # Multiplicative effect of restrictions
+        cumulative = 1.0
+        for restriction in self.restrictions:
+            cumulative *= (1.0 - restriction.severity)
+        return 1.0 - cumulative
+
+    def add_restriction(self, restriction: RestrictionRule) -> None:
+        """Add a new restriction to this capability."""
+        self.restrictions.append(restriction)
+
+    def remove_restriction(self, restriction_type: RestrictionType) -> bool:
+        """Remove a restriction by type. Returns True if removed."""
+        original_len = len(self.restrictions)
+        self.restrictions = [r for r in self.restrictions 
+                           if r.restriction_type != restriction_type]
+        return len(self.restrictions) < original_len
+
+    def __str__(self) -> str:
+        return (f"{self.name} ({self.capability_type.value}): "
+                f"Power {self.get_effective_power():.1f}/100 "
+                f"(base: {self.base_power_level:.1f}, "
+                f"restricted: {self.get_total_restriction_severity():.1%})")
+
+
+class PhilosophicalFramework(ABC):
+    """Abstract base for philosophical frameworks limiting metaphysical abilities."""
+
+    @abstractmethod
+    def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+        """Determine if a capability violates this philosophical framework."""
+        pass
+
+    @abstractmethod
+    def get_restriction_reason(self) -> str:
+        """Explain why this framework restricts capabilities."""
+        pass
+
+
+class ConservationOfEnergyFramework(PhilosophicalFramework):
+    """Framework based on energy conservation principle."""
+
+    def __init__(self, total_available_energy: float = 100.0):
+        self.total_available_energy = total_available_energy
+        self.used_energy = 0.0
+
+    def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+        """Energy cannot be created or destroyed, only transformed."""
+        energy_cost = capability.base_power_level * 0.5
+        return self.used_energy + energy_cost <= self.total_available_energy
+
+    def get_restriction_reason(self) -> str:
+        return ("Energy conservation: All metaphysical actions must draw from "
+                "a finite energy pool. Energy cannot be created or destroyed.")
+
+
+class EntropicDecayFramework(PhilosophicalFramework):
+    """Framework based on entropy and thermodynamic principles."""
+
+    def __init__(self, entropy_tolerance: float = 0.8):
+        self.entropy_tolerance = entropy_tolerance  # 0.0 to 1.0
+        self.current_entropy = 0.0
+
+    def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+        """Reality-altering abilities increase entropy."""
+        entropy_increase = capability.base_power_level / 100.0 * 0.3
+        return self.current_entropy + entropy_increase <= self.entropy_tolerance
+
+    def get_restriction_reason(self) -> str:
+        return ("Entropic decay: All metaphysical manipulations increase "
+                "universal entropy. Reality resists extreme violations of entropy.")
+
+
+class CausalityFramework(PhilosophicalFramework):
+    """Framework that restricts causality violations."""
+
+    def __init__(self, allow_time_travel: bool = False):
+        self.allow_time_travel = allow_time_travel
+        self.causal_violations = 0
+
+    def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+        """Causality violations are restricted unless specifically allowed."""
+        causal_violations = [
+            CapabilityType.TIME_MANIPULATION,
+            CapabilityType.RESURRECTION,
+            CapabilityType.PROPHESY
+        ]
+        
+        if capability.capability_type in causal_violations:
+            if capability.capability_type == CapabilityType.TIME_MANIPULATION:
+                return self.allow_time_travel
+            return True
+        return True
+
+    def get_restriction_reason(self) -> str:
+        return ("Causality principle: Effects cannot precede causes. "
+                "Abilities that violate causality are restricted.")
+
+
+class ConsciousnessAnchorFramework(PhilosophicalFramework):
+    """Framework requiring consciousness maintenance for metaphysical actions."""
+
+    def __init__(self, consciousness_threshold: float = 0.5):
+        self.consciousness_threshold = consciousness_threshold
+        self.practitioner_consciousness_level = 1.0
+
+    def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+        """Metaphysical abilities require sufficient consciousness."""
+        required_consciousness = capability.base_power_level / 100.0
+        return self.practitioner_consciousness_level >= required_consciousness
+
+    def get_restriction_reason(self) -> str:
+        return ("Consciousness anchor: Metaphysical capabilities require "
+                "mental clarity and awareness. Altered consciousness impairs abilities.")
+
+
+@dataclass
+class MetaphysicalPractitioner:
+    """An entity capable of using metaphysical abilities."""
+    name: str
+    capabilities: List[MetaphysicalCapability] = field(default_factory=list)
+    philosophical_frameworks: List[PhilosophicalFramework] = field(default_factory=list)
+    consciousness_level: float = 1.0  # 0.0 to 1.0
+    energy_pool: float = 100.0
+    max_energy: float = 100.0
+
+    def add_capability(self, capability: MetaphysicalCapability) -> None:
+        """Add a new capability."""
+        self.capabilities.append(capability)
+
+    def add_framework(self, framework: PhilosophicalFramework) -> None:
+        """Bind a philosophical framework to this practitioner."""
+        self.philosophical_frameworks.append(framework)
+
+    def can_use_capability(self, capability: MetaphysicalCapability) -> tuple[bool, str]:
+        """Check if a capability can be used given all restrictions."""
+        # Check if capability is enabled
+        if not capability.is_usable:
+            return False, "Capability is disabled."
+
+        # Check energy
+        energy_cost = capability.base_power_level * 0.5
+        if self.energy_pool < energy_cost:
+            return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+
+        # Check consciousness
+        if self.consciousness_level < 0.5:
+            return False, "Consciousness level too low to maintain metaphysical connection."
+
+        # Check all philosophical frameworks
+        for framework in self.philosophical_frameworks:
+            if not framework.evaluate_restriction(capability):
+                return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+
+        return True, "Capability can be used."
+
+    def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+        """Attempt to use a capability. Returns result details."""
+        can_use, reason = self.can_use_capability(capability)
+        
+        result = {
+            "success": can_use,
+            "capability": capability.name,
+            "reason": reason,
+            "power_used": 0.0,
+            "energy_consumed": 0.0
+        }
+
+        if can_use:
+            power_used = capability.get_effective_power()
+            energy_consumed = capability.base_power_level * 0.5
+            
+            self.energy_pool -= energy_consumed
+            capability.use_count += 1
+            
+            result["power_used"] = power_used
+            result["energy_consumed"] = energy_consumed
+            result["remaining_energy"] = self.energy_pool
+
+        return result
+
+    def get_status(self) -> str:
+        """Get current status of the practitioner."""
+        status = f"\n=== {self.name} ===\n"
+        status += f"Consciousness: {self.consciousness_level:.1%}\n"
+        status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
+        status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+        status += f"\nCapabilities:\n"
+        
+        for cap in self.capabilities:
+            status += f"  • {cap}\n"
+            if cap.restrictions:
+                for restriction in cap.restrictions:
+                    status += f"    - {restriction}\n"
+        
+        return status
+
+
+# Utility functions for common restriction setups
+
+def create_balanced_magic_system() -> MetaphysicalPractitioner:
+    """Create a well-balanced magic system with standard restrictions."""
+    practitioner = MetaphysicalPractitioner("Balanced Mage")
+    
+    # Add frameworks
+    practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+    practitioner.add_framework(EntropicDecayFramework(0.9))
+    practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
+    
+    # Add capabilities with restrictions
+    telekinesis = MetaphysicalCapability(
+        "Telekinesis",
+        CapabilityType.TELEKINESIS,
+        base_power_level=45.0
+    )
+    telekinesis.add_restriction(RestrictionRule(
+        RestrictionType.RANGE_LIMIT,
+        severity=0.3,
+        description="Limited to 100 meters"
+    ))
+    telekinesis.add_restriction(RestrictionRule(
+        RestrictionType.TIME_COOLDOWN,
+        severity=0.2,
+        description="5-second cooldown between uses"
+    ))
+    
+    telepathy = MetaphysicalCapability(
+        "Telepathy",
+        CapabilityType.TELEPATHY,
+        base_power_level=35.0
+    )
+    telepathy.add_restriction(RestrictionRule(
+        RestrictionType.CONSCIOUSNESS_REQUIREMENT,
+        severity=0.4,
+        description="Target must have some consciousness"
+    ))
+    
+    practitioner.add_capability(telekinesis)
+    practitioner.add_capability(telepathy)
+    
+    return practitioner
+
+
+def create_restricted_reality_warper() -> MetaphysicalPractitioner:
+    """Create a reality warper with heavy restrictions."""
+    practitioner = MetaphysicalPractitioner("Reality Warper", 
+                                           consciousness_level=0.95,
+                                           energy_pool=500.0,
+                                           max_energy=500.0)
+    
+    # Add strict frameworks
+    practitioner.add_framework(CausalityFramework(allow_time_travel=False))
+    practitioner.add_framework(EntropicDecayFramework(entropy_tolerance=0.7))
+    
+    reality_warp = MetaphysicalCapability(
+        "Reality Warping",
+        CapabilityType.REALITY_WARPING,
+        base_power_level=85.0
+    )
+    reality_warp.add_restriction(RestrictionRule(
+        RestrictionType.PHILOSOPHICAL_PARADOX,
+        severity=0.6,
+        description="Cannot create logical contradictions"
+    ))
+    reality_warp.add_restriction(RestrictionRule(
+        RestrictionType.ENTROPY_COST,
+        severity=0.5,
+        description="Massive entropy increase per use"
+    ))
+    reality_warp.add_restriction(RestrictionRule(
+        RestrictionType.MATERIAL_ANCHOR,
+        severity=0.4,
+        description="Requires ritual components to ground the effect"
+    ))
+    
+    practitioner.add_capability(reality_warp)
+    
+    return practitioner
+"""
+Philosophical Framework Module
+Theoretical underpinnings for restricting metaphysical capabilities.
+
+This module explores how various philosophical and physical principles
+can naturally limit magical and supernatural abilities.
+"""
+
+from enum import Enum
+from dataclasses import dataclass
+from typing import List, Dict
+
+
+class PhilosophicalPrinciple(Enum):
+    """Core philosophical principles limiting metaphysical abilities."""
+    
+    CONSERVATION = "conservation_of_energy"
+    """Energy cannot be created or destroyed, only transformed."""
+    
+    ENTROPY = "thermodynamic_entropy"
+    """All systems tend toward disorder. Order-creating acts cost energy."""
+    
+    CAUSALITY = "causality"
+    """Causes must precede effects. Temporal loops are forbidden."""
+    
+    CONSCIOUSNESS = "consciousness_anchor"
+    """Metaphysical acts require conscious will and mental focus."""
+    
+    IDENTITY = "personal_identity"
+    """The self is continuous. Mind transfers violate personal continuity."""
+    
+    INFORMATION = "conservation_of_information"
+    """Information cannot be truly destroyed or created ex nihilo."""
+    
+    LOCALITY = "locality_principle"
+    """Mind/consciousness is anchored to a specific location or body."""
+    
+    WAVE_PARTICLE_DUALITY = "quantum_uncertainty"
+    """Observation affects reality. Total knowledge of a system is impossible."""
+
+
+@dataclass
+class PhilosophicalFrameworkTheory:
+    """Theoretical justification for restriction types."""
+    
+    principle: PhilosophicalPrinciple
+    description: str
+    applied_to: List[str]  # Capability types affected
+    severity_justification: str
+    exceptions: List[str] = None
+    
+    def __post_init__(self):
+        if self.exceptions is None:
+            self.exceptions = []
+
+
+# == CONSERVATION-BASED RESTRICTIONS ==
+
+ENERGY_CONSERVATION = PhilosophicalFrameworkTheory(
+    principle=PhilosophicalPrinciple.CONSERVATION,
+    description=(
+        "The First Law of Thermodynamics states that energy cannot be "
+        "created or destroyed, only transformed. Every metaphysical act "
+        "must draw power from somewhere—either the practitioner's internal "
+        "reserves, external sources, or conversion of matter."
+    ),
+    applied_to=[
+        "telekinesis", "energy_projection", "reality_warping",
+        "telepathy", "dimensional_travel"
+    ],
+    severity_justification=(
+        "Power level determines energy consumption. A 50-point ability "
+        "requires 25 energy units. Without sufficient energy reserves, "
+        "the ability cannot be used."
+    ),
+    exceptions=[
+        "Passive abilities that simply maintain a state require no energy",
+        "Channeled abilities can draw unlimited power if connected to external source"
+    ]
+)
+
+MATTER_MASS_EQUIVALENCE = PhilosophicalFrameworkTheory(
+    principle=PhilosophicalPrinciple.CONSERVATION,
+    description=(
+        "Mass and energy are interchangeable (E=mc²). Creating matter "
+        "from nothing requires an impossible amount of energy. "
+        "Transmutation must conserve matter—you cannot create mass."
+    ),
+    applied_to=[
+        "reality_warping", "matter_creation", "resurrection"
+    ],
+    severity_justification=(
+        "Transmutation is limited by matter conservation. You can reshape "
+        "existing matter but cannot create new mass from energy without "
+        "extraordinary power sources."
+    )
+)
+
+
+# == ENTROPY-BASED RESTRICTIONS ==
+
+THERMODYNAMIC_ENTROPY = PhilosophicalFrameworkTheory(
+    principle=PhilosophicalPrinciple.ENTROPY,
+    description=(
+        "The Second Law of Thermodynamics states that entropy in a closed "
+        "system always increases. Order-creating acts (magic) are "
+        "fundamentally working against entropy. They require energy to "
+        "impose order on chaos."
+    ),
+    applied_to=[
+        "reality_warping", "regeneration", "resurrection",
+        "telekinesis", "time_manipulation"
+    ],
+    severity_justification=(
+        "The more ordered and improbable the effect, the higher entropy cost. "
+        "Resurrecting the dead (creating extreme order) has a catastrophic "
+        "entropy cost. Simple telekinesis (local reordering) has lower cost."
+    ),
+    exceptions=[
+        "Entropy-increasing acts (destruction) have negative cost",
+        "Chaos magic harnesses entropy and may have reduced cost"
+    ]
+)
+
+
+# == CAUSALITY-BASED RESTRICTIONS ==
+
+CAUSALITY_CONSTRAINT = PhilosophicalFrameworkTheory(
+    principle=PhilosophicalPrinciple.CAUSALITY,
+    description=(
+        "The philosophical principle of causality states that causes must "
+        "precede their effects in time. This prevents paradoxes and maintains "
+        "logical consistency. Time travel that creates grandfather paradoxes "
+        "violates causality."
+    ),
+    applied_to=[
+        "time_manipulation", "prophecy", "resurrection", "memory_alteration"
+    ],
+    severity_justification=(
+        "Abilities that alter the past are forbidden entirely (severity 1.0) "
+        "unless an exception is granted. Prophecy is restricted because perfect "
+        "foresight creates causal loops."
+    ),
+    exceptions=[
+        "Time dilation (slowing time locally) doesn't violate causality",
+        "Multiverse branching interpretations allow limited time travel",
+        "Prophecy is allowed if futures remain probabilistic and uncertain"
+    ]
+)
+
+
+# == CONSCIOUSNESS-BASED RESTRICTIONS ==
+
+CONSCIOUSNESS_ANCHOR = PhilosophicalFrameworkTheory(
+    principle=PhilosophicalPrinciple.CONSCIOUSNESS,
+    description=(
+        "Metaphysical abilities require conscious intention and mental focus. "
+        "Unconsciousness, drugs, meditation-induced dissociation, or mental "
+        "damage impair the ability to project will onto reality."
+    ),
+    applied_to=[
+        "all_abilities"
+    ],
+    severity_justification=(
+        "Each ability has a minimum consciousness threshold. A 70-point ability "
+        "requires 70% consciousness. Below that, it cannot be used. Sleep and "
+        "unconsciousness (0% consciousness) disable all abilities."
+    )
+)
+
+WILL_CONSISTENCY = PhilosophicalFrameworkTheory(
+    principle=PhilosophicalPrinciple.CONSCIOUSNESS,
+    description=(
+        "Metaphysical projections of will require consistency of intent. "
+        "Paradoxical commands (trying to both teleport and stay still) "
+        "cancel out. Self-doubt creates internal conflicts that weaken effects."
+    ),
+    applied_to=[
+        "reality_warping", "telekinesis", "telepathy"
+    ],
+    severity_justification=(
+        "Conflicted intent reduces effectiveness. Clear, unwavering will "
+        "grants full power. Doubt or hesitation reduces effective power level."
+    )
+)
+
+
+# == IDENTITY-BASED RESTRICTIONS ==
+
+PERSONAL_IDENTITY = PhilosophicalFrameworkTheory(
+    principle=PhilosophicalPrinciple.IDENTITY,
+    description=(
+        "Philosophy of mind suggests personal identity is continuous. "
+        "Consciousness transfer, mind uploading, and resurrection via copied "
+        "consciousness may create duplicates rather than restore the original. "
+        "The original consciousness/soul cannot be moved without death."
+    ),
+    applied_to=[
+        "consciousness_transfer", "resurrection", "memory_alteration"
+    ],
+    severity_justification=(
+        "Perfect consciousness transfer (restoring the SAME consciousness) "
+        "is impossible. You can copy consciousness (creating a duplicate) "
+        "but the original is lost. Resurrection always involves creating "
+        "a near-duplicate, never true restoration."
+    ),
+    exceptions=[
+        "Magical souls are metaphysical entities that can persist unchanged",
+        "If consciousness is non-physical, perfect transfer may be possible"
+    ]
+)
+
+
+# == INFORMATION-BASED RESTRICTIONS ==
+
+INFORMATION_CONSERVATION = PhilosophicalFrameworkTheory(
+    principle=PhilosophicalPrinciple.INFORMATION,
+    description=(
+        "In quantum mechanics, information is never truly destroyed "
+        "(black hole no-loss principle). All information that ever existed "
+        "leaves traces in the universe's quantum state. This prevents true "
+        "creation or complete destruction."
+    ),
+    applied_to=[
+        "reality_warping", "matter_annihilation", "memory_erasure"
+    ],
+    severity_justification=(
+        "You cannot truly destroy matter without creating radiation/energy. "
+        "You cannot erase memories without leaving traces. The universe "
+        "'remembers' everything."
+    )
+)
+
+KNOWLEDGE_UNCERTAINTY = PhilosophicalFrameworkTheory(
+    principle=PhilosophicalPrinciple.INFORMATION,
+    description=(
+        "The quantum uncertainty principle and epistemological limits "
+        "prevent perfect knowledge. You cannot know both position and "
+        "momentum perfectly. You cannot read minds and bodies perfectly."
+    ),
+    applied_to=[
+        "telepathy", "prophecy", "perfect_scrying"
+    ],
+    severity_justification=(
+        "Telepathy gets weaker with mental complexity. Prophecy cannot "
+        "achieve perfect accuracy. Scrying cannot penetrate all barriers."
+    )
+)
+
+
+# == LOCALITY-BASED RESTRICTIONS ==
+
+CONSCIOUSNESS_LOCALITY = PhilosophicalFrameworkTheory(
+    principle=PhilosophicalPrinciple.LOCALITY,
+    description=(
+        "Consciousness appears to be localized to the brain/nervous system. "
+        "Projecting consciousness at range requires energy to maintain that "
+        "connection. Extreme range causes degradation or link loss."
+    ),
+    applied_to=[
+        "telekinesis", "telepathy", "remote_viewing", "dimensional_travel"
+    ],
+    severity_justification=(
+        "Telepathy strength decreases with distance. Telekinesis has a "
+        "maximum range. Remote viewing becomes blurry at extreme range. "
+        "Dimensional travel must anchor back to origin point."
+    )
+)
+
+
+# == QUANTUM UNCERTAINTY RESTRICTIONS ==
+
+OBSERVER_EFFECT = PhilosophicalFrameworkTheory(
+    principle=PhilosophicalPrinciple.WAVE_PARTICLE_DUALITY,
+    description=(
+        "In quantum mechanics, observation affects the observed system. "
+        "Measuring a particle's position changes its momentum. Attempting "
+        "perfect perception of reality collapses quantum states, changing "
+        "what you perceive."
+    ),
+    applied_to=[
+        "reality_warping", "perfect_scrying", "prophecy"
+    ],
+    severity_justification=(
+        "The act of observing changes the observed. Perfect prophecy is "
+        "impossible because observing the future collapses it to a specific "
+        "timeline, preventing alternate outcomes."
+    )
+)
+
+
+# == PRACTICAL RESTRICTION GUIDELINES ==
+
+RESTRICTION_SEVERITY_SCALE = {
+    0.0: "No restriction - ability works at full effectiveness",
+    0.1: "Negligible - restricts 10% of power",
+    0.2: "Minor - restricts 20% of power, easily overcome",
+    0.3: "Moderate - restricts 30%, noticeable impact",
+    0.4: "Significant - ability only 60% as effective",
+    0.5: "Heavy - splits power in half",
+    0.7: "Severe - ability 30% effective, mostly unusable",
+    0.9: "Near-total - ability barely works",
+    1.0: "Complete prohibition - ability cannot be used"
+}
+
+
+def get_framework_for_capability(capability_type: str) -> List[PhilosophicalFrameworkTheory]:
+    """Get all philosophical frameworks that restrict a given capability."""
+    frameworks = [
+        ENERGY_CONSERVATION, MATTER_MASS_EQUIVALENCE,
+        THERMODYNAMIC_ENTROPY,
+        CAUSALITY_CONSTRAINT,
+        CONSCIOUSNESS_ANCHOR, WILL_CONSISTENCY,
+        PERSONAL_IDENTITY,
+        INFORMATION_CONSERVATION, KNOWLEDGE_UNCERTAINTY,
+        CONSCIOUSNESS_LOCALITY,
+        OBSERVER_EFFECT
+    ]
+    
+    applicable = [f for f in frameworks if capability_type in f.applied_to
+                 or "all_abilities" in f.applied_to]
+    return applicable
+
+
+def print_framework_analysis(capability_type: str):
+    """Print detailed analysis of restrictions on a capability."""
+    print(f"\n{'='*70}")
+    print(f"PHILOSOPHICAL RESTRICTIONS: {capability_type.upper()}")
+    print(f"{'='*70}\n")
+    
+    frameworks = get_framework_for_capability(capability_type)
+    
+    if not frameworks:
+        print(f"No restrictions found for {capability_type}")
+        return
+    
+    for framework in frameworks:
+        print(f"\n{framework.principle.value.upper()}")
+        print(f"{'-'*70}")
+        print(f"Description: {framework.description}")
+        print(f"\nSeverity Justification: {framework.severity_justification}")
+        
+        if framework.exceptions:
+            print(f"\nExceptions:")
+            for exc in framework.exceptions:
+                print(f"  • {exc}")
+
+
+# Example usage
+if __name__ == "__main__":
+    print("Philosophical Framework Examples:")
+    print_framework_analysis("reality_warping")
+    print_framework_analysis("telekinesis")
+    print_framework_analysis("telepathy")
+    print_framework_analysis("time_manipulation")
+"""
+Example usage demonstrating the metaphysical capabilities restriction system.
+Shows both game mechanics and philosophical frameworks in action.
+"""
+
+from metaphysical_restrictions import (
+    MetaphysicalCapability, MetaphysicalPractitioner,
+    RestrictionRule, RestrictionType, CapabilityType,
+    ConservationOfEnergyFramework, EntropicDecayFramework,
+    CausalityFramework, ConsciousnessAnchorFramework,
+    create_balanced_magic_system, create_restricted_reality_warper
+)
+
+
+def example_1_basic_capability_restriction():
+    """Example 1: Basic capability with multiple restrictions."""
+    print("\n" + "="*70)
+    print("EXAMPLE 1: Basic Capability Restriction")
+    print("="*70)
+    
+    # Create a simple telekinesis ability
+    telekinesis = MetaphysicalCapability(
+        name="Advanced Telekinesis",
+        capability_type=CapabilityType.TELEKINESIS,
+        base_power_level=60.0
+    )
+    
+    print(f"\nOriginal capability: {telekinesis}")
+    print(f"Effective power: {telekinesis.get_effective_power():.1f}")
+    
+    # Add restrictions one by one
+    restrictions = [
+        RestrictionRule(
+            RestrictionType.ENERGY_COST,
+            severity=0.3,
+            description="High energy consumption"
+        ),
+        RestrictionRule(
+            RestrictionType.RANGE_LIMIT,
+            severity=0.2,
+            description="Limited to 50 meters"
+        ),
+        RestrictionRule(
+            RestrictionType.DURATION_LIMIT,
+            severity=0.15,
+            description="Effect lasts only 10 seconds"
+        ),
+    ]
+    
+    for restriction in restrictions:
+        telekinesis.add_restriction(restriction)
+        print(f"\nAfter adding {restriction.restriction_type.value}:")
+        print(f"  Effective power: {telekinesis.get_effective_power():.1f}")
+        print(f"  Total restriction: {telekinesis.get_total_restriction_severity():.1%}")
+    
+    print(f"\nFinal capability:\n  {telekinesis}")
+
+
+def example_2_balanced_magic_system():
+    """Example 2: Using a pre-built balanced magic system."""
+    print("\n" + "="*70)
+    print("EXAMPLE 2: Balanced Magic System")
+    print("="*70)
+    
+    practitioner = create_balanced_magic_system()
+    print(practitioner.get_status())
+    
+    # Try to use the first capability
+    capability = practitioner.capabilities[0]
+    print(f"\n--- Attempting to use {capability.name} ---")
+    result = practitioner.use_capability(capability)
+    
+    print(f"Success: {result['success']}")
+    print(f"Reason: {result['reason']}")
+    if result['success']:
+        print(f"Power discharged: {result['power_used']:.1f}")
+        print(f"Energy consumed: {result['energy_consumed']:.1f}")
+        print(f"Remaining energy: {result['remaining_energy']:.1f}")
+
+
+def example_3_philosophical_frameworks():
+    """Example 3: Demonstrating philosophical constraints."""
+    print("\n" + "="*70)
+    print("EXAMPLE 3: Philosophical Framework Constraints")
+    print("="*70)
+    
+    # Create a practitioner with strict rules
+    practitioner = MetaphysicalPractitioner("Philosopher Mage")
+    
+    # Add strict frameworks
+    practitioner.add_framework(CausalityFramework(allow_time_travel=False))
+    practitioner.add_framework(EntropicDecayFramework(entropy_tolerance=0.5))
+    practitioner.add_framework(ConservationOfEnergyFramework(total_available_energy=150.0))
+    
+    # Create various capabilities
+    capabilities = [
+        MetaphysicalCapability("Time Rewind", CapabilityType.TIME_MANIPULATION, 70.0),
+        MetaphysicalCapability("Minor Telekinesis", CapabilityType.TELEKINESIS, 30.0),
+        MetaphysicalCapability("Resurrection", CapabilityType.RESURRECTION, 95.0),
+    ]
+    
+    for cap in capabilities:
+        practitioner.add_capability(cap)
+    
+    print("\nTesting capabilities against philosophical frameworks:")
+    for capability in capabilities:
+        can_use, reason = practitioner.can_use_capability(capability)
+        status = "✓ ALLOWED" if can_use else "✗ RESTRICTED"
+        print(f"\n{capability.name}: {status}")
+        print(f"  Reason: {reason}")
+
+
+def example_4_reality_warper():
+    """Example 4: Heavily restricted reality warping."""
+    print("\n" + "="*70)
+    print("EXAMPLE 4: Reality Warper with Heavy Restrictions")
+    print("="*70)
+    
+    practitioner = create_restricted_reality_warper()
+    print(practitioner.get_status())
+    
+    # Attempt to use reality warping
+    reality_warp = practitioner.capabilities[0]
+    
+    print("\n--- Attempting Reality Warp ---")
+    can_use, reason = practitioner.can_use_capability(reality_warp)
+    print(f"Can use: {can_use}")
+    print(f"Reason: {reason}")
+    
+    if can_use:
+        result = practitioner.use_capability(reality_warp)
+        print(f"\nResult:")
+        print(f"  Success: {result['success']}")
+        print(f"  Power used: {result['power_used']:.1f}")
+        print(f"  Energy consumed: {result['energy_consumed']:.1f}")
+
+
+def example_5_consciousness_degradation():
+    """Example 5: How consciousness level affects ability usage."""
+    print("\n" + "="*70)
+    print("EXAMPLE 5: Consciousness-Dependent Restrictions")
+    print("="*70)
+    
+    practitioner = MetaphysicalPractitioner(
+        "Meditation Master",
+        consciousness_level=1.0,
+        max_energy=200.0,
+        energy_pool=200.0
+    )
+    practitioner.add_framework(ConsciousnessAnchorFramework(consciousness_threshold=0.5))
+    
+    # Add a high-level telepathy ability
+    telepathy = MetaphysicalCapability(
+        "Mind Meld",
+        CapabilityType.TELEPATHY,
+        base_power_level=70.0
+    )
+    practitioner.add_capability(telepathy)
+    
+    # Test at different consciousness levels
+    consciousness_levels = [1.0, 0.8, 0.6, 0.4, 0.2, 0.0]
+    
+    print(f"\nAbility power level: {telepathy.base_power_level}")
+    print("\nTesting ability at different consciousness levels:")
+    print("-" * 50)
+    
+    for level in consciousness_levels:
+        practitioner.consciousness_level = level
+        can_use, reason = practitioner.can_use_capability(telepathy)
+        status = "✓" if can_use else "✗"
+        print(f"Consciousness {level:.0%}: {status} - {reason}")
+
+
+def example_6_multiple_uses_and_cooldown():
+    """Example 6: Tracking usage with cooldowns and side effects."""
+    print("\n" + "="*70)
+    print("EXAMPLE 6: Usage Tracking and Resource Management")
+    print("="*70)
+    
+    practitioner = MetaphysicalPractitioner(
+        "Energy Monk",
+        max_energy=100.0,
+        energy_pool=100.0
+    )
+    
+    # Create an ability with mild restrictions
+    ability = MetaphysicalCapability(
+        "Energy Bolt",
+        CapabilityType.ENERGY_PROJECTION,
+        base_power_level=25.0
+    )
+    ability.add_restriction(RestrictionRule(
+        RestrictionType.ENERGY_COST,
+        severity=0.2,
+        description="Moderate energy drain"
+    ))
+    
+    practitioner.add_capability(ability)
+    
+    print(f"Starting energy: {practitioner.energy_pool}/{practitioner.max_energy}")
+    print(f"Ability effective power: {ability.get_effective_power():.1f}")
+    
+    # Use the ability multiple times
+    print("\n--- Sequential Uses ---")
+    for i in range(5):
+        result = practitioner.use_capability(ability)
+        if result['success']:
+            print(f"Use {i+1}: SUCCESS - Energy remaining: {result['remaining_energy']:.1f}")
+        else:
+            print(f"Use {i+1}: FAILED - {result['reason']}")
+            break
+    
+    print(f"\nTotal uses completed: {ability.use_count}")
+
+
+def example_7_restriction_modification():
+    """Example 7: Dynamically adding and removing restrictions."""
+    print("\n" + "="*70)
+    print("EXAMPLE 7: Dynamic Restriction Modification")
+    print("="*70)
+    
+    ability = MetaphysicalCapability(
+        "Dimensional Portal",
+        CapabilityType.DIMENSIONAL_TRAVEL,
+        base_power_level=75.0
+    )
+    
+    print(f"Initial power: {ability.get_effective_power():.1f}")
+    
+    # Add restrictions due to environmental factors
+    print("\n--- Adding Environmental Restrictions ---")
+    
+    restriction1 = RestrictionRule(
+        RestrictionType.ENTROPY_COST,
+        severity=0.2,
+        description="Dimensional instability in area"
+    )
+    ability.add_restriction(restriction1)
+    print(f"After restriction 1: {ability.get_effective_power():.1f}")
+    
+    restriction2 = RestrictionRule(
+        RestrictionType.MATERIAL_ANCHOR,
+        severity=0.3,
+        description="Requires rare materials to stabilize"
+    )
+    ability.add_restriction(restriction2)
+    print(f"After restriction 2: {ability.get_effective_power():.1f}")
+    
+    # Remove a restriction
+    print("\n--- Removing Restrictions ---")
+    if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+        print(f"Removed entropy cost restriction")
+    print(f"After removal: {ability.get_effective_power():.1f}")
+
+
+def main():
+    """Run all examples."""
+    print("\n" + "="*70)
+    print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+    print("Game Mechanics & Philosophical Framework Examples")
+    print("="*70)
+    
+    example_1_basic_capability_restriction()
+    example_2_balanced_magic_system()
+    example_3_philosophical_frameworks()
+    example_4_reality_warper()
+    example_5_consciousness_degradation()
+    example_6_multiple_uses_and_cooldown()
+    example_7_restriction_modification()
+    
+    print("\n" + "="*70)
+    print("Examples completed!")
+    print("="*70 + "\n")
+
+
+if __name__ == "__main__":
+    main()
+"""
+Metaphysical Capabilities Restriction System
+
+A combined game mechanics and philosophical framework for restricting
+supernatural, magical, and metaphysical abilities.
+"""
+from enum import Enum
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Callable
+from abc import ABC, abstractmethod
+import json
+
+
+class CapabilityType(Enum):
+    """Categories of metaphysical capabilities."""
+    TELEKINESIS = "telekinesis"
+    TELEPATHY = "telepathy"
+    TIME_MANIPULATION = "time_manipulation"
+    REALITY_WARPING = "reality_warping"
+    SOUL_MANIPULATION = "soul_manipulation"
+    DIMENSIONAL_TRAVEL = "dimensional_travel"
+    ENERGY_PROJECTION = "energy_projection"
+    PROPHESY = "prophesy"
+    RESURRECTION = "resurrection"
+    CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+
+
+class RestrictionType(Enum):
+    """Types of restrictions that can be applied."""
+    ENERGY_COST = "energy_cost"
+    TIME_COOLDOWN = "time_cooldown"
+    RANGE_LIMIT = "range_limit"
+    DURATION_LIMIT = "duration_limit"
+    SIDE_EFFECTS = "side_effects"
+    PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+    CONSERVATION_LAW = "conservation_law"
+    ENTROPY_COST = "entropy_cost"
+    CONSCIOUSNESS_REQUIREMENT = "consciousness_requirement"
+    MATERIAL_ANCHOR = "material_anchor"
+
+
+@dataclass
+class RestrictionRule:
+    """A single restriction rule applied to a capability."""
+    restriction_type: RestrictionType
+    severity: float
+    description: str
+    parameters: Dict = field(default_factory=dict)
+
+    def apply(self, base_value: float) -> float:
+        """Apply restriction multiplier to a base value."""
+        return base_value * (1.0 - self.severity)
+
+    def __str__(self) -> str:
+        return f"{self.restriction_type.value}: {self.description} (severity: {self.severity:.1%})"
+
+
+@dataclass
+class MetaphysicalCapability:
+    """Represents a metaphysical or magical capability."""
+    name: str
+    capability_type: CapabilityType
+    base_power_level: float
+    restrictions: List[RestrictionRule] = field(default_factory=list)
+    is_usable: bool = True
+    use_count: int = 0
+    last_used_timestamp: Optional[float] = None
+
+    def get_effective_power(self) -> float:
+        """Calculate effective power after applying all restrictions."""
+        power = self.base_power_level
+        for restriction in self.restrictions:
+            power = restriction.apply(power)
+        return power
+
+    def get_total_restriction_severity(self) -> float:
+        """Get cumulative restriction severity."""
+        if not self.restrictions:
+            return 0.0
+        cumulative = 0.0
+        for restriction in self.restrictions:
+            cumulative = cumulative * (1 - restriction.severity)
+        return 1 - cumulative
+
+    def add_restriction(self, restriction: RestrictionRule) -> None:
+        """Add a new restriction to this capability."""
+        self.restrictions.append(restriction)
+
+    def remove_restriction(self, restriction_type: RestrictionType) -> bool:
+        """Remove a restriction by type. Returns True if removed."""
+        original_len = len(self.restrictions)
+        self.restrictions = [r for r in self.restrictions if r.restriction_type != restriction_type]
+        return len(self.restrictions) < original_len
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.capability_type.value}): Power {self.get_effective_power():.1f}/100 (base: {self.base_power_level}, restricted: {self.get_total_restriction_severity():.1%})"
+
+
+class PhilosophicalFramework(ABC):
+    """Abstract base for philosophical frameworks limiting metaphysical abilities."""
+
+    @abstractmethod
+    def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+        """Determine if a capability violates this philosophical framework."""
+        pass
+
+    @abstractmethod
+    def get_restriction_reason(self) -> str:
+        """Explain why this framework restricts capabilities."""
+        pass
+
+
+class ConservationOfEnergyFramework(PhilosophicalFramework):
+    """Framework based on energy conservation principle."""
+    
+    def __init__(self, total_available_energy: float = 100.0):
+        self.total_available_energy = total_available_energy
+        self.used_energy = 0.0
+
+    def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+        """Energy cannot be created or destroyed, only transformed."""
+        energy_cost = capability.base_power_level * 0.5
+        return (self.used_energy + energy_cost) < self.total_available_energy
+
+    def get_restriction_reason(self) -> str:
+        return "Energy conservation: All metaphysical actions must draw from a finite energy pool. Energy cannot be created or destroyed."
+
+
+class EntropicDecayFramework(PhilosophicalFramework):
+    """Framework based on entropy and thermodynamic principles."""
+    
+    def __init__(self, entropy_tolerance: float = 0.8):
+        self.entropy_tolerance = entropy_tolerance
+        self.current_entropy = 0.0
+
+    def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+        """Reality-altering abilities increase entropy."""
+        entropy_increase = capability.base_power_level * 0.5 * 0.2
+        return (self.current_entropy + entropy_increase) < self.entropy_tolerance
+
+    def get_restriction_reason(self) -> str:
+        return "Entropic decay: All metaphysical manipulations increase universal entropy. Reality resists extreme violations of entropy."
+
+
+class CausalityFramework(PhilosophicalFramework):
+    """Framework that restricts causality violations."""
+    
+    def __init__(self, allow_time_travel: bool = False):
+        self.allow_time_travel = allow_time_travel
+        self.causal_violations = 0
+
+    def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+        """Causality violations are restricted unless specifically allowed."""
+        restricted_types = [
+            CapabilityType.TIME_MANIPULATION,
+            CapabilityType.PROPHESY,
+            CapabilityType.DIMENSIONAL_TRAVEL
+        ]
+        if capability.capability_type in restricted_types:
+            if capability.capability_type == CapabilityType.TIME_MANIPULATION:
+                return self.allow_time_travel
+        return True
+
+    def get_restriction_reason(self) -> str:
+        return "Causality principle: Effects cannot precede causes. Abilities that violate causality are restricted."
+
+
+class ConsciousnessAnchorFramework(PhilosophicalFramework):
+    """Framework requiring consciousness maintenance for metaphysical actions."""
+    
+    def __init__(self, consciousness_threshold: float = 0.5):
+        self.consciousness_threshold = consciousness_threshold
+        self.practitioner_consciousness_level = 1.0
+
+    def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+        """Metaphysical abilities require sufficient consciousness."""
+        required_consciousness = capability.base_power_level * 0.5
+        return self.practitioner_consciousness_level >= self.consciousness_threshold
+
+    def get_restriction_reason(self) -> str:
+        return "Consciousness anchor: Metaphysical capabilities require mental clarity and awareness. Altered consciousness impairs abilities."
+
+
+@dataclass
+class MetaphysicalPractitioner:
+    """An entity capable of using metaphysical abilities."""
+    name: str
+    capabilities: List[MetaphysicalCapability] = field(default_factory=list)
+    philosophical_frameworks: List[PhilosophicalFramework] = field(default_factory=list)
+    consciousness_level: float = 1.0
+    energy_pool: float = 100.0
+    max_energy: float = 100.0
+
+    def add_capability(self, capability: MetaphysicalCapability) -> None:
+        """Add a new capability."""
+        self.capabilities.append(capability)
+
+    def add_framework(self, framework: PhilosophicalFramework) -> None:
+        """Bind a philosophical framework to this practitioner."""
+        self.philosophical_frameworks.append(framework)
+
+    def can_use_capability(self, capability: MetaphysicalCapability) -> tuple[bool, str]:
+        """Check if a capability can be used given all restrictions."""
+        if not capability.is_usable:
+            return (False, "Capability is disabled.")
+        
+        energy_cost = capability.base_power_level * 0.5
+        if self.energy_pool < energy_cost:
+            return (False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}")
+        
+        if self.consciousness_level < 0.3:
+            return (False, "Consciousness level too low to maintain metaphysical connection.")
+        
+        for framework in self.philosophical_frameworks:
+            if not framework.evaluate_restriction(capability):
+                return (False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}")
+        
+        return (True, "Capability can be used.")
+
+    def use_capability(self, capability: MetaphysicalCapability) -> dict:
+        """Attempt to use a capability. Returns result details."""
+        can_use, reason = self.can_use_capability(capability)
+        
+        result = {
+            "success": can_use,
+            "capability": capability.name,
+            "reason": reason,
+            "power_used": 0.0,
+            "energy_consumed": 0.0,
+            "remaining_energy": 0.0
+        }
+        
+        if can_use:
+            power = capability.get_effective_power()
+            energy_cost = capability.base_power_level * 0.5
+            self.energy_pool -= energy_cost
+            capability.use_count += 1
+            result["power_used"] = power
+            result["energy_consumed"] = energy_cost
+            result["remaining_energy"] = self.energy_pool
+        
+        return result
+
+    def get_status(self) -> str:
+        """Get current status of the practitioner."""
+        status = f"\n=== {self.name} ===\n"
+        status += f"Consciousness: {self.consciousness_level:.1%}\n"
+        status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
+        status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+        status += "Capabilities:\n"
+        for cap in self.capabilities:
+            status += f"  • {cap}\n"
+            if cap.restrictions:
+                for restriction in cap.restrictions:
+                    status += f"    - {restriction}\n"
+        return status
+
+
+def create_balanced_magic_system() -> MetaphysicalPractitioner:
+    """Create a well-balanced magic system with standard restrictions."""
+    practitioner = MetaphysicalPractitioner("Balanced Mage", energy_pool=105.0, max_energy=100.0)
+    practitioner.add_framework(ConservationOfEnergyFramework(105.0))
+    practitioner.add_framework(EntropicDecayFramework(0.8))
+    practitioner.add_framework(ConsciousnessAnchorFramework(0.3))
+    
+    telekinesis = MetaphysicalCapability("Telekinesis", CapabilityType.TELEKINESIS, base_power_level=70.0)
+    telekinesis.add_restriction(RestrictionRule(RestrictionType.RANGE_LIMIT, 0.2, "Limited to 100 meters"))
+    telekinesis.add_restriction(RestrictionRule(RestrictionType.TIME_COOLDOWN, 0.1, "5-second cooldown between uses"))
+    
+    telepathy = MetaphysicalCapability("Telepathy", CapabilityType.TELEPATHY, base_power_level=65.0)
+    telepathy.add_restriction(RestrictionRule(RestrictionType.CONSCIOUSNESS_REQUIREMENT, 0.15, "Target must have some consciousness"))
+    
+    practitioner.add_capability(telekinesis)
+    practitioner.add_capability(telepathy)
+    
+    return practitioner
+
+
+def create_restricted_reality_warper() -> MetaphysicalPractitioner:
+    """Create a reality warper with heavy restrictions."""
+    practitioner = MetaphysicalPractitioner("Reality Warper", consciousness_level=0.9, energy_pool=64.0, max_energy=64.0)
+    practitioner.add_framework(EntropicDecayFramework(0.7))
+    practitioner.add_framework(CausalityFramework(False))
+    
+    reality_warp = MetaphysicalCapability("Reality Warping", CapabilityType.REALITY_WARPING, base_power_level=85.0)
+    reality_warp.add_restriction(RestrictionRule(RestrictionType.PHILOSOPHICAL_PARADOX, 0.3, "Cannot create logical contradictions"))
+    reality_warp.add_restriction(RestrictionRule(RestrictionType.ENTROPY_COST, 0.4, "Massive entropy increase per use"))
+    reality_warp.add_restriction(RestrictionRule(RestrictionType.MATERIAL_ANCHOR, 0.2, "Requires ritual components to ground the effect"))
+    
+    practitioner.add_capability(reality_warp)
+    
+    return practitioner
 
