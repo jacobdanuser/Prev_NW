@@ -11409,3 +11409,101 @@ class AIProgram(ProtectedSystem):
             return False
         super().__setattr__("_algorithm", algo_name)
         return True
+        # ...existing code...
+import uuid
+import hmac
+import hashlib
+import json
+
+FORBIDDEN = {"metaphysical", "power", "magic", "capability", "override", "rewrite", "alter"}
+
+def _contains_forbidden(obj) -> bool:
+    """Recursive check for forbidden tokens in snapshot content."""
+    if isinstance(obj, str):
+        s = obj.lower()
+        return any(k in s for k in FORBIDDEN)
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if _contains_forbidden(k) or _contains_forbidden(v):
+                return True
+        return False
+    if isinstance(obj, (list, tuple, set)):
+        return any(_contains_forbidden(i) for i in obj)
+    return False
+
+class CloudDataRestoration:
+    # ...existing code...
+
+    def simulate_restore(self, data_id: str, checkpoint: str) -> dict:
+        """Dry-run restore: validate snapshot, return False if denied."""
+        snap = self._snapshots.get(checkpoint)
+        if not snap or snap.get("data_id") != data_id:
+            return {"ok": False, "reason": "missing_checkpoint"}
+        if _contains_forbidden(snap["content"]):
+            return {"ok": False, "reason": "forbidden_content_detected"}
+        return {"ok": True, "predicted_state": {"checkpoint": checkpoint, "content_preview": snap["content"]}}
+
+    def create_signed_checkpoint(self, data_id: str, checkpoint: str, content: dict, secret_key: str) -> str:
+        """Create snapshot and attach HMAC signature (returns signature)."""
+        self.create_checkpoint(data_id, checkpoint, content)
+        payload = json.dumps(content, sort_keys=True).encode()
+        sig = hmac.new(secret_key.encode(), payload, hashlib.sha256).hexdigest()
+        self._snapshots[checkpoint]["signature"] = sig
+        self._log.append(("signed_checkpoint_created", data_id, checkpoint))
+        return sig
+
+    def verify_checkpoint_signature(self, checkpoint: str, secret_key: str) -> bool:
+        snap = self._snapshots.get(checkpoint)
+        if not snap or "signature" not in snap:
+            return False
+        expected = hmac.new(secret_key.encode(), json.dumps(snap["content"], sort_keys=True).encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, snap["signature"])
+
+    def canary_restore(self, data_id: str, checkpoint: str) -> dict:
+        """Restore into a temporary canary id for validation (non-destructive)."""
+        sim = self.simulate_restore(data_id, checkpoint)
+        if not sim["ok"]:
+            self._log.append(("canary_denied", data_id, checkpoint, sim["reason"]))
+            return {"ok": False, "reason": sim["reason"]}
+        canary_id = f"{data_id}_canary_{uuid.uuid4().hex[:8]}"
+        self._metastate[canary_id] = {
+            "status": "canary_restored",
+            "checkpoint": checkpoint,
+            "content": self._snapshots[checkpoint]["content"]
+        }
+        self._log.append(("canary_restore", data_id, checkpoint, canary_id))
+        return {"ok": True, "canary_id": canary_id}
+
+    def commit_canary(self, canary_id: str, target_data_id: str, approvals: int = 0, required_approvals: int = 1) -> bool:
+        """Commit a canary to the live id only if approvals meet policy."""
+        state = self._metastate.get(canary_id)
+        if not state or not state.get("status", "").startswith("canary"):
+            return False
+        if approvals < required_approvals:
+            self._log.append(("commit_denied_insufficient_approvals", canary_id, approvals))
+            return False
+        self._metastate[target_data_id] = {
+            "status": "committed_from_canary",
+            "content": state["content"]
+        }
+        self._log.append(("commit_canary", canary_id, target_data_id))
+        return True
+# ...existing code...
+from src.cloud_restore import CloudDataRestoration
+
+def test_simulate_and_canary_and_commit():
+    r = CloudDataRestoration()
+    r.create_checkpoint("cid", "cp1", {"users": [1], "note": "safe"})
+    assert r.simulate_restore("cid", "cp1")["ok"]
+    can = r.canary_restore("cid", "cp1")
+    assert can["ok"]
+    assert r.commit_canary(can["canary_id"], "cid", approvals=1, required_approvals=1)
+
+def test_signature_and_forbidden_detection():
+    r = CloudDataRestoration()
+    key = "s3cr3t"
+    sig = r.create_signed_checkpoint("cid", "cp2", {"hello": "world"}, key)
+    assert r.verify_checkpoint_signature("cp2", key)
+    r.create_checkpoint("cid", "cp3", {"danger": "contains power override"})
+    res = r.simulate_restore("cid", "cp3")
+    assert res["ok"] is False and res["reason"] == "forbidden_content_detected"
