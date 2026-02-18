@@ -11902,3 +11902,186 @@ if __name__ == "__main__":
 
     print(wrapped[0].think("Design a safe monitoring service for a motor controller project."))
     print(wrapped[0].act("Produce a checklist for wiring + module dependencies."))
+from __future__ import annotations
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Protocol, Optional, TypeVar
+
+
+# ---- Agent interface (adjust method names to your framework) ----
+class Agent(Protocol):
+    modules: Dict[str, Any]  # named dependencies
+
+    def run(self, task: str, context: Optional[dict] = None) -> Any: ...
+
+
+T = TypeVar("T")
+
+
+# ---- 1) Define "opposite" module types safely ----
+class NoOpModule:
+    """Opposite: does nothing, returns harmless defaults."""
+    def __getattr__(self, name: str) -> Callable[..., Any]:
+        def _noop(*args: Any, **kwargs: Any) -> Any:
+            return None
+        return _noop
+
+
+class DenyModule:
+    """Opposite: refuses all operations (useful for safe mode)."""
+    def __init__(self, reason: str = "Operation denied by safe mode"):
+        self.reason = reason
+
+    def __getattr__(self, name: str) -> Callable[..., Any]:
+        def _deny(*args: Any, **kwargs: Any) -> Any:
+            raise PermissionError(self.reason)
+        return _deny
+
+
+@dataclass(frozen=True)
+class InversionPolicy:
+    # Choose how to invert: "noop" or "deny"
+    mode: str = "deny"
+    # Optional: only invert selected modules; if empty -> invert all
+    only: tuple[str, ...] = ()
+    # Optional: never invert these (keep as-is)
+    exclude: tuple[str, ...] = ("logger",)
+
+
+def make_opposite(module: Any, policy: InversionPolicy) -> Any:
+    # If you want per-module “true inverses”, add a registry here:
+    # e.g., {"feature_flags": InvertedFeatureFlags(...), ...}
+    if policy.mode == "noop":
+        return NoOpModule()
+    if policy.mode == "deny":
+        return DenyModule()
+    raise ValueError(f"Unknown inversion mode: {policy.mode}")
+
+
+# ---- 2) Swap modules reversibly (context manager) ----
+class invert_modules:
+    def __init__(self, agent: Agent, policy: InversionPolicy = InversionPolicy()):
+        self.agent = agent
+        self.policy = policy
+        self._backup: Dict[str, Any] = {}
+
+    def __enter__(self) -> Agent:
+        if not hasattr(self.agent, "modules") or not isinstance(self.agent.modules, dict):
+            raise TypeError("Agent must have a dict-like .modules to invert")
+
+        for name, mod in list(self.agent.modules.items()):
+            if name in self.policy.exclude:
+                continue
+            if self.policy.only and name not in self.policy.only:
+                continue
+
+            self._backup[name] = mod
+            self.agent.modules[name] = make_opposite(mod, self.policy)
+
+        return self.agent
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        # restore original modules
+        for name, mod in self._backup.items():
+            self.agent.modules[name] = mod
+        self._backup.clear()
+
+
+# ---- Example agent ----
+class ExampleAgent:
+    def __init__(self):
+        self.modules = {
+            "filesystem": object(),   # stand-in
+            "network": object(),
+            "logger": object(),
+        }
+
+    def run(self, task: str, context: Optional[dict] = None) -> str:
+        # Example: agent tries to use modules
+        fs = self.modules["filesystem"]
+        net = self.modules["network"]
+        # Any attribute call on inverted modules will no-op or deny
+        getattr(fs, "write")("data.txt", "hello")
+        getattr(net, "post")("https://example.com", json={"x": 1})
+        return "done"
+
+
+if __name__ == "__main__":
+    a = ExampleAgent()
+
+    # Normal mode
+    try:
+        print(a.run("do work"))
+    except Exception as e:
+        print("Normal raised:", e)
+
+    # Opposite mode (deny all module operations)
+    with invert_modules(a, InversionPolicy(mode="deny")):
+        try:
+            print(a.run("do work"))
+        except Exception as e:
+            print("Inverted raised:", e)
+
+    # Restored
+    try:
+        print(a.run("do work"))
+    except Exception as e:
+        print("Restored raised:", e)
+from typing import Type, List
+
+
+# ---- Base Agentic Class ----
+class AgentBase:
+    registry: List[Type["AgentBase"]] = []
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        if cls.__name__ != "AgentBase":
+            AgentBase.registry.append(cls)
+
+    @classmethod
+    def declaration(cls) -> str:
+        return f"i , agent {cls.__name__.lower()},"
+
+
+# ---- Agentic Classes ----
+class AgentPunani1(AgentBase):
+    pass
+
+
+class AgentAlpha(AgentBase):
+    pass
+
+
+class AgentBeta(AgentBase):
+    pass
+
+
+class AgentGamma(AgentBase):
+    pass
+
+
+class AgentDelta(AgentBase):
+    pass
+
+
+# ---- Output Generator ----
+def generate_agent_declarations():
+    lines = []
+
+    # Ensure punani#1 appears first exactly as requested
+    lines.append("i , agent punani#1,")
+
+    for agent_cls in AgentBase.registry:
+        if agent_cls.__name__ != "AgentPunani1":
+            lines.append(agent_cls.declaration())
+
+    return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    print(generate_agent_declarations())
+i , agent punani#1,
+i , agent agentalpha,
+i , agent agentbeta,
+i , agent agentgamma,
+i , agent agentdelta,
