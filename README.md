@@ -5202,4 +5202,167 @@ docker run --rm -it \
   -w /app \
   python:3.11-slim \
   python main.py
+#!/usr/bin/env bash
+set -euo pipefail
+
+# 1) Download the weekly ServiceTags JSON
+# Get the actual ServiceTags_Public_*.json download URL from Microsoft's download page. :contentReference[oaicite:1]{index=1}
+JSON_URL="${1:-}"
+if [[ -z "$JSON_URL" ]]; then
+  echo "Usage: $0 <ServiceTags_Public_YYYYMMDD.json direct download URL>"
+  exit 1
+fi
+
+TMP="$(mktemp -d)"
+curl -fsSL "$JSON_URL" -o "$TMP/servicetags.json"
+
+# 2) Extract all address prefixes (IPv4 + IPv6)
+python3 - <<'PY' "$TMP/servicetags.json" > "$TMP/prefixes.txt"
+import json, sys
+p = sys.argv[1]
+j = json.load(open(p,"r",encoding="utf-8"))
+out = set()
+for v in j.get("values", []):
+    props = v.get("properties", {})
+    for pref in props.get("addressPrefixes", []) or []:
+        out.add(pref.strip())
+for x in sorted(out):
+    print(x)
+PY
+
+# 3) Create/refresh ipset
+sudo ipset create azure_all hash:net family inet -exist
+sudo ipset flush azure_all
+grep -E '^\d+\.' "$TMP/prefixes.txt" | while read -r net; do
+  sudo ipset add azure_all "$net" -exist
+done
+
+# (Optional) IPv6 set
+sudo ipset create azure_all6 hash:net family inet6 -exist
+sudo ipset flush azure_all6
+grep -E '^[0-9a-fA-F:]+/' "$TMP/prefixes.txt" | while read -r net; do
+  sudo ipset add azure_all6 "$net" -exist
+done
+
+# 4) Block outbound to Azure IP ranges
+sudo iptables -C OUTPUT -m set --match-set azure_all dst -j REJECT 2>/dev/null \
+  || sudo iptables -A OUTPUT -m set --match-set azure_all dst -j REJECT
+
+sudo ip6tables -C OUTPUT -m set --match-set azure_all6 dst -j REJECT 2>/dev/null \
+  || sudo ip6tables -A OUTPUT -m set --match-set azure_all6 dst -j REJECT
+
+echo "Blocked outbound connections to Azure IP ranges (IPv4+IPv6)."
+echo "Re-run weekly when Microsoft updates the JSON. :contentReference[oaicite:2]{index=2}"
+param(
+  [Parameter(Mandatory=$true)]
+  [string]$ServiceTagsJsonUrl
+)
+
+$ErrorActionPreference = "Stop"
+$tmp = Join-Path $env:TEMP ("servicetags_" + [guid]::NewGuid().ToString() + ".json")
+Invoke-WebRequest -Uri $ServiceTagsJsonUrl -OutFile $tmp
+
+$j = Get-Content $tmp -Raw | ConvertFrom-Json
+
+# Collect IPv4 prefixes
+$prefixes = New-Object System.Collections.Generic.HashSet[string]
+foreach ($v in $j.values) {
+  foreach ($p in $v.properties.addressPrefixes) {
+    if ($p -match '^\d+\.' ) { [void]$prefixes.Add($p) }
+  }
+}
+
+# Windows Firewall has limits; chunk the ranges into batches
+$prefixList = $prefixes.ToArray() | Sort-Object
+$chunkSize = 200
+$ruleBase = "Deny Azure Egress"
+
+# Remove old rules
+Get-NetFirewallRule -DisplayName "$ruleBase *" -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+
+for ($i=0; $i -lt $prefixList.Count; $i += $chunkSize) {
+  $chunk = $prefixList[$i..([Math]::Min($i+$chunkSize-1, $prefixList.Count-1))]
+  $name = "$ruleBase $([int]($i/$chunkSize)+1)"
+  New-NetFirewallRule `
+    -DisplayName $name `
+    -Direction Outbound `
+    -Action Block `
+    -RemoteAddress $chunk `
+    -Profile Any
+}
+
+Write-Host "Created firewall rules to block outbound to Azure IPv4 prefixes."
+Write-Host "Re-run weekly when Microsoft updates ServiceTags_Public_*.json. " `
+  "See Microsoft's weekly JSON guidance. :contentReference[oaicite:3]{index=3}
+import os, re, sys, fnmatch
+
+GLOBS = [
+  "**/*.py","**/*.js","**/*.ts","**/*.jsx","**/*.tsx",
+  "**/*.cs","**/*.fs","**/*.vb",
+  "**/requirements.txt","**/pyproject.toml","**/package.json","**/*.csproj"
+]
+
+DENY = [
+  # Python
+  r"\bazure[-_]\w+", r"\bfrom\s+azure\b", r"\bimport\s+azure\b",
+  # Node
+  r"@azure\/", r"\bazure-sdk\b",
+  # .NET
+  r"Microsoft\.Azure\.", r"\bAzure\.", r"\bAzure\.Identity\b",
+  # CLI / tooling
+  r"\baz\s+login\b", r"\baz\s+account\b", r"\baz\s+storage\b",
+  r"\bazure\s+cli\b"
+]
+
+def walk(root):
+  for base, _, files in os.walk(root):
+    for name in files:
+      rel = os.path.relpath(os.path.join(base, name), root)
+      if any(fnmatch.fnmatch(rel, g) for g in GLOBS):
+        yield rel
+
+def read_text(path):
+  try:
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+      return f.read()
+  except Exception:
+    return ""
+
+def main():
+  repo = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+  rx = [re.compile(p, re.IGNORECASE) for p in DENY]
+  hits = []
+
+  for rel in walk(repo):
+    txt = read_text(os.path.join(repo, rel))
+    if not txt:
+      continue
+    for r in rx:
+      m = r.search(txt)
+      if m:
+        hits.append((rel, r.pattern))
+        break
+
+  if hits:
+    print("❌ No-Azure Gate: blocked Azure usage found\n")
+    for rel, pat in hits[:200]:
+      print(f" - {rel} matched /{pat}/")
+    sys.exit(2)
+
+  print("✅ No-Azure Gate: passed (no Azure SDK/CLI usage detected).")
+  sys.exit(0)
+
+if __name__ == "__main__":
+  main()
+name: No Azure Gate
+on: [pull_request, push]
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: python tools/no_azure_gate.py
+
 
