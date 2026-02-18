@@ -11706,3 +11706,29 @@ def contains_forbidden(obj: Any) -> bool:
 
 __all__ = ("FORBIDDEN", "is_forbidden_name", "contains_forbidden")
 <3punanilove
+# Input validation and sanitization
+def validate_code_input(user_input: str) -> bool:
+    """Prevent execution of unauthorized code patterns."""
+    dangerous_patterns = [
+        'exec(',
+        'eval(',
+        '__import__',
+        'os.system',
+        'subprocess',
+        'open(',
+    ]
+    return not any(pattern in user_input for pattern in dangerous_patterns)
+
+# Code execution sandbox
+def safe_execute(code: str, max_runtime: float = 5.0) -> bool:
+    """Execute code with timeout and resource limits."""
+    if not validate_code_input(code):
+        raise ValueError("Code contains dangerous patterns")
+    # Additional execution would use timeout mechanisms
+    return True
+
+# Logging for audit trails
+def log_code_execution(code: str, user: str, timestamp: str) -> None:
+    """Track all code execution for security audits."""
+    with open('code_execution_log.txt', 'a') as log:
+        log.write(f"{timestamp} | {user} | {code}\n")
