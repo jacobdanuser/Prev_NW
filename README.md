@@ -12085,3 +12085,285 @@ i , agent agentalpha,
 i , agent agentbeta,
 i , agent agentgamma,
 i , agent agentdelta,
+[package]
+name = "editor_config_guard"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+notify = "6"
+walkdir = "2"
+sha2 = "0.10"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+use anyhow::{Context, Result};
+use clap::Parser;
+use notify::{RecommendedWatcher, RecursiveMode, Watcher, EventKind};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::{
+    collections::HashMap,
+    fs,
+    io::Read,
+    path::{Path, PathBuf},
+    sync::mpsc::channel,
+    time::{Duration, Instant},
+};
+use walkdir::WalkDir;
+
+#[derive(Parser, Debug)]
+#[command(name = "editor_config_guard")]
+#[command(about = "Protects chosen editor config folders by restoring them to a baseline snapshot.")]
+struct Args {
+    /// Folder(s) to protect (repeatable)
+    #[arg(long = "protect", required = true)]
+    protect: Vec<PathBuf>,
+
+    /// Where to store baseline snapshot data
+    #[arg(long = "baseline", default_value = ".baseline")]
+    baseline_dir: PathBuf,
+
+    /// Build/refresh baseline snapshot and exit
+    #[arg(long = "init")]
+    init: bool,
+
+    /// Debounce window (ms) to coalesce rapid editor writes
+    #[arg(long = "debounce_ms", default_value_t = 350)]
+    debounce_ms: u64,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct BaselineIndex {
+    // map: relative path -> sha256 hex
+    files: HashMap<String, String>,
+}
+
+fn main() -> Result<()> {
+    let args = Args::parse();
+
+    // Normalize and validate protected paths
+    let protect = args.protect
+        .iter()
+        .map(|p| fs::canonicalize(p).with_context(|| format!("Invalid path: {}", p.display())))
+        .collect::<Result<Vec<_>>>()?;
+
+    fs::create_dir_all(&args.baseline_dir)
+        .with_context(|| format!("Failed to create baseline dir {}", args.baseline_dir.display()))?;
+
+    if args.init {
+        init_baseline(&protect, &args.baseline_dir)?;
+        println!("Baseline created at {}", args.baseline_dir.display());
+        return Ok(());
+    }
+
+    // Ensure baseline exists
+    let index_path = args.baseline_dir.join("index.json");
+    if !index_path.exists() {
+        anyhow::bail!(
+            "Baseline not found. Run with --init first. Baseline dir: {}",
+            args.baseline_dir.display()
+        );
+    }
+
+    // Watch for changes and restore
+    run_guard(&protect, &args.baseline_dir, Duration::from_millis(args.debounce_ms))?;
+    Ok(())
+}
+
+fn init_baseline(protect: &[PathBuf], baseline_dir: &Path) -> Result<()> {
+    // Clean baseline dir contents (safe: only inside baseline_dir)
+    if baseline_dir.exists() {
+        for entry in fs::read_dir(baseline_dir)? {
+            let p = entry?.path();
+            if p.is_dir() {
+                fs::remove_dir_all(&p)?;
+            } else {
+                fs::remove_file(&p)?;
+            }
+        }
+    }
+    fs::create_dir_all(baseline_dir)?;
+
+    let mut index = BaselineIndex { files: HashMap::new() };
+
+    for root in protect {
+        snapshot_tree(root, baseline_dir, &mut index)?;
+    }
+
+    let index_path = baseline_dir.join("index.json");
+    fs::write(&index_path, serde_json::to_vec_pretty(&index)?)?;
+    Ok(())
+}
+
+fn snapshot_tree(root: &Path, baseline_dir: &Path, index: &mut BaselineIndex) -> Result<()> {
+    for entry in WalkDir::new(root).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if entry.file_type().is_dir() {
+            continue;
+        }
+
+        // Skip very large files to avoid surprises (tweak if needed)
+        let meta = fs::metadata(path)?;
+        if meta.len() > 10 * 1024 * 1024 {
+            continue;
+        }
+
+        let rel = root_rel_path(root, path)?;
+        let hash = sha256_file(path)?;
+
+        // Copy into baseline storage: baseline_dir/<root_name>/<rel_path>
+        let root_name = safe_root_name(root);
+        let dest = baseline_dir.join(root_name).join(&rel);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::copy(path, &dest)
+            .with_context(|| format!("Failed to copy {} -> {}", path.display(), dest.display()))?;
+
+        index.files.insert(format!("{}/{}", safe_root_name(root), rel), hash);
+    }
+    Ok(())
+}
+
+fn run_guard(protect: &[PathBuf], baseline_dir: &Path, debounce: Duration) -> Result<()> {
+    let index_path = baseline_dir.join("index.json");
+    let index: BaselineIndex = serde_json::from_slice(&fs::read(&index_path)?)?;
+
+    let (tx, rx) = channel();
+
+    let mut watcher: RecommendedWatcher = RecommendedWatcher::new(
+        move |res| {
+            // Forward notify events across thread boundary
+            let _ = tx.send(res);
+        },
+        notify::Config::default(),
+    )?;
+
+    for root in protect {
+        watcher.watch(root, RecursiveMode::Recursive)?;
+        println!("Watching {}", root.display());
+    }
+
+    // Debounce tracking
+    let mut last_event = Instant::now();
+    let mut pending = false;
+
+    loop {
+        match rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(Ok(event)) => {
+                // Only react to modifications/creates/removes
+                if matches!(event.kind, EventKind::Modify(_) | EventKind::Create(_) | EventKind::Remove(_)) {
+                    pending = true;
+                    last_event = Instant::now();
+                }
+            }
+            Ok(Err(e)) => eprintln!("watch error: {e:?}"),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+
+        if pending && last_event.elapsed() >= debounce {
+            pending = false;
+            // Restore any drift back to baseline
+            restore_to_baseline(protect, baseline_dir, &index)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn restore_to_baseline(protect: &[PathBuf], baseline_dir: &Path, index: &BaselineIndex) -> Result<()> {
+    for root in protect {
+        let root_key = safe_root_name(root);
+        let baseline_root = baseline_dir.join(&root_key);
+
+        // 1) Restore known baseline files if modified/missing
+        for (key, expected_hash) in &index.files {
+            // key is "root_key/relative/path"
+            if !key.starts_with(&(root_key.clone() + "/")) {
+                continue;
+            }
+            let rel = key[root_key.len() + 1..].to_string();
+            let live_path = root.join(&rel);
+            let baseline_path = baseline_root.join(&rel);
+
+            // If baseline file missing, skip
+            if !baseline_path.exists() {
+                continue;
+            }
+
+            let needs_restore = match live_path.exists() {
+                false => true,
+                true => {
+                    // Compare hash
+                    match sha256_file(&live_path) {
+                        Ok(h) => h != *expected_hash,
+                        Err(_) => true,
+                    }
+                }
+            };
+
+            if needs_restore {
+                if let Some(parent) = live_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::copy(&baseline_path, &live_path).with_context(|| {
+                    format!(
+                        "Failed restoring {} from {}",
+                        live_path.display(),
+                        baseline_path.display()
+                    )
+                })?;
+                println!("Restored {}", live_path.display());
+            }
+        }
+
+        // 2) Remove unexpected files that aren't in baseline index (optional)
+        //    Comment this block out if you prefer to allow new files.
+        for entry in WalkDir::new(root).follow_links(false).into_iter().filter_map(|e| e.ok()) {
+            if entry.file_type().is_dir() {
+                continue;
+            }
+            let path = entry.path();
+            let rel = root_rel_path(root, path)?;
+            let key = format!("{}/{}", root_key, rel);
+
+            if !index.files.contains_key(&key) {
+                // Only delete files under your protected config directories
+                // WARNING: this will remove newly created config files.
+                let _ = fs::remove_file(path);
+                println!("Removed unexpected file {}", path.display());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn sha256_file(path: &Path) -> Result<String> {
+    let mut f = fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 8192];
+    loop {
+        let n = f.read(&mut buf)?;
+        if n == 0 { break; }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+// Make a stable identifier for a root folder (safe as folder name)
+fn safe_root_name(root: &Path) -> String {
+    // Use last component; fallback to "root"
+    root.file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("root")
+        .replace(|c: char| !c.is_ascii_alphanumeric() && c != '-' && c != '_', "_")
+}
+
+fn root_rel_path(root: &Path, path: &Path) -> Result<String> {
+    let rel = path.strip_prefix(root)
+        .with_context(|| format!("Path {} not under root {}", path.display(), root.display()))?;
+    Ok(rel.to_string_lossy().replace('\\', "/"))
+}
