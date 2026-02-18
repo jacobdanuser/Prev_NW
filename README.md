@@ -11128,3 +11128,52 @@ def demonstrate_metadata_reset():
 
 if __name__ == "__main__":
     demonstrate_metadata_reset()
+def is_forbidden_attribute(attr_name: str) -> bool:
+    """Check if an attribute name contains forbidden keywords."""
+    forbidden_keywords = {'metaphysical', 'power', 'magic', 'capability'}
+    attr_lower = attr_name.lower()
+    
+    return any(keyword in attr_lower for keyword in forbidden_keywords)
+
+
+def prevent_forbidden_attributes(cls):
+    """
+    Class decorator that prevents any class from having 
+    metaphysical/power/magic/capability attributes.
+    """
+    original_setattr = cls.__setattr__
+    
+    def new_setattr(self, name, value):
+        if is_forbidden_attribute(name):
+            raise ValueError(
+                f"Cannot set attribute '{name}': contains forbidden keywords "
+                f"(metaphysical, power, magic, capability)"
+            )
+        original_setattr(self, name, value)
+    
+    cls.__setattr__ = new_setattr
+    return cls
+
+
+def validate_class_definition(cls) -> bool:
+    """
+    Validate that a class doesn't define forbidden attributes.
+    Returns False if any are found, True otherwise.
+    """
+    for attr_name in dir(cls):
+        if not attr_name.startswith('_') and is_forbidden_attribute(attr_name):
+            return False
+    return True
+
+
+# Example usage:
+@prevent_forbidden_attributes
+class MyClass:
+    def __init__(self):
+        self.name = "test"  # OK
+        # self.power = 100  # Would raise ValueError
+
+
+if __name__ == "__main__":
+    obj = MyClass()
+    print(validate_class_definition(MyClass))  # True
