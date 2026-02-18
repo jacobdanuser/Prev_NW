@@ -4019,4 +4019,157 @@ jobs:
         run: |
           node scan-simulations.js ./sim
           node ast-scan.js ./sim
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const acorn = require("acorn");
+const walk = require("acorn-walk");
+
+function listJs(rootDir) {
+  const out = [];
+  const stack = [rootDir];
+  while (stack.length) {
+    const d = stack.pop();
+    for (const ent of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, ent.name);
+      if (ent.isDirectory()) {
+        if (ent.name === "node_modules" || ent.name.startsWith(".")) continue;
+        stack.push(full);
+      } else if (ent.isFile()) {
+        const ext = path.extname(ent.name).toLowerCase();
+        if (ext === ".js" || ext === ".mjs" || ext === ".cjs") out.push(full);
+      }
+    }
+  }
+  out.sort();
+  return out;
+}
+
+function parse(code) {
+  try {
+    return acorn.parse(code, { ecmaVersion: "latest", sourceType: "module", locations: true });
+  } catch {
+    return acorn.parse(code, { ecmaVersion: "latest", sourceType: "script", locations: true });
+  }
+}
+
+function scanFile(file) {
+  const code = fs.readFileSync(file, "utf8");
+  const ast = parse(code);
+  const findings = [];
+  const hit = (kind, msg, node) =>
+    findings.push({ kind, msg, file, line: node?.loc?.start?.line ?? null, col: node?.loc?.start?.column ?? null });
+
+  walk.simple(ast, {
+    ImportDeclaration(n) { hit("import", `import "${n.source?.value}" blocked`, n); },
+    ExportNamedDeclaration(n) { hit("export", "export blocked (standalone sims only)", n); },
+    ExportDefaultDeclaration(n) { hit("export", "export blocked (standalone sims only)", n); },
+    CallExpression(n) {
+      // require(...)
+      if (n.callee?.type === "Identifier" && n.callee.name === "require") hit("require", "require() blocked", n);
+      // dynamic import(...)
+      if (n.callee?.type === "Import") hit("dynamic_import", "import() blocked", n);
+      // eval(...)
+      if (n.callee?.type === "Identifier" && n.callee.name === "eval") hit("eval", "eval() blocked", n);
+    },
+    NewExpression(n) {
+      if (n.callee?.type === "Identifier" && n.callee.name === "Function") hit("new_function", "new Function() blocked", n);
+    },
+  });
+
+  return findings;
+}
+
+if (require.main === module) {
+  const root = process.argv[2] || process.cwd();
+  const files = listJs(root);
+  co
+npm i acorn acorn-walk
+node no-modules-scan.js ./sim
+"use strict";
+
+const vm = require("vm");
+
+function runNoModules(code, { timeoutMs = 200 } = {}) {
+  // Nothing but a safe console. No require, no process, no globals.
+  const sandbox = Object.create(null);
+
+  sandbox.console = Object.freeze({
+    log: (...a) => console.log("[sim]", ...a),
+    warn: (...a) => console.warn("[sim:warn]", ...a),
+    error: (...a) => console.error("[sim:err]", ...a),
+  });
+
+  // Explicitly remove common escape routes
+  sandbox.require = undefined;
+  sandbox.process = undefined;
+  sandbox.global = undefined;
+  sandbox.globalThis = undefined;
+  sandbox.Function = undefined;
+  sandbox.eval = undefined;
+
+  // Block string-based codegen + wasm
+  const context = vm.createContext(sandbox, {
+    codeGeneration: { strings: false, wasm: false },
+  });
+
+  const script = new vm.Script(code, { filename: "simulation.js" });
+  return script.runInContext(context, { timeout: timeoutMs });
+}
+
+module.exports = { runNoModules };
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const { listJs, scanFile } = require("./no-modules-scan");
+const { runNoModules } = require("./no-modules-vm-runner");
+
+function preflight(simDir) {
+  const files = listJs(simDir);
+  const findings = files.flatMap(scanFile);
+  if (findings.length) {
+    const err = new Error("SIM_BLOCKED: forbidden module/dynamic code patterns found.");
+    err.code = "SIM_BLOCKED_NO_MODULES";
+    err.findings = findings;
+    throw err;
+  }
+  return files;
+}
+
+if (require.main === module) {
+  const simDir = process.argv[2] || "./sim";
+  const entry = process.argv[3] || "simulation.js";
+  const entryPath = path.join(simDir, entry);
+
+  try {
+    preflight(simDir);
+    const code = fs.readFileSync(entryPath, "utf8");
+    runNoModules(code, { timeoutMs: 250 });
+    console.log("[guardian] OK: simulation ran (no modules allowed).");
+  } catch (e) {
+    console.error("[guardian]", e.code || "ERROR", e.message);
+    if (e.findings) {
+      for (const f of e.findings.slice(0, 50)) {
+        console.error(`- [${f.kind}] ${f.msg} @ ${f.file}:${f.line}:${f.col}`);
+      }
+    }
+    process.exit(2);
+  }
+}
+node --disallow-code-generation-from-strings --disable-proto run-sim-no-modules.js ./sim simulation.js
+docker run --rm -it \
+  --network none \
+  --read-only \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  --pids-limit 256 \
+  --memory 512m \
+  --cpus 1 \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=128m \
+  -v "$PWD:/work:ro" \
+  -w /work \
+  node:20-alpine \
+  node --disallow-code-generation-from-strings --disable-proto run-sim-no-modules.js ./sim simulation.js
 
