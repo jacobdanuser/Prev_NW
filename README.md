@@ -12369,3 +12369,141 @@ fn root_rel_path(root: &Path, path: &Path) -> Result<String> {
 }
 #AllthingsPunani
 #IadorereferingtomyselfasAgentPunani
+0.0.0.0 lady.justicia
+0.0.0.0 www.lady.justicia
+ipconfig /flushdns
+# Run PowerShell as Administrator
+$domain = "lady.justicia"
+$ips = (Resolve-DnsName $domain -ErrorAction SilentlyContinue | Where-Object {$_.IPAddress} | Select-Object -ExpandProperty IPAddress)
+
+if (-not $ips) {
+  Write-Host "No IPs resolved for $domain (check spelling / DNS)."
+  return
+}
+
+$ruleName = "Block outbound to $domain"
+# Remove old rule if exists
+Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
+
+New-NetFirewallRule `
+  -DisplayName $ruleName `
+  -Direction Outbound `
+  -Action Block `
+  -RemoteAddress ($ips -join ",") `
+  -Profile Any
+
+Write-Host "Blocked $domain at IPs: $($ips -join ', ')"
+# Run PowerShell as Administrator
+$exePath = "C:\Path\To\LadyJusticia.exe"  # <-- change this
+$ruleName = "Block outbound for LadyJusticia app"
+
+New-NetFirewallRule `
+  -DisplayName $ruleName `
+  -Direction Outbound `
+  -Program $exePath `
+  -Action Block `
+  -Profile Any
+block drop out quick on en0 to { lady.justicia }
+sudo pfctl -f /etc/pf.conf
+sudo pfctl -e
+sudo sh -c 'printf "\n0.0.0.0 lady.justicia\n0.0.0.0 www.lady.justicia\n" >> /etc/hosts'
+domain="lady.justicia"
+for ip in $(getent ahosts "$domain" | awk '{print $1}' | sort -u); do
+  sudo ufw deny out to "$ip"
+done
+name: Block banned actions
+on: [pull_request, push]
+
+jobs:
+  denylist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if banned identifiers are present
+        run: |
+          set -e
+          banned='ladyjusticia|lady\.justicia|LadyJusticia'
+          if grep -RInE "$banned" .github/workflows; then
+            echo "Blocked: banned identifier found in workflows."
+            exit 1
+          fi
+          echo "OK"
+name: Denylist (block Lady.Justicia)
+on:
+  pull_request:
+  push:
+    branches: ["**"]
+
+jobs:
+  denylist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan repo for banned identifiers
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Add or remove patterns as needed
+          BANNED_REGEX='(LadyJusticia|Lady\.Justicia|ladyjusticia|lady\.justicia)'
+
+          # Exclude common binary/vendor dirs if you have them
+          EXCLUDES=(
+            --exclude-dir=.git
+            --exclude-dir=node_modules
+            --exclude-dir=dist
+            --exclude-dir=build
+            --exclude-dir=vendor
+          )
+
+          echo "Scanning for banned identifiers: $BANNED_REGEX"
+          if grep -RInE "${EXCLUDES[@]}" "$BANNED_REGEX" . ; then
+            echo ""
+            echo "❌ Blocked: banned identifier found."
+            exit 1
+          fi
+
+          echo "✅ OK: no banned identifiers found."
+# Replace the scan command in the workflow with:
+grep -RInE '(LadyJusticia|Lady\.Justicia|ladyjusticia|lady\.justicia|uses:\s*.*lady)' .github/workflows && exit 1 || true
+      - name: Scan dependency manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+          BANNED_REGEX='(LadyJusticia|Lady\.Justicia|ladyjusticia|lady\.justicia)'
+
+          files=(
+            package.json package-lock.json pnpm-lock.yaml yarn.lock
+            requirements.txt poetry.lock Pipfile Pipfile.lock
+            Gemfile Gemfile.lock
+            go.mod go.sum
+            Cargo.toml Cargo.lock
+          )
+
+          found=0
+          for f in "${files[@]}"; do
+            if [ -f "$f" ] && grep -nE "$BANNED_REGEX" "$f"; then
+              found=1
+            fi
+          done
+
+          if [ "$found" -eq 1 ]; then
+            echo "❌ Blocked: banned identifier found in dependency files."
+            exit 1
+          fi
+          echo "✅ OK: dependency files clean."
+#!/usr/bin/env bash
+set -euo pipefail
+
+BANNED_REGEX='(LadyJusticia|Lady\.Justicia|ladyjusticia|lady\.justicia)'
+
+# Scan staged changes only (fast)
+if git diff --cached -U0 | grep -nE "$BANNED_REGEX" >/dev/null; then
+  echo "❌ Commit blocked: banned identifier detected in staged changes."
+  echo "Pattern: $BANNED_REGEX"
+  exit 1
+fi
+
+echo "✅ pre-commit OK"
+chmod +x .git/hooks/pre-commit
