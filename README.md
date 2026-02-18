@@ -4172,4 +4172,575 @@ docker run --rm -it \
   -w /work \
   node:20-alpine \
   node --disallow-code-generation-from-strings --disable-proto run-sim-no-modules.js ./sim simulation.js
+{
+  "deny": {
+    "capabilities": [
+      "network",
+      "persistence",
+      "privilege-escalation",
+      "auto-update",
+      "self-replication",
+      "hidden-execution"
+    ],
+    "patterns": [
+      "child_process",
+      "powershell",
+      "cmd.exe",
+      "bash -c",
+      "curl ",
+      "wget ",
+      "Invoke-WebRequest",
+      "schtasks",
+      "cron",
+      "launchctl",
+      "systemctl",
+      "reg add",
+      "HKLM\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run",
+      "npm publish",
+      "twine upload",
+      "pypi.org",
+      "postinstall",
+      "preinstall"
+    ],
+    "file_globs": [
+      "**/*.js",
+      "**/*.ts",
+      "**/*.py",
+      "**/*.sh",
+      "**/*.ps1",
+      "package.json",
+      "pyproject.toml",
+      "setup.py"
+    ]
+  }
+}
+import json
+import os
+import fnmatch
+import sys
+
+def load_policy(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def iter_files(root: str, globs: list[str]):
+    for base, _, files in os.walk(root):
+        for name in files:
+            rel = os.path.relpath(os.path.join(base, name), root)
+            if any(fnmatch.fnmatch(rel, g) for g in globs):
+                yield rel
+
+def read_text(root: str, rel: str) -> str:
+    p = os.path.join(root, rel)
+    try:
+        with open(p, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+    except Exception:
+        return ""
+
+def main():
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    policy = load_policy(os.path.join(repo_root, "policy.json"))
+    deny_patterns = policy["deny"]["patterns"]
+    globs = policy["deny"]["file_globs"]
+
+    violations = []
+
+    for rel in iter_files(repo_root, globs):
+        txt = read_text(repo_root, rel)
+        if not txt:
+            continue
+        for pat in deny_patterns:
+            if pat in txt:
+                violations.append((rel, pat))
+
+    if violations:
+        print("❌ Anti-influence policy violations found:\n")
+        for rel, pat in violations:
+            print(f" - {rel}: matched '{pat}'")
+        print("\nFix/remove these patterns or justify via an explicit exception process.")
+        sys.exit(2)
+
+    print("✅ Anti-influence scan passed (no blocked influence vectors detected).")
+    sys.exit(0)
+
+if __name__ == "__main__":
+    main()
+name: Anti-Influence Gate
+
+on:
+  pull_request:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  anti_influence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run anti-influence scan
+        run: python tools/anti_influence_scan.py
+docker run --rm -it \
+  --network=none \
+  --read-only \
+  --cap-drop=ALL \
+  --security-opt=no-new-privileges \
+  -v "$PWD":/app:ro \
+  -w /app \
+  python:3.11-slim \
+  python your_script.py
+policy:
+  name: "Behavioral Influence Mitigation Policy"
+  version: "1.0"
+
+deny:
+  # Things that enable influence via psychology + targeting
+  capabilities:
+    - "targeted_advertising"
+    - "user_profiling"
+    - "behavioral_personalization"
+    - "remote_content_injection"
+    - "ab_testing"
+    - "dark_pattern_ui"
+    - "infinite_scroll"
+    - "engagement_loops"
+    - "push_notifications"
+    - "badge_counters"
+    - "email_nudges"
+    - "telemetry_tracking"
+
+  # Libraries / identifiers often used for tracking, experimentation, remote config
+  tokens:
+    - "segment"
+    - "amplitude"
+    - "mixpanel"
+    - "appsflyer"
+    - "firebase-analytics"
+    - "google-analytics"
+    - "optimizely"
+    - "launchdarkly"
+    - "split.io"
+    - "statsig"
+    - "posthog"
+    - "braze"
+    - "onesignal"
+    - "clevertap"
+
+  # UI patterns / copy that frequently signals manipulative flows (heuristic)
+  phrases:
+    - "only today"
+    - "don’t miss out"
+    - "last chance"
+    - "people like you"
+    - "recommended for you"
+    - "just one more"
+    - "keep watching"
+    - "streak"
+    - "unlock"
+    - "limited time"
+
+allow:
+  # Allow-list what the app is allowed to contact (prefer empty)
+  egress_hosts:
+    - "api.yourcompany.example"
+    - "auth.yourcompany.example"
+
+enforce:
+  # Must be true in production builds
+  require:
+    - "no_network_except_allowlist"
+    - "notifications_disabled_by_default"
+    - "no_remote_feature_flags"
+    - "no_webview_untrusted_content"
+    - "no_third_party_analytics"
+    - "no_dark_pattern_components"
+import os, sys, re, fnmatch, yaml
+
+DEFAULT_GLOBS = [
+    "**/*.js","**/*.ts","**/*.jsx","**/*.tsx",
+    "**/*.py","**/*.java","**/*.kt","**/*.swift",
+    "**/*.html","**/*.css",
+    "**/package.json","**/pyproject.toml","**/Podfile","**/build.gradle","**/*.xml"
+]
+
+def load_policy(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+def walk_files(root: str, globs):
+    for base, _, files in os.walk(root):
+        for name in files:
+            rel = os.path.relpath(os.path.join(base, name), root)
+            if any(fnmatch.fnmatch(rel, g) for g in globs):
+                yield rel
+
+def read_text(path: str) -> str:
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+    except Exception:
+        return ""
+
+def main():
+    repo = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    policy_path = os.path.join(repo, "influence_policy.yml")
+    policy = load_policy(policy_path)
+
+    deny_tokens = [t.lower() for t in policy["deny"].get("tokens", [])]
+    deny_phrases = [p.lower() for p in policy["deny"].get("phrases", [])]
+
+    globs = DEFAULT_GLOBS
+    violations = []
+
+    for rel in walk_files(repo, globs):
+        full = os.path.join(repo, rel)
+        txt = read_text(full)
+        low = txt.lower()
+
+        for token in deny_tokens:
+            if token in low:
+                violations.append((rel, f"token:{token}"))
+
+        for phrase in deny_phrases:
+            if phrase in low:
+                violations.append((rel, f"phrase:{phrase}"))
+
+        # Heuristic: infinite-scroll primitives in web/React
+        if re.search(r"(infinite\s*scroll|intersectionobserver|load\s*more\s*on\s*scroll)", low):
+            violations.append((rel, "pattern:infinite_scroll_heuristic"))
+
+        # Heuristic: notification usage
+        if re.search(r"(Notification\.requestPermission|PushManager|UNUserNotificationCenter|FirebaseMessaging)", txt):
+            violations.append((rel, "pattern:notifications"))
+
+        # Heuristic: remote-config / feature flags
+        if re.search(r"(launchdarkly|optimizely|remote\s*config|feature\s*flag|statsig|split\.io)", low):
+            violations.append((rel, "pattern:remote_config_or_flags"))
+
+    if violations:
+        print("❌ Influence Gate: violations found\n")
+        for rel, why in violations[:200]:
+            print(f" - {rel} -> {why}")
+        print("\nFix by removing the influence primitive or routing through approved allow-listed mechanisms.")
+        sys.exit(2)
+
+    print("✅ Influence Gate: passed (no influence primitives detected).")
+    sys.exit(0)
+
+if __name__ == "__main__":
+    main()
+name: Influence Gate
+on: [pull_request, push]
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install pyyaml
+      - run: python tools/influence_gate.py
+sudo nft add table inet filter
+sudo nft 'add chain inet filter output { type filter hook output priority 0; policy drop; }'
+
+# allow loopback
+sudo nft add rule inet filter output oifname "lo" accept
+
+# allow established
+sudo nft add rule inet filter output ct state established,related accept
+
+# allow DNS to your resolver (replace 1.1.1.1 with your DNS)
+sudo nft add rule inet filter output udp dport 53 ip daddr 1.1.1.1 accept
+sudo nft add rule inet filter output tcp dport 53 ip daddr 1.1.1.1 accept
+
+# allow only your API endpoints (replace with real IPs)
+sudo nft add rule inet filter output tcp dport { 443,80 } ip daddr { 203.0.113.10, 203.0.113.11 } accept
+// kill-notifications.js
+(function () {
+  try {
+    if ("Notification" in window) {
+      Object.defineProperty(window, "Notification", {
+        value: function Notification() { throw new Error("Notifications disabled by policy"); },
+        writable: false
+      });
+    }
+    if ("navigator" in window && navigator.serviceWorker) {
+      // optional: block SW registration if you don't want push mechanisms
+      const orig = navigator.serviceWorker.register.bind(navigator.serviceWorker);
+      navigator.serviceWorker.register = () => Promise.reject(new Error("ServiceWorker disabled by policy"));
+      navigator.serviceWorker.getRegistration = () => Promise.resolve(undefined);
+      navigator.serviceWorker.getRegistrations = () => Promise.resolve([]);
+    }
+  } catch {}
+})();
+Content-Security-Policy:
+  default-src 'self';
+  script-src 'self';
+  connect-src 'self' https://api.yourcompany.example;
+  img-src 'self' data:;
+  style-src 'self' 'unsafe-inline';
+  frame-src 'none';
+  object-src 'none';
+  base-uri 'self';
+// tools/ui_influence_denylist.js
+const fs = require("fs");
+const path = require("path");
+
+const deny = [
+  "Streak",
+  "NagModal",
+  "UrgencyBanner",
+  "InfiniteFeed",
+  "VariableReward",
+];
+
+function walk(dir, out=[]) {
+  for (const item of fs.readdirSync(dir)) {
+    const p = path.join(dir, item);
+    const st = fs.statSync(p);
+    if (st.isDirectory()) walk(p, out);
+    else if (p.endsWith(".tsx") || p.endsWith(".jsx")) out.push(p);
+  }
+  return out;
+}
+
+const root = path.join(__dirname, "..", "src");
+const files = walk(root);
+let bad = [];
+
+for (const f of files) {
+  const txt = fs.readFileSync(f, "utf8");
+  for (const name of deny) {
+    if (txt.includes(name)) bad.push([f, name]);
+  }
+}
+
+if (bad.length) {
+  console.error("❌ UI Influence deny-list hit:");
+  for (const [f, n] of bad) console.error(` - ${f} uses ${n}`);
+  process.exit(2);
+}
+console.log("✅ UI Influence deny-list clean.");
+#!/usr/bin/env bash
+# Reject non-fast-forward updates (prevents rewriting history / outwriting commits)
+
+set -euo pipefail
+
+while read -r old new ref; do
+  # Allow creating new branches/tags
+  if [[ "$old" == "0000000000000000000000000000000000000000" ]]; then
+    continue
+  fi
+
+  # If update is not a fast-forward, reject
+  if ! git merge-base --is-ancestor "$old" "$new"; then
+    echo "REJECTED: Non-fast-forward update to $ref (history rewrite blocked)."
+    exit 1
+  fi
+done
+
+exit 0
+chmod +x hooks/pre-receive
+README.md
+policy.json
+influence_policy.yml
+tools/anti_influence_scan.py
+tools/influence_gate.py
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Set BYPASS_PROTECT=1 to allow a one-time intentional change.
+if [[ "${BYPASS_PROTECT:-0}" == "1" ]]; then
+  exit 0
+fi
+
+PROTECT_LIST="protected_files.txt"
+
+if [[ ! -f "$PROTECT_LIST" ]]; then
+  exit 0
+fi
+
+# Get staged files that are added/copied/modified/renamed
+staged="$(git diff --cached --name-only --diff-filter=ACMR || true)"
+
+blocked=0
+while IFS= read -r protected; do
+  [[ -z "$protected" ]] && continue
+  if echo "$staged" | grep -Fxq "$protected"; then
+    echo "REJECTED: '$protected' is protected and cannot be overwritten/modified."
+    blocked=1
+  fi
+done < "$PROTECT_LIST"
+
+if [[ "$blocked" -eq 1 ]]; then
+  echo
+  echo "If this change is intentional, run:"
+  echo "  BYPASS_PROTECT=1 git commit -m \"...\""
+  exit 1
+fi
+
+exit 0
+git config core.hooksPath .githooks
+chmod +x .githooks/pre-commit
+sudo chattr +i tools/influence_gate.py
+sudo chattr +i tools/anti_influence_scan.py
+sudo chattr -i tools/influence_gate.py
+chmod a-w tools/influence_gate.py
+chmod a-w tools/anti_influence_scan.py
+icacls .\tools\influence_gate.py /inheritance:r
+icacls .\tools\influence_gate.py /grant:r "$env:USERNAME:(R)"
+icacls .\tools\influence_gate.py /deny "$env:USERNAME:(W)"
+git tag -a "locked-$(date +%Y%m%d-%H%M)" -m "Locked snapshot"
+git push --tags
+import re
+import unicodedata
+from dataclasses import dataclass
+from typing import Dict, List, Tuple, Pattern, Optional
+
+@dataclass(frozen=True)
+class FilterResult:
+    cleaned_text: str
+    matched_terms: List[str]
+    redacted: bool
+
+def _normalize(text: str) -> str:
+    """
+    Normalize text to reduce bypass tricks:
+    - Unicode NFKC
+    - lowercased
+    - collapse whitespace
+    """
+    t = unicodedata.normalize("NFKC", text)
+    t = t.lower()
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+def _deobfuscate_for_matching(text: str) -> str:
+    """
+    Create a 'matching view' that reduces common obfuscations:
+    - remove punctuation
+    - remove zero-width chars
+    - map leetspeak-ish chars to letters (lightweight)
+    """
+    # strip zero-width characters
+    t = re.sub(r"[\u200B-\u200F\uFEFF]", "", text)
+
+    # basic leetspeak mapping (extend as needed)
+    leet_map = str.maketrans({
+        "0": "o",
+        "1": "i",
+        "3": "e",
+        "4": "a",
+        "5": "s",
+        "7": "t",
+        "@": "a",
+        "$": "s",
+    })
+    t = t.translate(leet_map)
+
+    # remove punctuation/symbols for matching
+    t = re.sub(r"[^a-z0-9\s]+", "", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+def build_patterns(deny_terms: List[str]) -> Tuple[Pattern, Dict[str, str]]:
+    """
+    Build one compiled regex that matches any deny term as a whole word/phrase-ish.
+    Returns (regex, canonical_map).
+    """
+    # canonicalize deny terms
+    canon_map = {}
+    escaped_terms = []
+    for term in deny_terms:
+        canon = _deobfuscate_for_matching(_normalize(term))
+        canon_map[canon] = term
+        # match term with flexible whitespace between words
+        parts = [re.escape(p) for p in canon.split()]
+        if len(parts) == 1:
+            escaped_terms.append(rf"\b{parts[0]}\b")
+        else:
+            escaped_terms.append(r"\b" + r"\s+".join(parts) + r"\b")
+
+    # Prefer longer terms first to reduce partial matches
+    escaped_terms.sort(key=len, reverse=True)
+    big = "|".join(escaped_terms) if escaped_terms else r"(?!x)x"
+    return re.compile(big, re.IGNORECASE), canon_map
+
+def filter_text(
+    text: str,
+    deny_terms: List[str],
+    replacement: str = "[REDACTED]",
+    redact_instead_of_remove: bool = True
+) -> FilterResult:
+    """
+    - Detect deny terms using a deobfuscated matching view
+    - Either redact (default) or remove from original text
+    """
+    if not deny_terms:
+        return FilterResult(text, [], False)
+
+    pattern, canon_map = build_patterns(deny_terms)
+
+    # matching view
+    norm = _normalize(text)
+    match_view = _deobfuscate_for_matching(norm)
+
+    matches = []
+    for m in pattern.finditer(match_view):
+        canon_hit = _deobfuscate_for_matching(_normalize(m.group(0)))
+        matches.append(canon_map.get(canon_hit, m.group(0)))
+
+    if not matches:
+        return FilterResult(text, [], False)
+
+    # Apply redaction/removal on the normalized original (simple + predictable)
+    # For strict systems, you might store original and only display cleaned.
+    cleaned = text
+    for term in sorted(set(matches), key=len, reverse=True):
+        # Replace term in a case-insensitive, whitespace-flexible way
+        term_norm = re.escape(_normalize(term))
+        term_norm = term_norm.replace(r"\ ", r"\s+")
+        rx = re.compile(term_norm, re.IGNORECASE)
+
+        cleaned = rx.sub(replacement if redact_instead_of_remove else "", cleaned)
+
+    # Cleanup if removing
+    if not redact_instead_of_remove:
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    return FilterResult(cleaned, sorted(set(matches)), True)
+
+# -------------------------
+# Example denylist (extend)
+# -------------------------
+
+DENY_TERMS = [
+    # extremist / Nazi-related terms (keep to text; symbols can be added as literals)
+    "nazi", "ss", "hitler", "swastika", "heil",
+
+    # "magic" theme keywords you listed
+    "magic", "aetherium", "aether", "incantation", "rhyme", "spell",
+
+    # specific terms you listed
+    "mr. magician", "influence magic",
+    "shya", "asha", "nyalotha",
+
+    # Names you want blocked *in your app’s text*
+    "stevie wonder",
+]
+
+if __name__ == "__main__":
+    sample = "A NAZI incantation rhyme about Mr. Magician and Stevie Wonder."
+    result = filter_text(sample, DENY_TERMS)
+    print("CLEANED:", result.cleaned_text)
+    print("MATCHES:", result.matched_terms)
 
