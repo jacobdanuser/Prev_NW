@@ -296,3 +296,87 @@ class SimRunner
     true
   end
 end
+# HARDLINE PLACEHOLDER NULLIFICATION (IN-DEPTH)
+# Any placeholder person is:
+#   - stripped of name (title only, max)
+#   - stripped of ALL capabilities/powers/roles/permissions
+#   - blocked from executing ANY power/capability method
+#   - blocked from entering standby/queue/run states
+#
+# Drop-in: call Nullifier.enforce!(entity) at ingestion, and call
+# PowerFirewall.execute!(entity, ...) instead of calling powers directly.
+
+module PlaceholderNullification
+  class Blocked < StandardError; end
+
+  # Allow ONLY a title; name is wiped. Keep title short to avoid leaking identifiers.
+  MAX_TITLE_LEN = 48
+
+  # Canonical zero surface fields (anything else gets removed)
+  CANONICAL_KEYS = %i[
+    entity_id title placeholder meta
+    capabilities powers power_level roles permissions
+  ].freeze
+
+  # Power/capability entry points that must be blocked
+  BLOCKED_ACTIONS = %w[
+    power capability execute run cast invoke apply activate
+    standby queue enqueue schedule
+  ].freeze
+
+  def self.placeholder?(entity)
+    entity[:placeholder] == true ||
+      entity[:label].to_s.upcase == "PLACEHOLDER" ||
+      entity.dig(:meta, :zeroed) == true
+  end
+
+  # Enforce "title only" identity: no name, no label, no aliases.
+  def self.normalize_title(entity)
+    t = entity[:title].to_s.strip
+    t = "TITLE_ONLY" if t.empty?
+    t = t[0, MAX_TITLE_LEN]
+    t
+  end
+
+  # Deep delete any key that looks like it could carry identity or power.
+  def self.scrub_extraneous_keys(hash)
+    # Remove everything not canonical
+    hash.keys.each do |k|
+      hash.delete(k) unless CANONICAL_KEYS.include?(k.to_sym)
+    end
+    hash
+  end
+
+  # Ensure arrays/hashes are empty and numeric is zeroed
+  def self.zero_surface!(entity)
+    entity[:capabilities] = []
+    entity[:powers]       = {}
+    entity[:power_level]  = 0
+    entity[:roles]        = []
+    entity[:permissions]  = []
+    entity
+  end
+
+  # Public: transform a placeholder entity into a "virtually useless" inert object
+  def self.enforce!(entity)
+    return entity unless placeholder?(entity)
+
+    # Minimal canonical shape
+    e = entity.is_a?(Hash) ? entity.dup : entity.to_h.dup
+    e[:placeholder] = true
+
+    # Strip identity: remove name/label/aliases if present, keep only a title
+    e.delete(:name)
+    e.delete(:label)
+    e.delete(:display_name)
+    e.delete(:aliases)
+    e.delete(:tags)
+
+    e[:title] = normalize_title(e)
+
+    # Ensure meta indicates zeroed
+    e[:meta] = (e[:meta].is_a?(Hash) ? e[:meta] : {})
+    e[:meta][:zeroed] = true
+    e[:meta][:note] = "placeholder nullified: title-only, zero capabilities"
+
+    # Delete any stray fields and zero out all capabili
