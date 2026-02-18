@@ -5364,5 +5364,432 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - run: python tools/no_azure_gate.py
+param(
+  [Parameter(Mandatory=$true)]
+  [string]$ServiceTagsJsonUrl
+)
+
+$ErrorActionPreference = "Stop"
+$tmp = Join-Path $env:TEMP ("servicetags_" + [guid]::NewGuid().ToString() + ".json")
+Invoke-WebRequest -Uri $ServiceTagsJsonUrl -OutFile $tmp
+
+$j = Get-Content $tmp -Raw | ConvertFrom-Json
+
+# Collect IPv4 prefixes (the public JSON is commonly IPv4-focused; Microsoft updates weekly) 
+$prefixes = New-Object System.Collections.Generic.HashSet[string]
+foreach ($v in $j.values) {
+  foreach ($p in $v.properties.addressPrefixes) {
+    if ($p -match '^\d+\.' ) { [void]$prefixes.Add($p) }
+  }
+}
+
+$prefixList = $prefixes.ToArray() | Sort-Object
+$chunkSize = 200
+$ruleBase = "DENY Azure Egress"
+
+# Remove old rules
+Get-NetFirewallRule -DisplayName "$ruleBase *" -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+
+for ($i=0; $i -lt $prefixList.Count; $i += $chunkSize) {
+  $chunk = $prefixList[$i..([Math]::Min($i+$chunkSize-1, $prefixList.Count-1))]
+  $name = "$ruleBase $([int]($i/$chunkSize)+1)"
+  New-NetFirewallRule `
+    -DisplayName $name `
+    -Direction Outbound `
+    -Action Block `
+    -RemoteAddress $chunk `
+    -Profile Any
+}
+
+Write-Host "Created firewall rules to block outbound to Azure IPv4 prefixes."
+Write-Host "Re-run weekly when Microsoft updates the Service Tags JSON."
+import os, re, sys, fnmatch
+
+GLOBS = [
+  "**/*.py","**/*.js","**/*.ts","**/*.jsx","**/*.tsx",
+  "**/*.cs","**/*.fs","**/*.vb",
+  "**/*.bicep","**/*.tf","**/*.tfvars","**/*.json","**/*.yml","**/*.yaml",
+  "**/requirements.txt","**/pyproject.toml","**/package.json","**/*.csproj"
+]
+
+DENY = [
+  # Azure SDKs / packages
+  r"\bfrom\s+azure\b", r"\bimport\s+azure\b", r"\bazure[-_]\w+",
+  r"@azure\/", r"\bazure-sdk\b",
+  r"Microsoft\.Azure\.", r"\bAzure\.Identity\b", r"\bAzure\.Security\.",
+
+  # Azure CLI / automation
+  r"\baz\s+login\b", r"\baz\s+account\b", r"\baz\s+group\b", r"\baz\s+resource\b",
+  r"\baz\s+storage\b", r"\baz\s+vm\b", r"\baz\s+functionapp\b",
+
+  # Infra-as-code specifically for Azure
+  r"\bresource\s+\"azurerm_", r"\bazurerm_",          # Terraform AzureRM provider usage
+  r"\bMicrosoft\.Resources\b", r"\bMicrosoft\.Compute\b", r"\bMicrosoft\.Storage\b", # ARM namespaces
+  r"\bsubscriptionId\b.*\bMicrosoft\.",
+
+  # Common Azure endpoints mentioned in config
+  r"\.azurewebsites\.net\b", r"\.blob\.core\.windows\.net\b", r"\.queue\.core\.windows\.net\b",
+  r"\.table\.core\.windows\.net\b", r"\.documents\.azure\.com\b", r"\.servicebus\.windows\.net\b",
+]
+
+def walk(root):
+  for base, _, files in os.walk(root):
+    for name in files:
+      rel = os.path.relpath(os.path.join(base, name), root)
+      if any(fnmatch.fnmatch(rel, g) for g in GLOBS):
+        yield rel
+
+def read_text(path):
+  try:
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+      return f.read()
+  except Exception:
+    return ""
+
+def main():
+  repo = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+  rx = [re.compile(p, re.IGNORECASE) for p in DENY]
+  hits = []
+
+  for rel in walk(repo):
+    txt = read_text(os.path.join(repo, rel))
+    if not txt:
+      continue
+    for r in rx:
+      if r.search(txt):
+        hits.append((rel, r.pattern))
+        break
+
+  if hits:
+    print("❌ No-Azure Gate: blocked Azure usage found\n")
+    for rel, pat in hits[:200]:
+      print(f" - {rel} matched /{pat}/")
+    sys.exit(2)
+
+  print("✅ No-Azure Gate: passed (no Azure SDK/CLI/IaC usage detected).")
+  sys.exit(0)
+
+if __name__ == "__main__":
+  main()
+name: No Azure Gate
+on: [pull_request, push]
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: python tools/no_azure_gate.py
+policy:
+  name: "No Telemetry In Simulations"
+  version: "1.0"
+
+simulation_scopes:
+  # Paths that count as "simulation"
+  path_prefixes:
+    - "sim/"
+    - "simulation/"
+    - "simulations/"
+    - "sandbox/"
+    - "scenarios/"
+    - "models/"
+    - "experiments/"
+    - "testbeds/"
+
+  # File name hints that count as "simulation"
+  filename_regex:
+    - "(^|/)(sim|simulation|simulator|scenario|sandbox|experiment|model)[-_].*"
+
+telemetry_denies:
+  # Keywords/libs to treat as telemetry/instrumentation
+  tokens:
+    - "opentelemetry"
+    - "otel"
+    - "applicationinsights"
+    - "appinsights"
+    - "datadog"
+    - "ddtrace"
+    - "newrelic"
+    - "sentry"
+    - "honeycomb"
+    - "segment"
+    - "mixpanel"
+    - "amplitude"
+    - "posthog"
+    - "statsig"
+    - "launchdarkly"
+    - "optimizely"
+    - "prometheus"
+    - "grafana"
+    - "zipkin"
+    - "jaeger"
+    - "telemetry"
+    - "tracing"
+    - "span"
+    - "traceparent"
+
+enforce:
+  # Scan these files
+  file_globs:
+    - "**/*.py"
+    - "**/*.js"
+    - "**/*.ts"
+    - "**/*.jsx"
+    - "**/*.tsx"
+    - "**/*.go"
+    - "**/*.rs"
+    - "**/*.java"
+    - "**/*.kt"
+    - "**/*.cs"
+    - "**/*.sh"
+    - "**/*.ps1"
+    - "**/*.yml"
+    - "**/*.yaml"
+    - "**/*.json"
+    - "**/package.json"
+    - "**/pyproject.toml"
+    - "**/requirements.txt"
+    - "**/*.csproj"
+  max_findings: 200
+import os, re, sys, fnmatch
+from typing import List, Tuple
+import yaml
+
+def load_yaml(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+def walk_files(root: str, globs: List[str]):
+    for base, _, files in os.walk(root):
+        for name in files:
+            rel = os.path.relpath(os.path.join(base, name), root).replace("\\", "/")
+            if any(fnmatch.fnmatch(rel, g) for g in globs):
+                yield rel
+
+def read_text(path: str) -> str:
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+    except Exception:
+        return ""
+
+def is_simulation_file(rel: str, sim_prefixes: List[str], sim_filename_rx: List[str]) -> bool:
+    if any(rel.startswith(p) for p in sim_prefixes):
+        return True
+    for pat in sim_filename_rx:
+        if re.search(pat, rel, flags=re.IGNORECASE):
+            return True
+    return False
+
+def main():
+    repo = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    policy = load_yaml(os.path.join(repo, "telemetry_sim_policy.yml"))
+
+    sim_prefixes = [p.replace("\\", "/") for p in policy["simulation_scopes"]["path_prefixes"]]
+    sim_filename_rx = policy["simulation_scopes"]["filename_regex"]
+
+    tokens = [t.lower() for t in policy["telemetry_denies"]["tokens"]]
+    globs = policy["enforce"]["file_globs"]
+    max_findings = int(policy["enforce"].get("max_findings", 200))
+
+    findings: List[Tuple[str, str]] = []
+
+    for rel in walk_files(repo, globs):
+        if not is_simulation_file(rel, sim_prefixes, sim_filename_rx):
+            continue
+
+        txt = read_text(os.path.join(repo, rel))
+        if not txt:
+            continue
+        low = txt.lower()
+
+        for tok in tokens:
+            if tok in low:
+                findings.append((rel, tok))
+                break
+
+        if len(findings) >= max_findings:
+            break
+
+    if findings:
+        print("❌ No Telemetry in Simulations: violations found\n")
+        for rel, tok in findings:
+            print(f" - {rel} contains telemetry token '{tok}'")
+        print("\nFix: remove telemetry/instrumentation from simulation code paths,")
+        print("or move telemetry code outside simulation scopes (and keep sims pure/offline).")
+        sys.exit(2)
+
+    print("✅ No Telemetry in Simulations: passed.")
+    sys.exit(0)
+
+if __name__ == "__main__":
+    main()
+name: No Telemetry in Simulations
+on: [pull_request, push]
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: pip install pyyaml
+
+      - name: Enforce policy
+        run: python tools/no_telemetry_in_sim.py
+{
+  "subscriptionId": "00000000-0000-0000-0000-000000000000",
+  "resourceGroup": "rg-standby",
+  "locks": {
+    "enabled": true,
+    "type": "ReadOnly",
+    "name": "standby-lock",
+    "notes": "Standby mode lock (remove to modify)."
+  },
+  "vms": ["vm-a", "vm-b"],
+  "webapps": ["app-a"],
+  "functionapps": ["func-a"],
+  "disableFunctions": [
+    { "functionApp": "func-a", "functionName": "MyTimerTrigger" }
+  ]
+}
+#!/usr/bin/env bash
+set -euo pipefail
+
+MODE="${1:-standby}"   # standby | resume
+CFG="${2:-standby_targets.json}"
+
+need() { command -v "$1" >/dev/null 2>&1 || { echo "Missing dependency: $1"; exit 2; }; }
+need az
+need python3
+
+python3 - <<'PY' "$CFG" "$MODE"
+import json, sys, subprocess
+
+cfg_path, mode = sys.argv[1], sys.argv[2]
+cfg = json.load(open(cfg_path, "r", encoding="utf-8"))
+
+sub = cfg["subscriptionId"]
+rg  = cfg["resourceGroup"]
+locks = cfg.get("locks", {})
+
+def run(cmd):
+    print("+", " ".join(cmd))
+    subprocess.check_call(cmd)
+
+run(["az","account","set","--subscription",sub])
+
+def apply_lock():
+    if not locks.get("enabled", False): return
+    # Resource group lock is simplest; you can scope tighter if desired
+    run([
+        "az","lock","create",
+        "--name",locks.get("name","standby-lock"),
+        "--lock-type",locks.get("type","ReadOnly"),
+        "--resource-group",rg,
+        "--notes",locks.get("notes","Standby lock")
+    ])
+
+def delete_lock():
+    if not locks.get("enabled", False): return
+    run([
+        "az","lock","delete",
+        "--name",locks.get("name","standby-lock"),
+        "--resource-group",rg
+    ])
+
+if mode == "standby":
+    # 1) Stop/deallocate compute
+    for vm in cfg.get("vms", []):
+        # Deallocate VM (stops compute allocation)
+        run(["az","vm","deallocate","--resource-group",rg,"--name",vm])
+
+    # 2) Stop web apps
+    for app in cfg.get("webapps", []):
+        run(["az","webapp","stop","--resource-group",rg,"--name",app])
+
+    # 3) Stop function apps (whole app)
+    for fa in cfg.get("functionapps", []):
+        run(["az","functionapp","stop","--resource-group",rg,"--name",fa])
+
+    # 4) Optionally disable individual functions (granular)
+    for item in cfg.get("disableFunctions", []):
+        fa = item["functionApp"]; fn = item["functionName"]
+        setting = f"AzureWebJobs.{fn}.Disabled=true"
+        run([
+            "az","functionapp","config","appsettings","set",
+            "--resource-group",rg,"--name",fa,
+            "--settings",setting
+        ])
+
+    # 5) Lock the RG to prevent changes
+    apply_lock()
+    print("Standby complete.")
+
+elif mode == "resume":
+    # Remove lock first so starts/changes are allowed
+    delete_lock()
+
+    # Re-enable individual functions (if you disabled them)
+    for item in cfg.get("disableFunctions", []):
+        fa = item["functionApp"]; fn = item["functionName"]
+        setting = f"AzureWebJobs.{fn}.Disabled=false"
+        run([
+            "az","functionapp","config","appsettings","set",
+            "--resource-group",rg,"--name",fa,
+            "--settings",setting
+        ])
+
+    # Start apps
+    for fa in cfg.get("functionapps", []):
+        run(["az","functionapp","start","--resource-group",rg,"--name",fa])
+
+    for app in cfg.get("webapps", []):
+        run(["az","webapp","start","--resource-group",rg,"--name",app])
+
+    for vm in cfg.get("vms", []):
+        run(["az","vm","start","--resource-group",rg,"--name",vm])
+
+    print("Resume complete.")
+else:
+    raise SystemExit("Mode must be standby or resume")
+PY
+chmod +x tools/standby_mode.sh
+name: Azure Standby Mode
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "standby or resume"
+        required: true
+        default: "standby"
+
+permissions:
+  contents: read
+
+jobs:
+  standby:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run standby/resume
+        run: |
+          ./tools/standby_mode.sh "${{ inputs.mode }}" standby_targets.json
 
 
