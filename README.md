@@ -5791,5 +5791,459 @@ jobs:
       - name: Run standby/resume
         run: |
           ./tools/standby_mode.sh "${{ inputs.mode }}" standby_targets.json
+name: Azure Standby Mode
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "standby or resume"
+        required: true
+        default: "standby"
+
+permissions:
+  contents: read
+
+jobs:
+  standby:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run standby/resume
+        run: |
+          ./tools/standby_mode.sh "${{ inputs.mode }}" standby_targets.json
+name: Metadata Guard
+on: [pull_request, push]
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: python tools/metadata_guard.py
+import os, sys, fnmatch, shutil, zipfile
+from io import BytesIO
+
+def match_any(rel, globs):
+    rel = rel.replace("\\", "/")
+    return any(fnmatch.fnmatch(rel, g) for g in globs)
+
+IMG_GLOBS = ["**/*.jpg","**/*.jpeg","**/*.png"]
+DOCX_GLOBS = ["**/*.docx"]
+
+def sanitize_images(root: str):
+    # Strips EXIF and ancillary chunks by re-encoding
+    try:
+        from PIL import Image
+    except ImportError:
+        print("Pillow not installed; skipping image sanitization. pip install pillow")
+        return
+
+    for base, _, files in os.walk(root):
+        for name in files:
+            rel = os.path.relpath(os.path.join(base, name), root)
+            if not match_any(rel, IMG_GLOBS):
+                continue
+            path = os.path.join(root, rel)
+            try:
+                with Image.open(path) as im:
+                    data = list(im.getdata())
+                    clean = Image.new(im.mode, im.size)
+                    clean.putdata(data)
+                    # Preserve visual content; drop metadata
+                    clean.save(path, quality=95)
+                    print("Sanitized image:", rel)
+            except Exception as e:
+                print("Failed image:", rel, "-", e)
+
+def sanitize_docx(root: str):
+    # DOCX is a zip; remove common metadata parts (core.xml/app.xml/custom.xml)
+    for base, _, files in os.walk(root):
+        for name in files:
+            rel = os.path.relpath(os.path.join(base, name), root)
+            if not match_any(rel, DOCX_GLOBS):
+                continue
+            path = os.path.join(root, rel)
+            tmp = path + ".tmp"
+
+            try:
+                with zipfile.ZipFile(path, "r") as zin, zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+                    for item in zin.infolist():
+                        # Drop metadata files
+                        drop = item.filename in (
+                            "docProps/core.xml",
+                            "docProps/app.xml",
+                            "docProps/custom.xml",
+                        )
+                        if drop:
+                            continue
+                        zout.writestr(item, zin.read(item.filename))
+
+                shutil.move(tmp, path)
+                print("Sanitized docx:", rel)
+            except Exception as e:
+                try:
+                    if os.path.exists(tmp):
+                        os.remove(tmp)
+                except Exception:
+                    pass
+                print("Failed docx:", rel, "-", e)
+
+def main():
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    sanitize_images(root)
+    sanitize_docx(root)
+    print("Done.")
+
+if __name__ == "__main__":
+    main()
+pip install pillow
+python tools/sanitize_files.py
+pip install pillow
+python tools/sanitize_files.py
+policy:
+  name: "GitHub Metadata Firewall"
+  version: "1.0"
+
+scan:
+  file_globs:
+    - "**/*.png"
+    - "**/*.jpg"
+    - "**/*.jpeg"
+    - "**/*.webp"
+    - "**/*.pdf"
+    - "**/*.docx"
+    - "**/*.pptx"
+    - "**/*.xlsx"
+    - "**/*.mp3"
+    - "**/*.mp4"
+    - "**/*.mov"
+    - "**/*.wav"
+
+deny:
+  # Tokens often embedded in binary metadata blocks (heuristic)
+  metadata_tokens:
+    - "Exif"
+    - "EXIF"
+    - "GPSLatitude"
+    - "GPSLongitude"
+    - "Make"
+    - "Model"
+    - "SerialNumber"
+    - "XMP"
+    - "xmp:"
+    - "rdf:"
+    - "dc:"
+    - "pdf:Producer"
+    - "/Author"
+    - "/Creator"
+    - "/Producer"
+    - "CreateDate"
+    - "ModifyDate"
+    - "LastModifiedBy"
+    - "docProps/core.xml"
+    - "docProps/app.xml"
+    - "docProps/custom.xml"
+
+  # Code/tools that indicate metadata extraction
+  extraction_tokens:
+    - "exiftool"
+    - "hachoir"
+    - "piexif"
+    - "ExifTags"
+    - "PIL.ExifTags"
+    - "PyExifTool"
+    - "pdfinfo"
+    - "pikepdf"
+    - "PyPDF2"
+    - ".metadata"
+    - "getexif"
+    - "ImageDescription"
+    - "GPSInfo"
+
+enforce:
+  max_findings: 200
+  fail_on_match: true
+import os, sys, fnmatch
+import yaml
+
+def load_policy(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+def match_any(rel: str, globs):
+    rel = rel.replace("\\", "/")
+    return any(fnmatch.fnmatch(rel, g) for g in globs)
+
+def iter_files(root: str):
+    for base, _, files in os.walk(root):
+        for name in files:
+            full = os.path.join(base, name)
+            rel = os.path.relpath(full, root).replace("\\", "/")
+            yield rel, full
+
+def scan_bytes(path: str, tokens):
+    hits = []
+    try:
+        data = open(path, "rb").read()
+    except Exception:
+        return hits
+    low = data.lower()
+    for t in tokens:
+        if t.lower().encode("utf-8") in low:
+            hits.append(t)
+    return hits
+
+def main():
+    repo = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    pol = load_policy(os.path.join(repo, "metadata_policy.yml"))
+
+    globs = pol["scan"]["file_globs"]
+    tokens = pol["deny"]["metadata_tokens"]
+    max_findings = int(pol["enforce"].get("max_findings", 200))
+
+    findings = []
+    for rel, full in iter_files(repo):
+        if not match_any(rel, globs):
+            continue
+        hits = scan_bytes(full, tokens)
+        if hits:
+            findings.append((rel, sorted(set(hits))))
+            if len(findings) >= max_findings:
+                break
+
+    if findings:
+        print("❌ Metadata Firewall (assets): metadata markers detected\n")
+        for rel, hits in findings[:200]:
+            print(f" - {rel}: " + ", ".join(hits))
+        print("\nFix: sanitize files before committing (see tools/sanitize_assets.py).")
+        sys.exit(2)
+
+    print("✅ Metadata Firewall (assets): passed.")
+    sys.exit(0)
+
+if __name__ == "__main__":
+    main()
+name: Metadata Firewall - Assets
+on: [pull_request, push]
+
+jobs:
+  scan-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install pyyaml
+      - run: python tools/metadata_asset_scan.py
+import os, sys, fnmatch, re
+import yaml
+
+CODE_GLOBS = [
+    "**/*.py","**/*.js","**/*.ts","**/*.jsx","**/*.tsx",
+    "**/*.go","**/*.rs","**/*.java","**/*.kt","**/*.cs",
+    "**/*.sh","**/*.ps1",
+    "**/package.json","**/pyproject.toml","**/requirements.txt","**/*.csproj"
+]
+
+def load_policy(path: str) -> dict:
+    with open(path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+def match_any(rel: str, globs):
+    rel = rel.replace("\\", "/")
+    return any(fnmatch.fnmatch(rel, g) for g in globs)
+
+def iter_files(root: str):
+    for base, _, files in os.walk(root):
+        for name in files:
+            full = os.path.join(base, name)
+            rel = os.path.relpath(full, root).replace("\\", "/")
+            yield rel, full
+
+def read_text(path: str) -> str:
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+    except Exception:
+        return ""
+
+def main():
+    repo = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    pol = load_policy(os.path.join(repo, "metadata_policy.yml"))
+    tokens = pol["deny"]["extraction_tokens"]
+    max_findings = int(pol["enforce"].get("max_findings", 200))
+
+    # compile as simple token OR patterns (case-insensitive)
+    rx = re.compile("|".join(re.escape(t) for t in sorted(tokens, key=len, reverse=True)), re.IGNORECASE)
+
+    findings = []
+    for rel, full in iter_files(repo):
+        if not match_any(rel, CODE_GLOBS):
+            continue
+        txt = read_text(full)
+        if not txt:
+            continue
+        m = rx.search(txt)
+        if m:
+            findings.append((rel, m.group(0)))
+            if len(findings) >= max_findings:
+                break
+
+    if findings:
+        print("❌ Metadata Firewall (extraction): metadata-extraction primitives detected\n")
+        for rel, hit in findings[:200]:
+            print(f" - {rel}: matched '{hit}'")
+        print("\nFix: remove metadata extraction dependencies/usage.")
+        sys.exit(2)
+
+    print("✅ Metadata Firewall (extraction): passed.")
+    sys.exit(0)
+
+if __name__ == "__main__":
+    main()
+name: Metadata Firewall - Extraction
+on: [pull_request, push]
+
+jobs:
+  scan-extraction:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install pyyaml
+      - run: python tools/metadata_extraction_scan.py
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Only scan staged files (fast + relevant)
+staged="$(git diff --cached --name-only --diff-filter=ACMR | tr -d '\r' || true)"
+[[ -z "$staged" ]] && exit 0
+
+python3 - <<'PY' "$staged"
+import sys, os, fnmatch, subprocess
+
+files = sys.argv[1].splitlines()
+
+GLOBS = ["**/*.png","**/*.jpg","**/*.jpeg","**/*.webp","**/*.pdf","**/*.docx","**/*.pptx","**/*.xlsx"]
+TOKENS = [
+  b"exif", b"gpslatitude", b"gpslongitude", b"xmp", b"rdf:", b"dc:", b"/author", b"/creator",
+  b"lastmodifiedby", b"docprops/core.xml", b"docprops/app.xml", b"docprops/custom.xml"
+]
+
+def match_any(rel):
+  rel = rel.replace("\\","/")
+  return any(fnmatch.fnmatch(rel, g) for g in GLOBS)
+
+bad = []
+for rel in files:
+  if not match_any(rel): 
+    continue
+  try:
+    data = open(rel, "rb").read()
+  except Exception:
+    continue
+  low = data.lower()
+  hits = []
+  for t in TOKENS:
+    if t in low:
+      hits.append(t.decode("utf-8", "ignore"))
+  if hits:
+    bad.append((rel, sorted(set(hits))))
+
+if bad:
+  print("REJECTED: staged files contain metadata markers:")
+  for rel, hits in bad:
+    print(f" - {rel}: {', '.join(hits)}")
+  print("\nRun: python tools/sanitize_assets.py  (then re-add and commit)")
+  sys.exit(2)
+PY
+
+exit 0
+git config core.hooksPath .githooks
+chmod +x .githooks/pre-commit
+import os, fnmatch, zipfile, shutil, re
+
+IMG_GLOBS = ["**/*.jpg","**/*.jpeg","**/*.png","**/*.webp"]
+OFFICE_GLOBS = ["**/*.docx","**/*.pptx","**/*.xlsx"]
+
+def match_any(rel, globs):
+    rel = rel.replace("\\","/")
+    return any(fnmatch.fnmatch(rel, g) for g in globs)
+
+def sanitize_images(root: str):
+    try:
+        from PIL import Image
+    except ImportError:
+        print("Pillow not installed; skipping images. pip install pillow")
+        return
+
+    for base, _, files in os.walk(root):
+        for name in files:
+            rel = os.path.relpath(os.path.join(base, name), root)
+            if not match_any(rel, IMG_GLOBS):
+                continue
+            path = os.path.join(root, rel)
+            try:
+                with Image.open(path) as im:
+                    # Re-encode pixels only (drops EXIF/XMP chunks)
+                    data = list(im.getdata())
+                    clean = Image.new(im.mode, im.size)
+                    clean.putdata(data)
+                    # Preserve visuals; strip metadata
+                    clean.save(path, quality=95)
+                    print("Sanitized image:", rel)
+            except Exception as e:
+                print("Image failed:", rel, "-", e)
+
+def sanitize_office(root: str):
+    drop = {"docProps/core.xml","docProps/app.xml","docProps/custom.xml"}
+    for base, _, files in os.walk(root):
+        for name in files:
+            rel = os.path.relpath(os.path.join(base, name), root)
+            if not match_any(rel, OFFICE_GLOBS):
+                continue
+            path = os.path.join(root, rel)
+            tmp = path + ".tmp"
+            try:
+                with zipfile.ZipFile(path, "r") as zin, zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+                    for item in zin.infolist():
+                        if item.filename in drop:
+                            continue
+                        zout.writestr(item, zin.read(item.filename))
+                shutil.move(tmp, path)
+                print("Sanitized office:", rel)
+            except Exception as e:
+                try:
+                    if os.path.exists(tmp): os.remove(tmp)
+                except Exception:
+                    pass
+                print("Office failed:", rel, "-", e)
+
+def main():
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    sanitize_images(root)
+    sanitize_office(root)
+    print("Done.")
+
+if __name__ == "__main__":
+    main()
+pip install pillow
+python tools/sanitize_assets.py
+/metadata_policy.yml @you
+/tools/ @you
+/.github/workflows/ @you
+/.githooks/ @you
 
 
