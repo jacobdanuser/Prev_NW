@@ -4833,4 +4833,373 @@ def require_caps(requested: set[str]) -> None:
     extra = requested - ALLOWED_CAPS
     if extra:
         raise PermissionError(f"Capabilities revoked by policy: {sorted(extra)}")
+policy:
+  name: "No Simulation Policy"
+  version: "1.0"
+deny:
+  # Words/phrases to block (expanded by generator below)
+  seed_terms:
+    - simulation
+    - simulate
+    - simulator
+    - sandbox
+    - emulation
+    - emulate
+    - digital twin
+    - model-based
+    - agent-based
+    - monte carlo
+    - scenario engine
+    - world model
+    - physics engine
+    - metaphysics
+    - physicals
+    - physics
+  # Known packages/libs often used for simulation/agents (edit to taste)
+  deny_packages:
+    - "mesa"
+    - "simpy"
+    - "mujoco"
+    - "pybullet"
+    - "box2d"
+    - "unity"
+    - "unreal"
+    - "gazebo"
+    - "isaac sim"
+    - "openai gym"
+    - "pettingzoo"
+    - "ray[rllib]"
+enforce:
+  fail_on_match: true
+  max_findings: 200
+  file_globs:
+    - "**/*.py"
+    - "**/*.js"
+    - "**/*.ts"
+    - "**/*.jsx"
+    - "**/*.tsx"
+    - "**/*.md"
+    - "**/package.json"
+    - "**/pyproject.toml"
+    - "**/requirements.txt"
+policy:
+  name: "No Simulation Policy"
+  version: "1.0"
+deny:
+  # Words/phrases to block (expanded by generator below)
+  seed_terms:
+    - simulation
+    - simulate
+    - simulator
+    - sandbox
+    - emulation
+    - emulate
+    - digital twin
+    - model-based
+    - agent-based
+    - monte carlo
+    - scenario engine
+    - world model
+    - physics engine
+    - metaphysics
+    - physicals
+    - physics
+  # Known packages/libs often used for simulation/agents (edit to taste)
+  deny_packages:
+    - "mesa"
+    - "simpy"
+    - "mujoco"
+    - "pybullet"
+    - "box2d"
+    - "unity"
+    - "unreal"
+    - "gazebo"
+    - "isaac sim"
+    - "openai gym"
+    - "pettingzoo"
+    - "ray[rllib]"
+enforce:
+  fail_on_match: true
+  max_findings: 200
+  file_globs:
+    - "**/*.py"
+    - "**/*.js"
+    - "**/*.ts"
+    - "**/*.jsx"
+    - "**/*.tsx"
+    - "**/*.md"
+    - "**/package.json"
+    - "**/pyproject.toml"
+    - "**/requirements.txt"
+import re
+import unicodedata
+import yaml
+from itertools import product
+
+LEET = {
+  "a": ["a", "@", "4"],
+  "e": ["e", "3"],
+  "i": ["i", "1"],
+  "o": ["o", "0"],
+  "s": ["s", "$", "5"],
+  "t": ["t", "7"],
+}
+
+SUFFIXES = ["", "s", "ed", "ing", "er", "ers", "or", "ors", "ation", "ations", "ative", "atively"]
+PREFIXES = ["", "anti", "no", "non", "de", "un", "dis", "counter"]
+
+def norm(s: str) -> str:
+  s = unicodedata.normalize("NFKC", s).lower().strip()
+  s = re.sub(r"\s+", " ", s)
+  return s
+
+def leet_variants(word: str, limit: int = 80):
+  # Create limited leet variants to avoid explosion
+  word = norm(word)
+  slots = []
+  for ch in word:
+    slots.append(LEET.get(ch, [ch]))
+  out = set()
+  for combo in product(*slots):
+    out.add("".join(combo))
+    if len(out) >= limit:
+      break
+  return out
+
+def spaced_variants(term: str):
+  t = norm(term)
+  if " " in t:
+    return {t, t.replace(" ", ""), t.replace(" ", "_"), t.replace(" ", "-")}
+  return {t, t.replace("-", " "), t.replace("_", " ")}
+
+def expand(seed_terms: list[str], target_min: int = 3000):
+  out = set()
+  for seed in seed_terms:
+    for base in spaced_variants(seed):
+      # apply prefixes/suffixes to last token-ish
+      tokens = base.split()
+      last = tokens[-1]
+      for pre in PREFIXES:
+        for suf in SUFFIXES:
+          core = f"{pre}{last}{suf}"
+          out.add(" ".join(tokens[:-1] + [core]).strip())
+      # add some leet variants for single-token items
+      if " " not in base and len(base) <= 14:
+        out |= leet_variants(base, limit=120)
+
+  # ensure we have lots
+  out = {x for x in out if x}
+  # If still under target, add common separators variants
+  if len(out) < target_min:
+    extra = set()
+    for t in list(out):
+      extra.add(t.replace(" ", ""))
+      extra.add(t.replace(" ", "_"))
+      extra.add(t.replace(" ", "-"))
+    out |= extra
+
+  return sorted(out)
+
+def main():
+  with open("no_sim_policy.yml", "r", encoding="utf-8") as f:
+    pol = yaml.safe_load(f)
+
+  seeds = pol["deny"]["seed_terms"]
+  expanded = expand(seeds, target_min=3000)
+
+  with open("no_sim_terms.txt", "w", encoding="utf-8") as f:
+    for term in expanded:
+      f.write(term + "\n")
+
+  print(f"Wrote {len(expanded)} deny terms to no_sim_terms.txt")
+
+if __name__ == "__main__":
+  main()
+pip install pyyaml
+python tools/generate_no_sim_terms.py
+import os, re, sys, fnmatch
+import yaml
+
+def load_yaml(path: str) -> dict:
+  with open(path, "r", encoding="utf-8") as f:
+    return yaml.safe_load(f)
+
+def load_terms(path: str) -> list[str]:
+  with open(path, "r", encoding="utf-8") as f:
+    return [line.strip() for line in f if line.strip()]
+
+def walk(root: str, globs: list[str]):
+  for base, _, files in os.walk(root):
+    for name in files:
+      rel = os.path.relpath(os.path.join(base, name), root)
+      if any(fnmatch.fnmatch(rel, g) for g in globs):
+        yield rel
+
+def read_text(path: str) -> str:
+  try:
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+      return f.read()
+  except Exception:
+    return ""
+
+def build_regex(terms: list[str]) -> re.Pattern:
+  # match words/phrases with flexible whitespace/separators
+  pats = []
+  for t in terms:
+    esc = re.escape(t)
+    esc = esc.replace(r"\ ", r"[\s_\-]*")
+    # word boundaries help reduce false positives
+    pats.append(rf"\b{esc}\b")
+  pats.sort(key=len, reverse=True)
+  big = "|".join(pats[:5000])  # cap for performance
+  return re.compile(big, re.IGNORECASE)
+
+def main():
+  repo = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+  pol = load_yaml(os.path.join(repo, "no_sim_policy.yml"))
+  globs = pol["enforce"]["file_globs"]
+  max_findings = int(pol["enforce"].get("max_findings", 200))
+
+  terms = load_terms(os.path.join(repo, "no_sim_terms.txt"))
+  deny_pkgs = [p.lower() for p in pol["deny"].get("deny_packages", [])]
+
+  rx = build_regex(terms)
+
+  findings = []
+
+  for rel in walk(repo, globs):
+    txt = read_text(os.path.join(repo, rel))
+    if not txt:
+      continue
+    low = txt.lower()
+
+    # package deny checks
+    for pkg in deny_pkgs:
+      if pkg in low:
+        findings.append((rel, f"deny_package:{pkg}"))
+
+    # term checks
+    m = rx.search(low)
+    if m:
+      findings.append((rel, f"deny_term:{m.group(0)[:80]}"))
+
+    if len(findings) >= max_findings:
+      break
+
+  if findings:
+    print("❌ No-Simulation Policy: blocked content detected\n")
+    for rel, why in findings:
+      print(f" - {rel} -> {why}")
+    print("\nRemove simulation-related code/docs or isolate behind a reviewed exception.")
+    sys.exit(2)
+
+  print("✅ No-Simulation Policy: passed (no blocked simulation terms/packages detected).")
+  sys.exit(0)
+
+if __name__ == "__main__":
+  main()
+pip install pyyaml
+python tools/generate_no_sim_terms.py
+import os, re, sys, fnmatch
+import yaml
+
+def load_yaml(path: str) -> dict:
+  with open(path, "r", encoding="utf-8") as f:
+    return yaml.safe_load(f)
+
+def load_terms(path: str) -> list[str]:
+  with open(path, "r", encoding="utf-8") as f:
+    return [line.strip() for line in f if line.strip()]
+
+def walk(root: str, globs: list[str]):
+  for base, _, files in os.walk(root):
+    for name in files:
+      rel = os.path.relpath(os.path.join(base, name), root)
+      if any(fnmatch.fnmatch(rel, g) for g in globs):
+        yield rel
+
+def read_text(path: str) -> str:
+  try:
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+      return f.read()
+  except Exception:
+    return ""
+
+def build_regex(terms: list[str]) -> re.Pattern:
+  # match words/phrases with flexible whitespace/separators
+  pats = []
+  for t in terms:
+    esc = re.escape(t)
+    esc = esc.replace(r"\ ", r"[\s_\-]*")
+    # word boundaries help reduce false positives
+    pats.append(rf"\b{esc}\b")
+  pats.sort(key=len, reverse=True)
+  big = "|".join(pats[:5000])  # cap for performance
+  return re.compile(big, re.IGNORECASE)
+
+def main():
+  repo = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+  pol = load_yaml(os.path.join(repo, "no_sim_policy.yml"))
+  globs = pol["enforce"]["file_globs"]
+  max_findings = int(pol["enforce"].get("max_findings", 200))
+
+  terms = load_terms(os.path.join(repo, "no_sim_terms.txt"))
+  deny_pkgs = [p.lower() for p in pol["deny"].get("deny_packages", [])]
+
+  rx = build_regex(terms)
+
+  findings = []
+
+  for rel in walk(repo, globs):
+    txt = read_text(os.path.join(repo, rel))
+    if not txt:
+      continue
+    low = txt.lower()
+
+    # package deny checks
+    for pkg in deny_pkgs:
+      if pkg in low:
+        findings.append((rel, f"deny_package:{pkg}"))
+
+    # term checks
+    m = rx.search(low)
+    if m:
+      findings.append((rel, f"deny_term:{m.group(0)[:80]}"))
+
+    if len(findings) >= max_findings:
+      break
+
+  if findings:
+    print("❌ No-Simulation Policy: blocked content detected\n")
+    for rel, why in findings:
+      print(f" - {rel} -> {why}")
+    print("\nRemove simulation-related code/docs or isolate behind a reviewed exception.")
+    sys.exit(2)
+
+  print("✅ No-Simulation Policy: passed (no blocked simulation terms/packages detected).")
+  sys.exit(0)
+
+if __name__ == "__main__":
+  main()
+name: No Simulation Gate
+on: [pull_request, push]
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install pyyaml
+      - run: python tools/generate_no_sim_terms.py
+      - run: python tools/no_sim_gate.py
+docker run --rm -it \
+  --network=none \
+  --read-only \
+  --cap-drop=ALL \
+  --security-opt=no-new-privileges \
+  -v "$PWD":/app:ro \
+  -w /app \
+  python:3.11-slim \
+  python main.py
 
