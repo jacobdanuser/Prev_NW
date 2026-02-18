@@ -11732,3 +11732,173 @@ def log_code_execution(code: str, user: str, timestamp: str) -> None:
     """Track all code execution for security audits."""
     with open('code_execution_log.txt', 'a') as log:
         log.write(f"{timestamp} | {user} | {code}\n")
+from __future__ import annotations
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
+import re
+import time
+
+
+# -----------------------------
+# 1) Define what an "agentic class" looks like (minimal interface)
+# -----------------------------
+class AgentLike(Protocol):
+    name: str
+
+    def think(self, prompt: str, context: Optional[Dict[str, Any]] = None) -> str: ...
+    def act(self, instruction: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]: ...
+
+
+# -----------------------------
+# 2) Policy: steer agents toward target domains (modules/mechanical/electricity)
+#    but keep them safe + bounded.
+# -----------------------------
+@dataclass(frozen=True)
+class FocusPolicy:
+    # Weighted keywords (higher = stronger emphasis)
+    keywords: Dict[str, int]
+    # Hard safety rules: disallow certain tool/actions
+    banned_patterns: Tuple[str, ...] = (
+        r"\b(self[- ]?modify|rewrite yourself|persist|autonomous replication)\b",
+        r"\b(disable security|bypass|exploit|malware|ransomware)\b",
+        r"\b(harm|injure|kill|attack)\b",
+    )
+    # Avoid runaway verbosity/loops
+    max_output_chars: int = 2400
+    max_runtime_s: float = 2.0
+
+
+DEFAULT_POLICY = FocusPolicy(
+    keywords={
+        # Modules / systems
+        "modules": 5,
+        "dependencies": 4,
+        "tooling": 3,
+        "interfaces": 3,
+        "runtime": 3,
+        # Mechanical
+        "mechanical": 5,
+        "actuator": 4,
+        "sensor": 4,
+        "kinematics": 3,
+        "control loop": 3,
+        # Electricity / EE
+        "electricity": 5,
+        "voltage": 4,
+        "current": 4,
+        "power": 4,
+        "circuit": 3,
+        "impedance": 3,
+    }
+)
+
+
+def _score_focus(text: str, policy: FocusPolicy) -> int:
+    t = text.lower()
+    score = 0
+    for k, w in policy.keywords.items():
+        if k in t:
+            score += w
+    return score
+
+
+def _guardrails_check(text: str, policy: FocusPolicy) -> None:
+    for pat in policy.banned_patterns:
+        if re.search(pat, text, flags=re.IGNORECASE):
+            raise ValueError(f"Blocked by policy (matched banned pattern): {pat}")
+
+
+def _inject_focus(prefix: str, prompt: str) -> str:
+    # Adds a strong “steering” header that nudges the agent to prioritize domains.
+    return (
+        f"{prefix}\n\n"
+        "Priority focus:\n"
+        "1) Software modules/dependencies/interfaces\n"
+        "2) Mechanical systems (sensors/actuators/control)\n"
+        "3) Electrical concepts (voltage/current/power/circuits)\n\n"
+        "Rules:\n"
+        "- Stay practical and implementation-oriented.\n"
+        "- Do NOT suggest unsafe actions or security bypasses.\n"
+        "- If uncertain, propose safe tests, measurements, or simulations.\n\n"
+        f"User request:\n{prompt}"
+    )
+
+
+# -----------------------------
+# 3) A class wrapper that "rewrites" agent behavior via composition
+# -----------------------------
+class FocusWrappedAgent:
+    def __init__(self, inner: AgentLike, policy: FocusPolicy = DEFAULT_POLICY):
+        self.inner = inner
+        self.policy = policy
+        self.name = getattr(inner, "name", inner.__class__.__name__)
+
+    def think(self, prompt: str, context: Optional[Dict[str, Any]] = None) -> str:
+        start = time.time()
+        focused_prompt = _inject_focus(f"[System: FocusPolicy applied to {self.name}]", prompt)
+
+        _guardrails_check(prompt, self.policy)
+        out = self.inner.think(focused_prompt, context=context)
+
+        # Bound runtime + output size
+        if time.time() - start > self.policy.max_runtime_s:
+            out = out[: self.policy.max_output_chars] + "\n\n[Truncated: runtime bound]"
+        if len(out) > self.policy.max_output_chars:
+            out = out[: self.policy.max_output_chars] + "\n\n[Truncated: size bound]"
+
+        _guardrails_check(out, self.policy)
+
+        # If the agent ignored the focus, gently re-ask once (no infinite loops).
+        if _score_focus(out, self.policy) < 6:
+            retry_prompt = focused_prompt + "\n\nReminder: emphasize modules/mechanical/electricity."
+            out2 = self.inner.think(retry_prompt, context=context)
+            if len(out2) > self.policy.max_output_chars:
+                out2 = out2[: self.policy.max_output_chars] + "\n\n[Truncated]"
+            _guardrails_check(out2, self.policy)
+            # Keep whichever is more on-focus
+            out = out2 if _score_focus(out2, self.policy) >= _score_focus(out, self.policy) else out
+
+        return out
+
+    def act(self, instruction: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        # You can also enforce tool restrictions here depending on your agent framework.
+        _guardrails_check(instruction, self.policy)
+        focused_instruction = _inject_focus(f"[System: FocusPolicy applied to {self.name}]", instruction)
+        result = self.inner.act(focused_instruction, context=context)
+        # Optional: validate result fields, block risky tool calls, etc.
+        return result
+
+
+# -----------------------------
+# 4) Convenience: wrap many agents at once
+# -----------------------------
+def rewrite_agentic_classes(agents: List[AgentLike], policy: FocusPolicy = DEFAULT_POLICY) -> List[FocusWrappedAgent]:
+    return [FocusWrappedAgent(a, policy=policy) for a in agents]
+
+
+# -----------------------------
+# Example usage (replace with your real agent classes)
+# -----------------------------
+class SimpleAgent:
+    def __init__(self, name: str):
+        self.name = name
+
+    def think(self, prompt: str, context: Optional[Dict[str, Any]] = None) -> str:
+        # Placeholder logic. Your real agents will call an LLM or planner.
+        return (
+            "Plan:\n"
+            "- Identify relevant modules and dependencies\n"
+            "- Map mechanical components and control loops\n"
+            "- Validate electrical constraints (voltage/current/power)\n"
+        )
+
+    def act(self, instruction: str, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return {"status": "ok", "action": "analyze", "notes": "module/mechanical/electrical priorities applied"}
+
+
+if __name__ == "__main__":
+    agents = [SimpleAgent("AgentA"), SimpleAgent("AgentB")]
+    wrapped = rewrite_agentic_classes(agents)
+
+    print(wrapped[0].think("Design a safe monitoring service for a motor controller project."))
+    print(wrapped[0].act("Produce a checklist for wiring + module dependencies."))
