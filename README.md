@@ -4743,4 +4743,94 @@ if __name__ == "__main__":
     result = filter_text(sample, DENY_TERMS)
     print("CLEANED:", result.cleaned_text)
     print("MATCHES:", result.matched_terms)
+policy:
+  name: "Capability Revocation"
+  version: "1.0"
+
+revoke:
+  capabilities:
+    - network_access
+    - telemetry
+    - analytics
+    - data_exfiltration
+    - background_tasks
+    - persistence
+    - plugin_or_extension_loading
+    - system_shell
+    - code_execution_untrusted
+    - user_profiling
+    - remote_config
+    - webview_remote_content
+
+allow:
+  # Keep this very small (or empty). Example: only your own API.
+  egress_hosts:
+    - "api.yourcompany.example"
+
+enforce:
+  require:
+    - no_network_except_allowlist
+    - no_telemetry
+    - no_analytics
+    - no_shell
+    - no_dynamic_plugins
+import os, re, sys, fnmatch
+import yaml
+
+GLOBS = [
+  "**/*.js","**/*.ts","**/*.jsx","**/*.tsx",
+  "**/*.py","**/*.go","**/*.rs","**/*.java","**/*.kt",
+  "**/*.sh","**/*.ps1",
+  "**/package.json","**/pyproject.toml","**/requirements.txt"
+]
+
+# “Power/knowledge/information gathering” in software terms:
+DENY_PATTERNS = [
+  # Network & scraping
+  r"\b(fetch|axios|getaddrinfo|requests\.get|httpx\.get|urllib|curl\b|wget\b)\b",
+  r"\b(websocket|socket\.io|net\.connect|tls\.connect)\b",
+
+  # Telemetry/analytics SDKs
+  r"\b(segment|amplitude|mixpanel|posthog|google-analytics|firebase-analytics)\b",
+
+  # Remote config / experimentation
+  r"\b(launchdarkly|optimizely|split\.io|statsig|remote\s*config|feature\s*flag)\b",
+
+  # Shell / system execution
+  r"\b(child_process|exec\(|spawn\(|subprocess\.run|os\.system|powershell|cmd\.exe)\b",
+
+  # Persistence / scheduling
+  r"\b(cron|schtasks|systemctl|launchctl|LaunchAgents|LaunchDaemons)\b",
+
+  # Plugin/extension loading
+  r"\b(require\(\s*['\"][^'\"]+['\"]\s*\)\s*;?\s*//\s*dynamic\b|\bdlopen\b|\bimportlib\b|\beval\(|new Function\()\b",
+]
+
+def load_policy(pa_
+name: Capability Revocation Gate
+on: [pull_request, push]
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install pyyaml
+      - run: python tools/revoke_scan.py
+docker run --rm -it \
+  --network=none \
+  --read-only \
+  --cap-drop=ALL \
+  --security-opt=no-new-privileges \
+  -v "$PWD":/app:ro \
+  -w /app \
+  python:3.11-slim \
+  python your_script.py
+ALLOWED_CAPS = {"basic_compute"}  # keep tiny
+
+def require_caps(requested: set[str]) -> None:
+    extra = requested - ALLOWED_CAPS
+    if extra:
+        raise PermissionError(f"Capabilities revoked by policy: {sorted(extra)}")
 
