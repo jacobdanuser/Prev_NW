@@ -6245,5 +6245,192 @@ python tools/sanitize_assets.py
 /tools/ @you
 /.github/workflows/ @you
 /.githooks/ @you
+import os, sys, fnmatch, json, hashlib, datetime
+from zipfile import ZipFile
+
+SCAN_GLOBS = [
+  "**/*.png","**/*.jpg","**/*.jpeg","**/*.webp",
+  "**/*.pdf",
+  "**/*.docx","**/*.pptx","**/*.xlsx",
+]
+
+SUSPICIOUS_TOKENS = [
+  b"exif", b"gpslatitude", b"gpslongitude", b"xmp", b"rdf:", b"dc:",
+  b"/author", b"/creator", b"/producer", b"createdate", b"modifydate",
+  b"lastmodifiedby", b"docprops/core.xml", b"docprops/app.xml", b"docprops/custom.xml"
+]
+
+KNOWN_PDF_PRODUCERS_HINTS = [
+  "adobe", "microsoft", "libreoffice", "ghostscript", "itext", "pdf"
+]
+
+def match_any(rel, globs):
+  rel = rel.replace("\\","/")
+  return any(fnmatch.fnmatch(rel, g) for g in globs)
+
+def sha256(path):
+  h = hashlib.sha256()
+  with open(path,"rb") as f:
+    for chunk in iter(lambda: f.read(1024*1024), b""):
+      h.update(chunk)
+  return h.hexdigest()
+
+def file_mtime(path):
+  ts = os.path.getmtime(path)
+  return datetime.datetime.utcfromtimestamp(ts).isoformat() + "Z"
+
+def scan_bytes(path):
+  try:
+    data = open(path,"rb").read()
+  except Exception:
+    return []
+  low = data.lower()
+  hits = []
+  for tok in SUSPICIOUS_TOKENS:
+    if tok in low:
+      hits.append(tok.decode("utf-8","ignore"))
+  return sorted(set(hits))
+
+def audit_pdf_fields(path):
+  # Heuristic: look for common keys in raw text; not a full PDF parser.
+  info = {"producer": None, "creator": None}
+  try:
+    data = open(path,"rb").read().decode("latin1","ignore")
+  except Exception:
+    return info
+  # very loose extraction
+  for key in ["/Producer", "/Creator", "/Author"]:
+    idx = data.find(key)
+    if idx != -1:
+      snippet = data[idx:idx+200]
+      # naive: take until next delimiter
+      info[key.strip("/").lower()] = snippet.replace("\n"," ")[:200]
+  return info
+
+def audit_office_docprops(path):
+  # Office files are zips; read docProps core/app/custom
+  out = {"core": None, "app": None, "custom": None, "suspicious": []}
+  try:
+    with ZipFile(path, "r") as z:
+      for name in ["docProps/core.xml","docProps/app.xml","docProps/custom.xml"]:
+        if name in z.namelist():
+          txt = z.read(name).decode("utf-8","ignore")
+          out[name.split("/")[-1].split(".")[0]] = txt[:2000]  # cap
+          # basic tamper hints
+          low = txt.lower()
+          if "lastmodifiedby" in low or "revision" in low or "template" in low:
+            out["suspicious"].append(f"{name}: contains revision/author/template markers")
+  except Exception:
+    pass
+  return out
+
+def load_baseline(path):
+  if not os.path.exists(path):
+    return {}
+  return json.load(open(path,"r",encoding="utf-8"))
+
+def main():
+  repo = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+  baseline_path = os.path.join(repo, "metadata_baseline.json")
+  baseline = load_baseline(baseline_path)
+
+  report = {"generated_utc": datetime.datetime.utcnow().isoformat()+"Z", "files": []}
+  changed = []
+
+  for base, _, files in os.walk(repo):
+    for name in files:
+      full = os.path.join(base, name)
+      rel = os.path.relpath(full, repo).replace("\\","/")
+      if not match_any(rel, SCAN_GLOBS):
+        continue
+
+      h = sha256(full)
+      mtime = file_mtime(full)
+      hits = scan_bytes(full)
+
+      entry = {
+        "path": rel,
+        "sha256": h,
+        "mtime_utc": mtime,
+        "metadata_markers": hits,
+        "tamper_flags": [],
+      }
+
+      # baseline compare
+      prev = baseline.get(rel)
+      if prev and prev.get("sha256") != h:
+        entry["tamper_flags"].append("HASH_CHANGED_SINCE_BASELINE")
+        changed.append(rel)
+
+      # timestamp sanity (future mtime)
+      now = datetime.datetime.utcnow()
+      try:
+        mt = datetime.datetime.fromisoformat(mtime.replace("Z",""))
+        if mt > now + datetime.timedelta(minutes=5):
+          entry["tamper_flags"].append("FUTURE_TIMESTAMP")
+      except Exception:
+        pass
+
+      # File-type deeper heuristics
+      lowrel = rel.lower()
+      if lowrel.endswith(".pdf"):
+        pdfi = audit_pdf_fields(full)
+        entry["pdf"] = pdfi
+        prod = (pdfi.get("producer") or "").lower()
+        if prod and not any(k in prod for k in KNOWN_PDF_PRODUCERS_HINTS):
+          entry["tamper_flags"].append("UNKNOWN_PDF_PRODUCER_HINT")
+
+      if lowrel.endswith((".docx",".pptx",".xlsx")):
+        office = audit_office_docprops(full)
+        entry["office"] = office
+        if office.get("suspicious"):
+          entry["tamper_flags"].append("OFFICE_DOC_PROPS_SUSPICIOUS")
+
+      # If metadata markers exist, flag for review
+      if hits:
+        entry["tamper_flags"].append("METADATA_PRESENT_REVIEW")
+
+      report["files"].append(entry)
+
+  # Write report
+  out_path = os.path.join(repo, "metadata_tamper_report.json")
+  with open(out_path, "w", encoding="utf-8") as f:
+    json.dump(report, f, indent=2)
+
+  # Optionally update baseline if requested
+  if "--write-baseline" in sys.argv:
+    newbase = {e["path"]: {"sha256": e["sha256"]} for e in report["files"]}
+    with open(baseline_path, "w", encoding="utf-8") as f:
+      json.dump(newbase, f, indent=2)
+    print(f"Wrote baseline to {baseline_path}")
+
+  # Fail CI if anything looks tampered
+  flagged = [e for e in report["files"] if e["tamper_flags"]]
+  if flagged:
+    print("❌ Metadata Tamper Audit: flagged files\n")
+    for e in flagged[:200]:
+      print(f" - {e['path']}: {', '.join(e['tamper_flags'])}")
+    print(f"\nReport written: {out_path}")
+    sys.exit(2)
+
+  print(f"✅ Metadata Tamper Audit: no flags. Report written: {out_path}")
+  sys.exit(0)
+
+if __name__ == "__main__":
+  main()
+python tools/metadata_tamper_audit.py --write-baseline
+git add metadata_baseline.json
+git commit -m "Add metadata baseline"
+name: Metadata Tamper Audit
+on: [pull_request, push]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: python tools/metadata_tamper_audit.py
 
 
