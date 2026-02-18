@@ -6432,5 +6432,189 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - run: python tools/metadata_tamper_audit.py
+name: Metadata Tamper Audit
+on: [pull_request, push]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: python tools/metadata_tamper_audit.py
+.github/workflows/
+tools/
+metadata_policy.yml
+telemetry_sim_policy.yml
+no_sim_policy.yml
+.github/workflows/
+tools/
+metadata_policy.yml
+telemetry_sim_policy.yml
+no_sim_policy.yml
+import os, subprocess, sys
+
+BASE_REF = os.environ.get("BASE_REF", "origin/main")
+PROTECTED_LIST = "protected_paths.txt"
+
+def run(cmd):
+    print("+", " ".join(cmd))
+    return subprocess.check_output(cmd, text=True).strip()
+
+def main():
+    if not os.path.exists(PROTECTED_LIST):
+        print("No protected_paths.txt found; nothing to do.")
+        return 0
+
+    protected = [l.strip() for l in open(PROTECTED_LIST, "r", encoding="utf-8") if l.strip() and not l.startswith("#")]
+    changed = run(["git", "diff", "--name-only", f"{BASE_REF}...HEAD"]).splitlines()
+
+    # any change under protected path?
+    hit = []
+    for c in changed:
+        for p in protected:
+            if p.endswith("/") and c.startswith(p):
+                hit.append(c)
+                break
+            if c == p:
+                hit.append(c)
+                break
+
+    if not hit:
+        print("No protected-path changes detected.")
+        return 0
+
+    # Restore those paths from BASE_REF
+    for p in protected:
+        run(["git", "checkout", BASE_REF, "--", p])
+
+    run(["git", "status", "--porcelain"])
+    return 0
+
+if __name__ == "__main__":
+    sys.exit(main())
+name: Auto Restore Protected Paths
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create restore branch
+        run: |
+          git config user.name "restore-bot"
+          git config user.email "restore-bot@users.noreply.github.com"
+          git checkout -b restore/protected-$(date +%Y%m%d-%H%M%S)
+
+      - name: Restore protected paths from base
+        env:
+          BASE_REF: origin/main
+        run: |
+          python3 tools/restore_protected_paths.py
+
+      - name: Commit if needed
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "Restore protected paths to baseline"
+            git push --set-upstream origin HEAD
+          else
+            echo "No changes to restore."
+            exit 0
+          fi
+
+      - name: Open PR
+        if: success()
+        uses: peter-evans/create-pull-request@v6
+        with:
+          title: "Auto-restore protected paths"
+          body: "This PR restores protected paths back to their baseline state."
+          branch: ${{ github.ref_name }}
+param(
+  [ValidateSet("init","check")]
+  [string]$Mode = "check",
+
+  [string]$ProtectedDir = "C:\ProtectedBase",
+  [string]$BaselineDir  = "C:\BaseRestore\baseline",
+  [string]$Manifest     = "C:\BaseRestore\manifest.json"
+)
+
+$ErrorActionPreference = "Stop"
+
+function Get-FileHashMap($dir) {
+  $map = @{}
+  Get-ChildItem -Path $dir -Recurse -File | ForEach-Object {
+    $rel = $_.FullName.Substring($dir.Length).TrimStart("\")
+    $h = (Get-FileHash -Algorithm SHA256 -Path $_.FullName).Hash
+    $map[$rel] = $h
+  }
+  return $map
+}
+
+if ($Mode -eq "init") {
+  New-Item -ItemType Directory -Force -Path $BaselineDir | Out-Null
+  Copy-Item -Recurse -Force -Path (Join-Path $ProtectedDir "*") -Destination $BaselineDir
+
+  $hashes = Get-FileHashMap $ProtectedDir
+  $obj = [pscustomobject]@{
+    createdUtc = (Get-Date).ToUniversalTime().ToString("o")
+    protectedDir = $ProtectedDir
+    hashes = $hashes
+  }
+  $obj | ConvertTo-Json -Depth 6 | Set-Content -Encoding UTF8 $Manifest
+  Write-Host "Baseline created at $BaselineDir and manifest saved to $Manifest"
+  exit 0
+}
+
+# Mode check: compare and restore
+if (!(Test-Path $Manifest)) { throw "Manifest not found. Run with -Mode init first." }
+if (!(Test-Path $BaselineDir)) { throw "BaselineDir not found. Run with -Mode init first." }
+
+$baseline = Get-Content $Manifest -Raw | ConvertFrom-Json
+$expected = $baseline.hashes
+
+$current = Get-FileHashMap $ProtectedDir
+
+$changed = @()
+foreach ($k in $expected.PSObject.Properties.Name) {
+  if (!$current.ContainsKey($k)) { $changed += $k; continue }
+  if ($current[$k] -ne $expected.$k) { $changed += $k }
+}
+# also detect unexpected new files
+foreach ($k in $current.Keys) {
+  if (-not $expected.PSObject.Properties.Name.Contains($k)) { $changed += $k }
+}
+
+if ($changed.Count -eq 0) {
+  Write-Host "OK: no tampering detected."
+  exit 0
+}
+
+Write-Host "TAMPERING DETECTED. Restoring baseline for:"
+$changed | Select-Object -Unique | ForEach-Object { Write-Host " - $_" }
+
+# Restore: replace entire directory contents with baseline copy (strict)
+Remove-Item -Recurse -Force -Path (Join-Path $ProtectedDir "*") -ErrorAction SilentlyContinue
+Copy-Item -Recurse -Force -Path (Join-Path $BaselineDir "*") -Destination $ProtectedDir
+
+Write-Host "Restore complete."
+exit 0
+powershell -ExecutionPolicy Bypass -File C:\BaseRestore\base_restore.ps1 -Mode init
+powershell -ExecutionPolicy Bypass -File C:\BaseRestore\base_restore.ps1 -Mode check
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -File C:\BaseRestore\base_restore.ps1 -Mode check"
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration ([TimeSpan]::MaxValue)
+Register-ScheduledTask -TaskName "BaseRestore" -Action $action -Trigger $trigger -RunLevel Highest -Force
 
 
