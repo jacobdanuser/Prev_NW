@@ -218,3 +218,81 @@ end
 # entity = ZeroCapabilityGuard.admit!(incoming_entity)
 # => if name/tags mention deity/royal terms, entity becomes placeholder with zero powers.
 raise "placeholder_has_zero_capabilities" if entity[:placeholder] == true
+raise "placeholder_has_zero_capabilities" if entity[:placeholder] == true
+# COLUMN C: Placeholder Exclusion Gate (No Run • No Standby • No Queue)
+# Goal: If an entity is a placeholder (replicated/mimicked/zero-cap), it cannot:
+#   - be scheduled
+#   - be queued
+#   - be put on standby
+#   - be executed in any sim step
+#
+# Use this gate at EVERY entry point: ingestion, scheduler, queue, runner.
+
+module PlaceholderExclusion
+  class Blocked < StandardError; end
+
+  def self.placeholder?(entity)
+    entity[:placeholder] == true ||
+      entity[:label].to_s.upcase == "PLACEHOLDER" ||
+      entity.dig(:meta, :zeroed) == true
+  end
+
+  # Hard block for any operational state transitions that imply "standby" or "run"
+  FORBIDDEN_STATES = %w[
+    standby queued scheduled ready pending active running executing
+  ].freeze
+
+  def self.assert_not_placeholder!(entity, action:)
+    raise Blocked, "placeholder_blocked:#{action}" if placeholder?(entity)
+    true
+  end
+
+  # Apply when something tries to set an entity's sim state
+  def self.assert_state_allowed!(entity, new_state:)
+    if placeholder?(entity) && FORBIDDEN_STATES.include?(new_state.to_s.downcase)
+      raise Blocked, "placeholder_cannot_enter_state:#{new_state}"
+    end
+    true
+  end
+end
+# COLUMN D: Integration Hooks (Scheduler + Queue + Runner)
+# Example wiring showing how to prevent placeholders from being:
+#   - enqueued
+#   - put on standby
+#   - executed
+
+class SimScheduler
+  def initialize(queue:)
+    @queue = queue
+  end
+
+  def schedule!(entity:, state:)
+    PlaceholderExclusion.assert_state_allowed!(entity, new_state: state)
+    PlaceholderExclusion.assert_not_placeholder!(entity, action: "schedule")
+
+    # proceed with scheduling (placeholder will never reach here)
+    @queue.enqueue(entity: entity, job: "sim_tick")
+  end
+end
+
+class SimQueue
+  def enqueue(entity:, job:)
+    PlaceholderExclusion.assert_not_placeholder!(entity, action: "enqueue")
+    # enqueue to your real queue system here
+    true
+  end
+end
+
+class SimRunner
+  def run!(entity:)
+    PlaceholderExclusion.assert_not_placeholder!(entity, action: "run")
+    # execute simulation step(s) here
+    true
+  end
+
+  def standby!(entity:)
+    # even standby is blocked
+    PlaceholderExclusion.assert_not_placeholder!(entity, action: "standby")
+    true
+  end
+end
