@@ -6616,5 +6616,140 @@ powershell -ExecutionPolicy Bypass -File C:\BaseRestore\base_restore.ps1 -Mode c
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -File C:\BaseRestore\base_restore.ps1 -Mode check"
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration ([TimeSpan]::MaxValue)
 Register-ScheduledTask -TaskName "BaseRestore" -Action $action -Trigger $trigger -RunLevel Highest -Force
+# Repairs Windows system files + component store.
+# Safe, built-in, and restores "base" OS components if they were modified.
+
+$ErrorActionPreference = "Stop"
+
+Write-Host "== System Self-Heal =="
+
+Write-Host "[1/3] DISM RestoreHealth (component store repair)"
+DISM /Online /Cleanup-Image /RestoreHealth | Out-Host
+
+Write-Host "[2/3] SFC Scannow (system file integrity)"
+sfc /scannow | Out-Host
+
+Write-Host "[3/3] Defender quick scan (malware check)"
+try {
+  Start-MpScan -ScanType QuickScan
+} catch {
+  Write-Host "Defender scan skipped (Start-MpScan not available)."
+}
+
+Write-Host "Done."
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -File C:\BaseRestore\system_self_heal.ps1"
+$trigger = New-ScheduledTaskTrigger -Daily -At 3:00am
+Register-ScheduledTask -TaskName "SystemSelfHeal" -Action $action -Trigger $trigger -RunLevel Highest -Force
+param(
+  [ValidateSet("init","check")]
+  [string]$Mode = "check",
+
+  # Add the folders you want continuously restored here
+  [string[]]$ProtectedDirs = @(
+    "C:\ProtectedBase",
+    "C:\BaseRestore\configs"
+  ),
+
+  [string]$BaselineRoot = "C:\BaseRestore\baseline",
+  [string]$ManifestPath = "C:\BaseRestore\manifest.json"
+)
+
+$ErrorActionPreference = "Stop"
+
+function Get-FileHashMap($dir) {
+  $map = @{}
+  if (!(Test-Path $dir)) { return $map }
+  Get-ChildItem -Path $dir -Recurse -File -Force | ForEach-Object {
+    $rel = $_.FullName.Substring($dir.Length).TrimStart("\")
+    $h = (Get-FileHash -Algorithm SHA256 -Path $_.FullName).Hash
+    $map[$rel] = $h
+  }
+  return $map
+}
+
+function Copy-Folder($src, $dst) {
+  New-Item -ItemType Directory -Force -Path $dst | Out-Null
+  Copy-Item -Recurse -Force -Path (Join-Path $src "*") -Destination $dst -ErrorAction SilentlyContinue
+}
+
+if ($Mode -eq "init") {
+  New-Item -ItemType Directory -Force -Path $BaselineRoot | Out-Null
+
+  $manifest = [ordered]@{
+    createdUtc = (Get-Date).ToUniversalTime().ToString("o")
+    items = @()
+  }
+
+  foreach ($d in $ProtectedDirs) {
+    $d = $d.TrimEnd("\")
+    $name = ($d -replace "[:\\]", "_")
+    $base = Join-Path $BaselineRoot $name
+
+    Copy-Folder $d $base
+    $hashes = Get-FileHashMap $d
+
+    $manifest.items += [ordered]@{
+      protectedDir = $d
+      baselineDir = $base
+      hashes = $hashes
+    }
+  }
+
+  ($manifest | ConvertTo-Json -Depth 10) | Set-Content -Encoding UTF8 $ManifestPath
+  Write-Host "Baseline initialized. Manifest: $ManifestPath"
+  exit 0
+}
+
+if (!(Test-Path $ManifestPath)) { throw "Manifest missing. Run with -Mode init first." }
+$manifest = Get-Content $ManifestPath -Raw | ConvertFrom-Json
+
+$anyTamper = $false
+
+foreach ($item in $manifest.items) {
+  $pdir = $item.protectedDir
+  $bdir = $item.baselineDir
+  $expected = $item.hashes
+
+  $current = Get-FileHashMap $pdir
+  $changed = New-Object System.Collections.Generic.List[string]
+
+  foreach ($prop in $expected.PSObject.Properties) {
+    $k = $prop.Name
+    $v = $prop.Value
+    if (!$current.ContainsKey($k)) { $changed.Add($k); continue }
+    if ($current[$k] -ne $v) { $changed.Add($k) }
+  }
+
+  foreach ($k in $current.Keys) {
+    if (-not $expected.PSObject.Properties.Name.Contains($k)) { $changed.Add($k) }
+  }
+
+  if ($changed.Count -gt 0) {
+    $anyTamper = $true
+    Write-Host "TAMPER DETECTED in $pdir"
+    $uniq = $changed | Select-Object -Unique
+    foreach ($f in $uniq) { Write-Host " - $f" }
+
+    # Strict restore: wipe folder contents and copy baseline back
+    Remove-Item -Recurse -Force -Path (Join-Path $pdir "*") -ErrorAction SilentlyContinue
+    Copy-Folder $bdir $pdir
+
+    Write-Host "Restored baseline for $pdir"
+  }
+}
+
+if (-not $anyTamper) {
+  Write-Host "OK: no tampering detected."
+}
+powershell -ExecutionPolicy Bypass -File C:\BaseRestore\folder_self_heal.ps1 -Mode init
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-ExecutionPolicy Bypass -File C:\BaseRestore\folder_self_heal.ps1 -Mode check"
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration ([TimeSpan]::MaxValue)
+Register-ScheduledTask -TaskName "FolderSelfHeal" -Action $action -Trigger $trigger -RunLevel Highest -Force
+# Controlled Folder Access helps prevent unauthorized changes by suspicious apps
+Set-MpPreference -EnableControlledFolderAccess Enabled
+.github/
+tools/
+policies/
+config/
 
 
