@@ -12507,3 +12507,294 @@ fi
 
 echo "✅ pre-commit OK"
 chmod +x .git/hooks/pre-commit
+"""
+policy_guard.py — Ban/Block Policy Guard
+Focus: mimicry, memory, interrupting, displacing (in a software/security sense)
+
+Usage:
+  - Import PolicyGuard into your app
+  - Call guard.verify_request(...) for inbound requests
+  - Use guard.protect_secrets(...) around sensitive values
+  - Use guard.lock_runtime(...) at startup (best-effort hardening)
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import hmac
+import os
+import secrets
+import signal
+import sys
+import time
+from dataclasses import dataclass
+from typing import Dict, Optional, Tuple
+
+
+# -----------------------------
+# Helpers
+# -----------------------------
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+def _sha256(data: bytes) -> bytes:
+    return hashlib.sha256(data).digest()
+
+def _now() -> int:
+    return int(time.time())
+
+def _consteq(a: str, b: str) -> bool:
+    return hmac.compare_digest(a.encode("utf-8"), b.encode("utf-8"))
+
+
+# -----------------------------
+# Policy Config
+# -----------------------------
+
+@dataclass(frozen=True)
+class PolicyConfig:
+    # Anti-mimicry (spoof/replay)
+    max_skew_seconds: int = 60          # timestamp freshness window
+    nonce_ttl_seconds: int = 300        # replay cache TTL
+    require_client_id: bool = True
+
+    # Anti-memory (reduce secret exposure)
+    zeroize_on_exit: bool = True
+    forbid_core_dumps: bool = True
+
+    # Anti-interrupting (block external interrupts where possible)
+    trap_signals: Tuple[int, ...] = (
+        signal.SIGINT, signal.SIGTERM, signal.SIGHUP
+    )
+
+    # Anti-displacing (reduce runtime tamper)
+    enforce_hash_whitelist: bool = False
+    allowed_module_hashes: Tuple[str, ...] = ()  # sha256 hex digests
+
+
+class ReplayCache:
+    """Simple in-memory replay cache for nonces."""
+    def __init__(self) -> None:
+        self._store: Dict[str, int] = {}
+
+    def seen(self, nonce: str, ttl: int) -> bool:
+        now = _now()
+        # purge old
+        expired = [k for k, exp in self._store.items() if exp <= now]
+        for k in expired:
+            self._store.pop(k, None)
+
+        if nonce in self._store:
+            return True
+        self._store[nonce] = now + ttl
+        return False
+
+
+# -----------------------------
+# Policy Guard
+# -----------------------------
+
+class PolicyGuard:
+    """
+    Provides:
+      - Signed request verification (anti-mimicry)
+      - Replay protection via nonce cache (anti-mimicry)
+      - Best-effort secret handling + core-dump disable (anti-memory)
+      - Signal trapping (anti-interrupting)
+      - Optional module hash allowlist checks (anti-displacing)
+    """
+
+    def __init__(self, shared_secret: bytes, config: Optional[PolicyConfig] = None) -> None:
+        if not shared_secret or len(shared_secret) < 32:
+            raise ValueError("shared_secret must be at least 32 bytes (use secrets.token_bytes(32)+).")
+
+        self.config = config or PolicyConfig()
+        self._secret = shared_secret
+        self._replay = ReplayCache()
+        self._protected_blobs: Dict[str, bytearray] = {}
+
+    # ---- Anti-mimicry: signed request + replay defense ----
+
+    def sign_request(self, client_id: str, method: str, path: str, body: bytes) -> Dict[str, str]:
+        """
+        Generates headers you attach to a request.
+        """
+        ts = str(_now())
+        nonce = _b64url(secrets.token_bytes(18))
+        msg = self._canonical_message(client_id, ts, nonce, method, path, body)
+        sig = _b64url(hmac.new(self._secret, msg, hashlib.sha256).digest())
+        return {
+            "x-client-id": client_id,
+            "x-ts": ts,
+            "x-nonce": nonce,
+            "x-sig": sig,
+        }
+
+    def verify_request(self, headers: Dict[str, str], method: str, path: str, body: bytes) -> None:
+        """
+        Verifies:
+          - required headers present
+          - timestamp fresh (anti-replay)
+          - nonce not seen (anti-replay)
+          - signature valid (anti-spoof)
+        Raises PermissionError on failure.
+        """
+        h = {k.lower(): v for k, v in headers.items()}
+
+        client_id = h.get("x-client-id", "")
+        ts = h.get("x-ts", "")
+        nonce = h.get("x-nonce", "")
+        sig = h.get("x-sig", "")
+
+        if self.config.require_client_id and not client_id:
+            raise PermissionError("Blocked: missing client id (mimicry suspected).")
+        if not ts or not nonce or not sig:
+            raise PermissionError("Blocked: missing auth headers (mimicry suspected).")
+
+        try:
+            ts_int = int(ts)
+        except ValueError:
+            raise PermissionError("Blocked: invalid timestamp (mimicry suspected).")
+
+        now = _now()
+        if abs(now - ts_int) > self.config.max_skew_seconds:
+            raise PermissionError("Blocked: stale timestamp (replay/mimicry suspected).")
+
+        if self._replay.seen(nonce, self.config.nonce_ttl_seconds):
+            raise PermissionError("Blocked: nonce replay detected (mimicry suspected).")
+
+        msg = self._canonical_message(client_id, ts, nonce, method, path, body)
+        expected = _b64url(hmac.new(self._secret, msg, hashlib.sha256).digest())
+
+        if not _consteq(sig, expected):
+            raise PermissionError("Blocked: bad signature (mimicry suspected).")
+
+    def _canonical_message(self, client_id: str, ts: str, nonce: str,
+                           method: str, path: str, body: bytes) -> bytes:
+        # Canonicalization prevents “displacing” meaning via whitespace/encoding tricks
+        m = method.upper().strip()
+        p = path.strip()
+        body_hash = _b64url(_sha256(body))
+        canonical = f"{client_id}\n{ts}\n{nonce}\n{m}\n{p}\n{body_hash}".encode("utf-8")
+        return canonical
+
+    # ---- Anti-memory: reduce secret exposure ----
+
+    def protect_secret(self, name: str, secret_value: str) -> None:
+        """
+        Stores a secret in a mutable bytearray so it can be zeroized later.
+        Note: Python can't fully prevent copies; this is best-effort.
+        """
+        b = bytearray(secret_value.encode("utf-8"))
+        self._protected_blobs[name] = b
+
+    def get_secret_bytes(self, name: str) -> bytes:
+        if name not in self._protected_blobs:
+            raise KeyError(f"Secret '{name}' not protected.")
+        # Returning bytes creates a copy; prefer using bytearray directly if you can.
+        return bytes(self._protected_blobs[name])
+
+    def zeroize(self) -> None:
+        for _, blob in self._protected_blobs.items():
+            for i in range(len(blob)):
+                blob[i] = 0
+        self._protected_blobs.clear()
+
+    # ---- Anti-interrupting: trap termination signals ----
+
+    def trap_interrupts(self) -> None:
+        for sig in self.config.trap_signals:
+            try:
+                signal.signal(sig, self._signal_handler)
+            except Exception:
+                # Some signals can't be trapped on some platforms.
+                pass
+
+    def _signal_handler(self, signum, frame) -> None:
+        # You can choose to ignore, log, or attempt graceful shutdown.
+        # Here: block external interrupts by default.
+        raise RuntimeError(f"Blocked interrupt signal {signum} (interrupting attempt).")
+
+    # ---- Anti-displacing: basic runtime hardening ----
+
+    def lock_runtime(self) -> None:
+        """
+        Best-effort hardening:
+          - disable core dumps (Linux/macOS)
+          - optional module hash allowlist
+          - optionally auto-zeroize on exit
+        """
+        if self.config.forbid_core_dumps:
+            self._disable_core_dumps_best_effort()
+
+        if self.config.enforce_hash_whitelist and self.config.allowed_module_hashes:
+            self._enforce_module_hashes()
+
+        if self.config.zeroize_on_exit:
+            import atexit
+            atexit.register(self.zeroize)
+
+    def _disable_core_dumps_best_effort(self) -> None:
+        # Linux/macOS: resource limits
+        try:
+            import resource
+            resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+        except Exception:
+            pass
+
+        # Linux: prctl(PR_SET_DUMPABLE, 0) (best effort)
+        try:
+            import ctypes
+            libc = ctypes.CDLL(None)
+            PR_SET_DUMPABLE = 4
+            libc.prctl(PR_SET_DUMPABLE, 0, 0, 0, 0)
+        except Exception:
+            pass
+
+    def _enforce_module_hashes(self) -> None:
+        """
+        Checks loaded python files against an allowlist hash set.
+        Useful if you ship a tight bundle and want to detect module swapping.
+        """
+        allowed = set(h.lower() for h in self.config.allowed_module_hashes)
+        for name, mod in list(sys.modules.items()):
+            path = getattr(mod, "__file__", None)
+            if not path or not os.path.isfile(path):
+                continue
+            try:
+                with open(path, "rb") as f:
+                    digest = hashlib.sha256(f.read()).hexdigest().lower()
+                if digest not in allowed:
+                    raise PermissionError(f"Blocked: module '{name}' hash not allowed (displacing suspected).")
+            except PermissionError:
+                raise
+            except Exception:
+                # If we can't read it, we don't trust it.
+                raise PermissionError(f"Blocked: module '{name}' unreadable (displacing suspected).")
+
+
+# -----------------------------
+# Example (minimal)
+# -----------------------------
+if __name__ == "__main__":
+    # Shared secret (store securely in env/secret manager in real deployments)
+    shared = secrets.token_bytes(32)
+    guard = PolicyGuard(shared)
+
+    # Startup hardening
+    guard.trap_interrupts()
+    guard.lock_runtime()
+
+    # Client signs a request
+    body = b'{"action":"ping"}'
+    headers = guard.sign_request(client_id="client-123", method="POST", path="/api/ping", body=body)
+
+    # Server verifies it
+    guard.verify_request(headers=headers, method="POST", path="/api/ping", body=body)
+    print("Request allowed (no mimicry/replay detected).")
+
+    # Protect a secret and zeroize at exit
+    guard.protect_secret("api_key", "SUPER_SECRET_VALUE")
+    # guard.zeroize()  # manual if desired
