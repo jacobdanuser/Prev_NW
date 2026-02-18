@@ -11705,4 +11705,4 @@ def contains_forbidden(obj: Any) -> bool:
 
 
 __all__ = ("FORBIDDEN", "is_forbidden_name", "contains_forbidden")
-Punani
+<3punanilove
