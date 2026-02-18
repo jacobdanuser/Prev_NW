@@ -3631,4 +3631,392 @@ if (require.main === module) {
 module.exports = { runGuardedSimulation };
 node simulation-guardian.js --config sim_config.json -- node simulation.js
 node simulation-guardian.js --config sim_config.json --input runtime.json -- node simulation.js
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+
+const TEXT_EXTS = new Set([".js", ".mjs", ".cjs", ".json", ".yaml", ".yml", ".txt", ".md"]);
+
+const BLOCK_KEYWORDS = [
+  // people/subjects
+  "subjects", "subjectid", "subjectids",
+  "person", "personid", "userid", "userids",
+  "firstname", "lastname", "name", "email", "phone", "address", "dob", "dateofbirth",
+
+  // extensions/plugins
+  "extensions", "extension", "plugin", "hook", "middleware", "loader",
+
+  // “simulation on people” phrasing (optional strict)
+  "simulate a person", "simulate people", "run on people",
+];
+
+const PII_PATTERNS = [
+  { name: "email", rx: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i },
+  { name: "phone_us_like", rx: /\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b/ },
+  { name: "ssn_like", rx: /\b\d{3}-\d{2}-\d{4}\b/ },
+];
+
+const FORBIDDEN_MODULE_TOKENS = [
+  "child_process",
+  "worker_threads",
+  "cluster",
+  "vm",
+  "net",
+  "tls",
+  "http",
+  "https",
+  "dgram",
+  "fs", // if you want “no file access” inside sims, keep this blocked
+  "undici",
+];
+
+function listFilesRecursive(rootDir) {
+  const out = [];
+  const stack = [rootDir];
+  while (stack.length) {
+    const d = stack.pop();
+    for (const ent of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, ent.name);
+      if (ent.isDirectory()) {
+        if (ent.name === "node_modules" || ent.name.startsWith(".")) continue;
+        stack.push(full);
+      } else if (ent.isFile()) {
+        const ext = path.extname(ent.name).toLowerCase();
+        if (TEXT_EXTS.has(ext)) out.push(full);
+      }
+    }
+  }
+  out.sort();
+  return out;
+}
+
+function scanText(content, file) {
+  const findings = [];
+
+  const lower = content.toLowerCase();
+  for (const k of BLOCK_KEYWORDS) {
+    if (lower.includes(k)) findings.push({ kind: "keyword", file, match: k });
+  }
+
+  for (const p of PII_PATTERNS) {
+    if (p.rx.test(content)) findings.push({ kind: "pii", file, match: p.name });
+  }
+
+  // crude but effective: if any forbidden module token appears in code/config, flag it
+  for (const t of FORBIDDEN_MODULE_TOKENS) {
+    if (lower.includes(t.toLowerCase())) findings.push({ kind: "forbidden_token", file, match: t });
+  }
+
+  return findings;
+}
+
+function scanDirectory(rootDir) {
+  const files = listFilesRecursive(rootDir);
+  const all = [];
+  for (const f of files) {
+    const text = fs.readFileSync(f, "utf8");
+    const findings = scanText(text, f);
+    all.push(...findings);
+  }
+  return all;
+}
+
+if (require.main === module) {
+  const root = process.argv[2] || process.cwd();
+  const findings = scanDirectory(root);
+
+  if (findings.length) {
+    console.error("SIM_BLOCKED: scanner found disallowed signals.\n");
+    for (const f of findings.slice(0, 200)) {
+      console.error(`- [${f.kind}] ${f.match} @ ${f.file}`);
+    }
+    process.exit(2);
+  } else {
+    console.log("OK: no disallowed signals found.");
+  }
+}
+
+module.exports = { scanDirectory };
+node scan-simulations.js ./sim
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const acorn = require("acorn");
+const walk = require("acorn-walk");
+
+const FORBIDDEN_MODULES = new Set([
+  "child_process",
+  "worker_threads",
+  "cluster",
+  "vm",
+  "net",
+  "tls",
+  "http",
+  "https",
+  "dgram",
+  "undici",
+  "fs"
+]);
+
+const FORBIDDEN_GLOBALS = new Set([
+  "process",
+  "global",
+  "globalThis",
+  "Function",
+  "eval",
+  "WebAssembly",
+]);
+
+function parse(code) {
+  return acorn.parse(code, { ecmaVersion: "latest", sourceType: "module", locations: true });
+}
+
+function scanFile(file) {
+  const code = fs.readFileSync(file, "utf8");
+  let ast;
+  try {
+    ast = parse(code);
+  } catch (e) {
+    // If it's not parseable as module, try script
+    ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "script", locations: true });
+  }
+
+  const findings = [];
+  function hit(kind, msg, node) {
+    findings.push({
+      kind,
+      file,
+      msg,
+      line: node?.loc?.start?.line ?? null,
+      col: node?.loc?.start?.column ?? null,
+    });
+  }
+
+  walk.simple(ast, {
+    ImportDeclaration(node) {
+      const m = node.source?.value;
+      if (typeof m === "string" && FORBIDDEN_MODULES.has(m)) {
+        hit("forbidden_import", `import "${m}"`, node);
+      }
+    },
+    CallExpression(node) {
+      // require("x")
+      if (node.callee?.type === "Identifier" && node.callee.name === "require") {
+        const a0 = node.arguments?.[0];
+        if (a0 && a0.type === "Literal" && typeof a0.value === "string") {
+          if (FORBIDDEN_MODULES.has(a0.value)) hit("forbidden_require", `require("${a0.value}")`, node);
+        } else {
+          hit("dynamic_require", "require(<dynamic>) blocked", node);
+        }
+      }
+
+      // eval(...)
+      if (node.callee?.type === "Identifier" && node.callee.name === "eval") {
+        hit("eval", "eval() blocked", node);
+      }
+
+      // import("x") dynamic import
+      if (node.callee?.type === "Import") {
+        hit("dynamic_import", "dynamic import() blocked", node);
+      }
+    },
+    NewExpression(node) {
+      // new Function(...)
+      if (node.callee?.type === "Identifier" && node.callee.name === "Function") {
+        hit("new_function", "new Function() blocked", node);
+      }
+    },
+    Identifier(node) {
+      if (FORBIDDEN_GLOBALS.has(node.name)) {
+        // Not always malicious (e.g., "process" in a string template), but we treat as a strong signal.
+        hit("forbidden_global_ref", `ref "${node.name}"`, node);
+      }
+    },
+  });
+
+  return findings;
+}
+
+function listJs(rootDir) {
+  const out = [];
+  const stack = [rootDir];
+  while (stack.length) {
+    const d = stack.pop();
+    for (const ent of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, ent.name);
+      if (ent.isDirectory()) {
+        if (ent.name === "node_modules" || ent.name.startsWith(".")) continue;
+        stack.push(full);
+      } else if (ent.isFile()) {
+        const ext = path.extname(ent.name).toLowerCase();
+        if (ext === ".js" || ext === ".mjs" || ext === ".cjs") out.push(full);
+      }
+    }
+  }
+  out.sort();
+  return out;
+}
+
+if (require.main === module) {
+  const root = process.argv[2] || process.cwd();
+  const files = listJs(root);
+  const all = files.flatMap(scanFile);
+
+  if (all.length) {
+    console.error("SIM_BLOCKED: AST scan found disallowed code paths.\n");
+    for (const f of all.slice(0, 200)) {
+      console.error(`- [${f.kind}] ${f.msg} @ ${f.file}:${f.line}:${f.col}`);
+    }
+    process.exit(2);
+  } else {
+    console.log("OK: AST scan passed (no forbidden imports/exec paths).");
+  }
+}
+
+module.exports = { scanFile };
+npm i acorn acorn-walk
+node ast-scan.js ./sim
+"use strict";
+
+const fs = require("fs");
+const { spawn } = require("child_process");
+const { scanDirectory } = require("./scan-simulations");
+const { scanFile } = require("./ast-scan");
+const { assertNoPeopleSignals } = require("./people-scanner"); // from earlier message
+const vm = require("vm");
+const path = require("path");
+
+function listSimJs(simDir) {
+  const out = [];
+  const stack = [simDir];
+  while (stack.length) {
+    const d = stack.pop();
+    for (const ent of fs.readdirSync(d, { withFileTypes: true })) {
+      const full = path.join(d, ent.name);
+      if (ent.isDirectory()) {
+        if (ent.name === "node_modules" || ent.name.startsWith(".")) continue;
+        stack.push(full);
+      } else if (ent.isFile()) {
+        const ext = path.extname(ent.name).toLowerCase();
+        if (ext === ".js" || ext === ".mjs" || ext === ".cjs") out.push(full);
+        if (ext === ".json") {
+          // Config/data scan for people signals
+          try {
+            const obj = JSON.parse(fs.readFileSync(full, "utf8"));
+            assertNoPeopleSignals(obj);
+          } catch (_) {}
+        }
+      }
+    }
+  }
+  out.sort();
+  return out;
+}
+
+// Strict VM runner: NO require, NO process, NO eval/new Function.
+function runInNoExtensionsVm(code, { timeoutMs = 250 } = {}) {
+  const sandbox = Object.create(null);
+  sandbox.console = Object.freeze({
+    log: (...a) => console.log("[sim]", ...a),
+    warn: (...a) => console.warn("[sim:warn]", ...a),
+    error: (...a) => console.error("[sim:err]", ...a),
+  });
+  sandbox.require = undefined;
+  sandbox.process = undefined;
+  sandbox.global = undefined;
+  sandbox.globalThis = undefined;
+  sandbox.Function = undefined;
+  sandbox.eval = undefined;
+
+  const context = vm.createContext(sandbox, { codeGeneration: { strings: false, wasm: false } });
+  const script = new vm.Script(code, { filename: "simulation.js" });
+  return script.runInContext(context, { timeout: timeoutMs });
+}
+
+function preflight(simDir) {
+  // 1) Broad text scan
+  const findings1 = scanDirectory(simDir);
+  if (findings1.length) throw Object.assign(new Error("SIM_BLOCKED: directory scan failed"), { code: "SIM_BLOCKED_SCAN", findings1 });
+
+  // 2) AST scan all JS
+  const jsFiles = listSimJs(simDir);
+  const findings2 = jsFiles.flatMap(scanFile);
+  if (findings2.length) throw Object.assign(new Error("SIM_BLOCKED: AST scan failed"), { code: "SIM_BLOCKED_AST", findings2 });
+
+  return jsFiles;
+}
+
+if (require.main === module) {
+  const simDir = process.argv[2] || "./sim";
+  const entry = process.argv[3] || "simulation.js";
+  const entryPath = path.join(simDir, entry);
+
+  try {
+    preflight(simDir);
+
+    // 3) Run the simulation in a no-extensions VM
+    const code = fs.readFileSync(entryPath, "utf8");
+    runInNoExtensionsVm(code);
+    console.log("[guardian] finished: standalone VM run completed.");
+
+  } catch (e) {
+    console.error("[guardian]", e.code || "ERROR", e.message);
+    if (e.findings1) console.error("findings1:", e.findings1.slice(0, 50));
+    if (e.findings2) console.error("findings2:", e.findings2.slice(0, 50));
+    process.exit(2);
+  }
+}
+
+module.exports = { preflight, runInNoExtensionsVm };
+node guarded-run.js ./sim simulation.js
+#!/usr/bin/env bash
+set -euo pipefail
+
+SIM_DIR="${1:-./sim}"
+ENTRY="${2:-simulation.js}"
+
+docker run --rm -it \
+  --network none \
+  --read-only \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  --pids-limit 256 \
+  --memory 512m \
+  --cpus 1 \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=128m \
+  -v "$PWD:/work:ro" \
+  -w /work \
+  node:20-alpine \
+  sh -lc "node --disallow-code-generation-from-strings guarded-run.js '$SIM_DIR' '$ENTRY'"
+chmod +x safe-sim-docker.sh
+./safe-sim-docker.sh ./sim simulation.js
+name: No People + No Extensions Gate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install scanner deps only
+        run: |
+          npm i --no-package-lock --no-save acorn acorn-walk
+
+      - name: Scan simulations
+        run: |
+          node scan-simulations.js ./sim
+          node ast-scan.js ./sim
 
