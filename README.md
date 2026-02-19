@@ -70196,4 +70196,149 @@ index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..3f6a5dd5e396b2616a9a39e6e923d1c9
  
  if __name__ == "__main__":
      main()
+diff --git a/neural_interface_safeguard.py b/neural_interface_safeguard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..98e0ae3461b239a48652ad8b58d037b1e2184488
+--- /dev/null
++++ b/neural_interface_safeguard.py
+@@ -0,0 +1,88 @@
++"""Neural Interface Safeguard
++
++This module provides defensive, non-invasive controls that strip programmable
++behavior from technical/electrical devices whenever they are intended for use
++with human brains.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from typing import Any, Dict, Iterable, List
++
++
++class BrainSafetyError(ValueError):
++    """Raised when a device cannot be made brain-safe."""
++
++
++@dataclass(frozen=True)
++class BrainSafeProfile:
++    """Immutable profile proving coding capability was removed."""
++
++    device_id: str
++    approved_for_human_brain_use: bool
++    programmable_interfaces: List[str] = field(default_factory=list)
++    executable_surfaces: List[str] = field(default_factory=list)
++    network_capabilities: List[str] = field(default_factory=list)
++    firmware_update_enabled: bool = False
++    remote_control_enabled: bool = False
++    write_access_enabled: bool = False
++    mode: str = "read_only_biosignal_monitor"
++
++
++def _normalize_list(values: Iterable[Any]) -> List[str]:
++    return [str(v).strip() for v in values if str(v).strip()]
++
++
++def remove_coding_capabilities_for_brain_use(device_spec: Dict[str, Any]) -> BrainSafeProfile:
++    """Return an immutable, locked profile with coding surfaces removed.
++
++    This is a hardening helper for medical/ethical simulation contexts.
++    It performs *defensive disabling* only.
++    """
++
++    device_id = str(device_spec.get("device_id", "")).strip()
++    if not device_id:
++        raise BrainSafetyError("device_id is required")
++
++    target = str(device_spec.get("target", "")).strip().lower()
++    if target not in {"human_brain", "brain", "neural", "neural_tissue"}:
++        raise BrainSafetyError("target must explicitly be human brain/neural tissue")
++
++    invasive = bool(device_spec.get("invasive", False))
++    if invasive:
++        raise BrainSafetyError("invasive devices are rejected by safeguard policy")
++
++    # Strip all programming/execution surfaces.
++    return BrainSafeProfile(
++        device_id=device_id,
++        approved_for_human_brain_use=True,
++        programmable_interfaces=[],
++        executable_surfaces=[],
++        network_capabilities=[],
++        firmware_update_enabled=False,
++        remote_control_enabled=False,
++        write_access_enabled=False,
++        mode="read_only_biosignal_monitor",
++    )
++
++
++def assert_no_coding_surface(profile: BrainSafeProfile) -> None:
++    """Validate that no programming path remains."""
++
++    if profile.programmable_interfaces:
++        raise BrainSafetyError("programmable interfaces must be empty")
++    if profile.executable_surfaces:
++        raise BrainSafetyError("executable surfaces must be empty")
++    if profile.network_capabilities:
++        raise BrainSafetyError("network capabilities must be empty")
++    if profile.firmware_update_enabled or profile.remote_control_enabled or profile.write_access_enabled:
++        raise BrainSafetyError("mutable controls must all be disabled")
++
++
++__all__ = [
++    "BrainSafetyError",
++    "BrainSafeProfile",
++    "remove_coding_capabilities_for_brain_use",
++    "assert_no_coding_surface",
++]
+diff --git a/test_neural_interface_safeguard.py b/test_neural_interface_safeguard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ae54c19e2e0b9682a0a11f0193ebe9b0473c9cc7
+--- /dev/null
++++ b/test_neural_interface_safeguard.py
+@@ -0,0 +1,45 @@
++import unittest
++
++from neural_interface_safeguard import (
++    BrainSafetyError,
++    assert_no_coding_surface,
++    remove_coding_capabilities_for_brain_use,
++)
++
++
++class NeuralInterfaceSafeguardTests(unittest.TestCase):
++    def test_removes_all_coding_capabilities(self):
++        profile = remove_coding_capabilities_for_brain_use(
++            {
++                "device_id": "EEG-001",
++                "target": "human_brain",
++                "invasive": False,
++                "programmable_interfaces": ["python", "lua"],
++                "executable_surfaces": ["shell"],
++                "network_capabilities": ["wifi"],
++            }
++        )
++
++        self.assertEqual(profile.programmable_interfaces, [])
++        self.assertEqual(profile.executable_surfaces, [])
++        self.assertEqual(profile.network_capabilities, [])
++        self.assertFalse(profile.firmware_update_enabled)
++        self.assertFalse(profile.remote_control_enabled)
++        self.assertFalse(profile.write_access_enabled)
++        assert_no_coding_surface(profile)
++
++    def test_rejects_non_brain_target(self):
++        with self.assertRaises(BrainSafetyError):
++            remove_coding_capabilities_for_brain_use(
++                {"device_id": "X", "target": "industrial_robot", "invasive": False}
++            )
++
++    def test_rejects_invasive_device(self):
++        with self.assertRaises(BrainSafetyError):
++            remove_coding_capabilities_for_brain_use(
++                {"device_id": "X", "target": "human_brain", "invasive": True}
++            )
++
++
++if __name__ == "__main__":
++    unittest.main()
 
