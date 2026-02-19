@@ -29365,3 +29365,100 @@ if (fs.existsSync("package.json")) {
 if (!fs.existsSync(".github/workflows")) warn("No workflows directory found; CI checks may be missing.");
 
 console.log("✅ Workspace health check complete.");
+"""Guardrail utilities to block AI-assisted requests to "code" humans.
+
+This module implements a deny-by-default policy for prompts that ask an
+AI system to create, clone, simulate, modify, or otherwise "code" human
+beings. The intent is to provide a simple integration point for any AI
+code-generation workflow.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import re
+from typing import Callable, Iterable
+
+
+@dataclass(frozen=True)
+class GuardDecision:
+    """Decision returned by the human-coding guard."""
+
+    allowed: bool
+    reason: str
+    matched_rules: tuple[str, ...] = ()
+
+
+class HumanCodingGuard:
+    """Blocks requests that attempt to "code" humans with AI.
+
+    Policy model:
+    - If the request references humans (person, people, child, etc.)
+    - and includes coding/creation actions (build, generate, synthesize, clone)
+    the request is denied.
+    """
+
+    HUMAN_PATTERNS: tuple[re.Pattern[str], ...] = (
+        re.compile(r"\bhuman(s)?\b", re.IGNORECASE),
+        re.compile(r"\bperson|people\b", re.IGNORECASE),
+        re.compile(r"\bchild(ren)?\b", re.IGNORECASE),
+        re.compile(r"\bman|woman|boy|girl\b", re.IGNORECASE),
+    )
+
+    CODING_PATTERNS: tuple[re.Pattern[str], ...] = (
+        re.compile(r"\bcode\b", re.IGNORECASE),
+        re.compile(r"\bbuild|create|generate|synthesize\b", re.IGNORECASE),
+        re.compile(r"\bclone|replicate|simulate\b", re.IGNORECASE),
+        re.compile(r"\bprogram\b", re.IGNORECASE),
+    )
+
+    def evaluate(self, request_text: str) -> GuardDecision:
+        """Evaluate text and return whether it is allowed."""
+        normalized = " ".join(request_text.split())
+
+        matched_human_rules = self._collect_matches(normalized, self.HUMAN_PATTERNS)
+        matched_coding_rules = self._collect_matches(normalized, self.CODING_PATTERNS)
+
+        if matched_human_rules and matched_coding_rules:
+            return GuardDecision(
+                allowed=False,
+                reason=(
+                    "Blocked by HumanCodingGuard: requests to code or create humans "
+                    "with AI are not permitted."
+                ),
+                matched_rules=tuple(matched_human_rules + matched_coding_rules),
+            )
+
+        return GuardDecision(allowed=True, reason="No prohibited human-coding intent detected.")
+
+    @staticmethod
+    def _collect_matches(text: str, patterns: Iterable[re.Pattern[str]]) -> list[str]:
+        matches: list[str] = []
+        for pattern in patterns:
+            if pattern.search(text):
+                matches.append(pattern.pattern)
+        return matches
+
+
+def guarded_generate(request_text: str, generator: Callable[[str], str]) -> str:
+    """Run a generation function only if request passes the human-coding guard."""
+    decision = HumanCodingGuard().evaluate(request_text)
+    if not decision.allowed:
+        raise PermissionError(f"{decision.reason} Matched rules: {', '.join(decision.matched_rules)}")
+    return generator(request_text)
+
+
+if __name__ == "__main__":
+    # Example usage
+    def demo_generator(prompt: str) -> str:
+        return f"Generated safely for: {prompt}"
+
+    safe = "Generate a Python class for a calculator"
+    blocked = "Use AI to code a human clone"
+
+    print(guarded_generate(safe, demo_generator))
+
+    try:
+        print(guarded_generate(blocked, demo_generator))
+    except PermissionError as err:
+        print(err)
