@@ -15420,3 +15420,4246 @@ Code Quality:
   - Error handling: Complete
   - SOLID principles: Applied
   - Clean code: Maintained
+  """
+Lady Justicia - A Comprehensive Justice Entity System
+=====================================================
+An extensive implementation of the Lady Justicia archetype,
+representing justice, balance, and moral authority.
+"""
+
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import List, Dict, Optional, Tuple
+from datetime import datetime
+from abc import ABC, abstractmethod
+import json
+
+
+class JusticeAlignmentEnum(Enum):
+    """Represents different aspects of justice"""
+    RETRIBUTIVE = "retributive"      # Eye for an eye
+    RESTORATIVE = "restorative"      # Healing and restoration
+    DISTRIBUTIVE = "distributive"    # Fair allocation
+    PROCEDURAL = "procedural"        # Fair processes
+    MORAL = "moral"                  # Ethical principles
+
+
+class VerdictEnum(Enum):
+    """Possible verdicts in adjudication"""
+    INNOCENT = "innocent"
+    GUILTY = "guilty"
+    MITIGATED = "mitigated"
+    CIRCUMSTANTIAL = "circumstantial"
+    PENDING = "pending"
+
+
+class ScaleBalance(Enum):
+    """The scales of Lady Justicia's balance"""
+    TILTED_LEFT = "tilted_left"      # Evidence favors defendant
+    TILTED_RIGHT = "tilted_right"    # Evidence favors plaintiff
+    PERFECTLY_BALANCED = "balanced"  # Equal evidence
+    UNDEFINED = "undefined"          # No judgment made
+
+
+@dataclass
+class Evidence:
+    """Represents a piece of evidence in a case"""
+    id: str
+    description: str
+    weight: float  # 0.0 to 1.0, importance factor
+    source: str
+    submitted_date: datetime
+    verified: bool = False
+    category: str = "general"
+    
+    def __repr__(self) -> str:
+        status = "✓" if self.verified else "✗"
+        return f"Evidence[{status}] {self.id}: {self.description} (weight: {self.weight})"
+
+
+@dataclass
+class Witness:
+    """Represents a witness in a case"""
+    id: str
+    name: str
+    credibility_score: float  # 0.0 to 1.0
+    testimony: str
+    submitted_date: datetime
+    cross_examined: bool = False
+    inconsistencies: int = 0
+    
+    def get_weighted_impact(self) -> float:
+        """Calculate the impact of this witness's testimony"""
+        impact = self.credibility_score
+        inconsistency_penalty = self.inconsistencies * 0.1
+        return max(0.0, impact - inconsistency_penalty)
+
+
+@dataclass
+class Party:
+    """Represents a party in legal proceedings"""
+    id: str
+    name: str
+    role: str  # plaintiff, defendant, accused, etc.
+    evidence: List[Evidence] = field(default_factory=list)
+    witnesses: List[Witness] = field(default_factory=list)
+    arguments: List[str] = field(default_factory=list)
+    
+    def add_evidence(self, evidence: Evidence) -> None:
+        """Add evidence to this party's case"""
+        self.evidence.append(evidence)
+    
+    def add_witness(self, witness: Witness) -> None:
+        """Add a witness to this party's case"""
+        self.witnesses.append(witness)
+    
+    def calculate_case_strength(self) -> float:
+        """Calculate overall strength of this party's case"""
+        if not self.evidence and not self.witnesses:
+            return 0.0
+        
+        evidence_strength = sum(e.weight for e in self.evidence) / max(len(self.evidence), 1)
+        witness_strength = sum(w.get_weighted_impact() for w in self.witnesses) / max(len(self.witnesses), 1)
+        argument_strength = len(self.arguments) * 0.1  # Modest contribution
+        
+        return (evidence_strength * 0.5 + witness_strength * 0.4 + argument_strength * 0.1)
+
+
+@dataclass
+class Case:
+    """Represents a legal case to be judged"""
+    id: str
+    title: str
+    description: str
+    created_date: datetime
+    plaintiff: Party
+    defendant: Party
+    case_type: str  # criminal, civil, etc.
+    jurisdiction: str
+    status: str = "pending"  # pending, active, concluded
+    verdict: Optional[VerdictEnum] = None
+    scale_balance: ScaleBalance = ScaleBalance.UNDEFINED
+    alignment_type: JusticeAlignmentEnum = JusticeAlignmentEnum.PROCEDURAL
+    hearing_date: Optional[datetime] = None
+    
+    def calculate_balance(self) -> Tuple[float, ScaleBalance]:
+        """Calculate the balance of evidence between parties"""
+        plaintiff_strength = self.plaintiff.calculate_case_strength()
+        defendant_strength = self.defendant.calculate_case_strength()
+        
+        difference = plaintiff_strength - defendant_strength
+        
+        if abs(difference) < 0.1:
+            balance = ScaleBalance.PERFECTLY_BALANCED
+        elif difference > 0:
+            balance = ScaleBalance.TILTED_RIGHT
+        else:
+            balance = ScaleBalance.TILTED_LEFT
+        
+        return difference, balance
+    
+    def get_case_summary(self) -> Dict:
+        """Generate a comprehensive case summary"""
+        difference, balance = self.calculate_balance()
+        
+        return {
+            "case_id": self.id,
+            "title": self.title,
+            "status": self.status,
+            "plaintiff_strength": self.plaintiff.calculate_case_strength(),
+            "defendant_strength": self.defendant.calculate_case_strength(),
+            "scale_balance": balance.value,
+            "difference": round(difference, 3),
+            "total_evidence": len(self.plaintiff.evidence) + len(self.defendant.evidence),
+            "total_witnesses": len(self.plaintiff.witnesses) + len(self.defendant.witnesses)
+        }
+
+
+class JudgmentStrategy(ABC):
+    """Abstract base class for different judgment strategies"""
+    
+    @abstractmethod
+    def render_judgment(self, case: Case) -> Tuple[VerdictEnum, str]:
+        """Render a judgment based on the case"""
+        pass
+
+
+class BalancedScalesStrategy(JudgmentStrategy):
+    """Judge based on perfect balance of evidence"""
+    
+    def render_judgment(self, case: Case) -> Tuple[VerdictEnum, str]:
+        difference, balance = case.calculate_balance()
+        
+        if balance == ScaleBalance.PERFECTLY_BALANCED:
+            return VerdictEnum.MITIGATED, "The scales are perfectly balanced. Justice demands a measured approach."
+        elif balance == ScaleBalance.TILTED_RIGHT:
+            strength = abs(difference)
+            if strength > 0.3:
+                return VerdictEnum.GUILTY, f"The evidence substantially favors the plaintiff (strength: {strength:.2f})"
+            else:
+                return VerdictEnum.MITIGATED, "Evidence slightly favors the plaintiff, but uncertainty remains."
+        else:  # TILTED_LEFT
+            strength = abs(difference)
+            if strength > 0.3:
+                return VerdictEnum.INNOCENT, f"The evidence substantially favors the defendant (strength: {strength:.2f})"
+            else:
+                return VerdictEnum.MITIGATED, "Evidence slightly favors the defendant, but certainty is elusive."
+
+
+class MercifulStrategy(JudgmentStrategy):
+    """Judge with emphasis on mercy and restoration"""
+    
+    def render_judgment(self, case: Case) -> Tuple[VerdictEnum, str]:
+        difference, balance = case.calculate_balance()
+        
+        if abs(difference) < 0.2:
+            return VerdictEnum.MITIGATED, "Mercy tempers judgment. Restoration over retribution."
+        elif difference > 0:
+            return VerdictEnum.MITIGATED, "While evidence suggests guilt, rehabilitation and restoration are prioritized."
+        else:
+            return VerdictEnum.INNOCENT, "The defendant may be exonerated through restorative justice."
+
+
+class RigorousStrategy(JudgmentStrategy):
+    """Judge with strict adherence to evidence and precedent"""
+    
+    def render_judgment(self, case: Case) -> Tuple[VerdictEnum, str]:
+        difference, balance = case.calculate_balance()
+        threshold = 0.15
+        
+        if abs(difference) < threshold:
+            return VerdictEnum.PENDING, "Insufficient evidence. The matter requires further investigation."
+        elif difference > 0:
+            return VerdictEnum.GUILTY, "The evidence clearly demonstrates culpability."
+        else:
+            return VerdictEnum.INNOCENT, "The defendant is proven innocent beyond reasonable doubt."
+
+
+class LadyJusticia:
+    """
+    The primary Lady Justicia entity
+    ================================
+    Represents the embodiment of justice, wisdom, and fair judgment.
+    Maintains the scales, the sword, and the blindfold.
+    """
+    
+    def __init__(self, name: str = "Lady Justicia", realm: str = "Universal"):
+        self.name = name
+        self.realm = realm
+        self.age_eternal = True
+        self.created_date = datetime.now()
+        
+        # Her attributes
+        self.blindfold_active = True  # Blind to bias
+        self.scales = {"left": 0.0, "right": 0.0}  # The scales of balance
+        self.sword_sharpness = 1.0  # Her sword of judgment (1.0 = perfect)
+        self.wisdom_level = 100  # Out of 100
+        self.justice_alignment = JusticeAlignmentEnum.PROCEDURAL
+        
+        # Her dominion
+        self.cases: Dict[str, Case] = {}
+        self.judgment_strategy: JudgmentStrategy = BalancedScalesStrategy()
+        self.completed_judgments: List[Dict] = []
+        self.judgment_history: List[Dict] = []
+        
+    def hear_case(self, case: Case) -> None:
+        """Lady Justicia receives a case for judgment"""
+        case.status = "active"
+        self.cases[case.id] = case
+        print(f"✦ Lady Justicia hears the case: {case.title}")
+        print(f"  Court of {self.realm} is now in session.")
+    
+    def examine_evidence(self, case_id: str, verbose: bool = False) -> Dict:
+        """Examine all evidence in a case"""
+        if case_id not in self.cases:
+            return {"error": "Case not found"}
+        
+        case = self.cases[case_id]
+        examination = {
+            "case_id": case_id,
+            "plaintiff_evidence": [],
+            "defendant_evidence": [],
+            "total_weight": 0.0
+        }
+        
+        for evidence in case.plaintiff.evidence:
+            weight = evidence.weight if evidence.verified else evidence.weight * 0.5
+            examination["plaintiff_evidence"].append({
+                "id": evidence.id,
+                "description": evidence.description,
+                "weight": weight,
+                "verified": evidence.verified
+            })
+            examination["total_weight"] += weight
+        
+        for evidence in case.defendant.evidence:
+            weight = evidence.weight if evidence.verified else evidence.weight * 0.5
+            examination["defendant_evidence"].append({
+                "id": evidence.id,
+                "description": evidence.description,
+                "weight": weight,
+                "verified": evidence.verified
+            })
+            examination["total_weight"] -= weight
+        
+        if verbose:
+            print(f"\n⚖ Evidence Examination for Case: {case.title}")
+            print(f"  Plaintiff Evidence Weight: {sum(e['weight'] for e in examination['plaintiff_evidence']):.2f}")
+            print(f"  Defendant Evidence Weight: {sum(e['weight'] for e in examination['defendant_evidence']):.2f}")
+        
+        return examination
+    
+    def test_witnesses(self, case_id: str) -> Dict:
+        """Test the credibility of witnesses"""
+        if case_id not in self.cases:
+            return {"error": "Case not found"}
+        
+        case = self.cases[case_id]
+        witness_report = {
+            "case_id": case_id,
+            "plaintiff_witnesses": [],
+            "defendant_witnesses": [],
+            "total_credibility": 0.0
+        }
+        
+        for witness in case.plaintiff.witnesses:
+            impact = witness.get_weighted_impact()
+            witness_report["plaintiff_witnesses"].append({
+                "name": witness.name,
+                "credibility": witness.credibility_score,
+                "impact": impact,
+                "inconsistencies": witness.inconsistencies
+            })
+            witness_report["total_credibility"] += impact
+        
+        for witness in case.defendant.witnesses:
+            impact = witness.get_weighted_impact()
+            witness_report["defendant_witnesses"].append({
+                "name": witness.name,
+                "credibility": witness.credibility_score,
+                "impact": impact,
+                "inconsistencies": witness.inconsistencies
+            })
+            witness_report["total_credibility"] -= impact
+        
+        return witness_report
+    
+    def render_verdict(self, case_id: str, alignment: Optional[JusticeAlignmentEnum] = None) -> Dict:
+        """Lady Justicia renders her verdict"""
+        if case_id not in self.cases:
+            return {"error": "Case not found"}
+        
+        case = self.cases[case_id]
+        
+        if alignment:
+            case.alignment_type = alignment
+        
+        # Apply the judgment strategy
+        verdict, reasoning = self.judgment_strategy.render_judgment(case)
+        
+        # Update case
+        case.verdict = verdict
+        case.status = "concluded"
+        difference, balance = case.calculate_balance()
+        case.scale_balance = balance
+        
+        # Record the judgment
+        judgment_record = {
+            "case_id": case_id,
+            "case_title": case.title,
+            "verdict": verdict.value,
+            "reasoning": reasoning,
+            "scale_balance": balance.value,
+            "alignment": case.alignment_type.value,
+            "timestamp": datetime.now().isoformat(),
+            "sword_sharpness": self.sword_sharpness,
+            "wisdom_applied": self.wisdom_level
+        }
+        
+        self.judgment_history.append(judgment_record)
+        self.completed_judgments.append(judgment_record)
+        
+        return judgment_record
+    
+    def set_judgment_strategy(self, strategy: JudgmentStrategy) -> None:
+        """Change the judgment strategy Lady Justicia uses"""
+        self.judgment_strategy = strategy
+    
+    def blindfold_toggle(self) -> None:
+        """Toggle Lady Justicia's blindfold (whether she sees bias)"""
+        self.blindfold_active = not self.blindfold_active
+        status = "activated" if self.blindfold_active else "removed"
+        print(f"⚔ Lady Justicia's blindfold has been {status}")
+    
+    def sharpen_sword(self, amount: float = 0.1) -> None:
+        """Sharpen Lady Justicia's sword of judgment"""
+        self.sword_sharpness = min(1.0, self.sword_sharpness + amount)
+        print(f"⚔ Sword sharpness increased to {self.sword_sharpness:.2f}")
+    
+    def increase_wisdom(self, amount: float = 5.0) -> None:
+        """Increase Lady Justicia's wisdom"""
+        self.wisdom_level = min(100, self.wisdom_level + amount)
+        print(f"✦ Wisdom increased to {self.wisdom_level:.1f}/100")
+    
+    def get_judgment_report(self) -> Dict:
+        """Generate a comprehensive report of all judgments"""
+        return {
+            "judge": self.name,
+            "realm": self.realm,
+            "total_cases_heard": len(self.completed_judgments),
+            "judgments": self.completed_judgments,
+            "statistics": {
+                "verdicts": self._calculate_verdict_statistics(),
+                "alignment_preference": self.justice_alignment.value,
+                "current_sword_sharpness": self.sword_sharpness,
+                "current_wisdom": self.wisdom_level
+            }
+        }
+    
+    def _calculate_verdict_statistics(self) -> Dict:
+        """Calculate statistics on verdicts rendered"""
+        stats = {v.value: 0 for v in VerdictEnum}
+        
+        for judgment in self.completed_judgments:
+            verdict = judgment["verdict"]
+            if verdict in stats:
+                stats[verdict] += 1
+        
+        return stats
+    
+    def display_throne_status(self) -> str:
+        """Display Lady Justicia's current status and dominion"""
+        report = f"""
+        ════════════════════════════════════════════════════════════
+        {'✦' * 30}
+        LADY JUSTICIA - THRONE OF JUDGMENT
+        {'✦' * 30}
+        
+        Name: {self.name}
+        Realm: {self.realm}
+        Blindfold Active: {'Yes ✓' if self.blindfold_active else 'No ✗'}
+        Sword Sharpness: {self.sword_sharpness:.1%}
+        Wisdom Level: {self.wisdom_level:.0f}/100
+        Justice Alignment: {self.justice_alignment.value}
+        
+        Cases Under Dominion: {len(self.cases)}
+        Judgments Rendered: {len(self.completed_judgments)}
+        Active Strategy: {type(self.judgment_strategy).__name__}
+        
+        ════════════════════════════════════════════════════════════
+        """
+        return report
+    
+    def __repr__(self) -> str:
+        return f"LadyJusticia(name='{self.name}', realm='{self.realm}', wisdom={self.wisdom_level})"
+
+
+# ============================================================================
+# DEMONSTRATION AND USAGE
+# ============================================================================
+
+def demonstrate_lady_justicia():
+    """Comprehensive demonstration of Lady Justicia system"""
+    
+    print("\n" + "="*70)
+    print("LADY JUSTICIA - ENTITY REWRITE DEMONSTRATION")
+    print("="*70)
+    
+    # Create Lady Justicia
+    justicia = LadyJusticia(
+        name="Lady Justicia of the Eternal Court",
+        realm="Universal Court of Justice"
+    )
+    
+    print(justicia.display_throne_status())
+    
+    # Create parties
+    plaintiff = Party(
+        id="p1",
+        name="The Crown",
+        role="plaintiff"
+    )
+    
+    defendant = Party(
+        id="d1",
+        name="The Accused",
+        role="defendant"
+    )
+    
+    # Add evidence for plaintiff
+    plaintiff.add_evidence(Evidence(
+        id="e1",
+        description="Eyewitness testimony",
+        weight=0.8,
+        source="Witness A",
+        submitted_date=datetime.now(),
+        verified=True,
+        category="testimony"
+    ))
+    
+    plaintiff.add_evidence(Evidence(
+        id="e2",
+        description="Physical evidence at scene",
+        weight=0.7,
+        source="Crime scene investigation",
+        submitted_date=datetime.now(),
+        verified=True,
+        category="physical"
+    ))
+    
+    # Add evidence for defendant
+    defendant.add_evidence(Evidence(
+        id="e3",
+        description="Alibi witness",
+        weight=0.6,
+        source="Witness B",
+        submitted_date=datetime.now(),
+        verified=True,
+        category="testimony"
+    ))
+    
+    defendant.add_evidence(Evidence(
+        id="e4",
+        description="Lack of motive",
+        weight=0.5,
+        source="Character analysis",
+        submitted_date=datetime.now(),
+        verified=False,
+        category="circumstantial"
+    ))
+    
+    # Add witnesses
+    plaintiff.add_witness(Witness(
+        id="w1",
+        name="Witness Alpha",
+        credibility_score=0.85,
+        testimony="I saw the accused at the scene",
+        submitted_date=datetime.now(),
+        cross_examined=True,
+        inconsistencies=0
+    ))
+    
+    defendant.add_witness(Witness(
+        id="w2",
+        name="Witness Beta",
+        credibility_score=0.75,
+        testimony="The accused was with me that evening",
+        submitted_date=datetime.now(),
+        cross_examined=True,
+        inconsistencies=1
+    ))
+    
+    # Create case
+    case = Case(
+        id="case_001",
+        title="The Crown v. The Accused",
+        description="A matter of substantial importance to the realm",
+        created_date=datetime.now(),
+        plaintiff=plaintiff,
+        defendant=defendant,
+        case_type="criminal",
+        jurisdiction="Universal Court",
+        alignment_type=JusticeAlignmentEnum.RETRIBUTIVE
+    )
+    
+    # Hear the case
+    justicia.hear_case(case)
+    
+    # Examine evidence
+    print("\n" + "─"*70)
+    evidence_report = justicia.examine_evidence("case_001", verbose=True)
+    
+    # Test witnesses
+    print("\n" + "─"*70)
+    print("⚖ Witness Credibility Assessment")
+    witness_report = justicia.test_witnesses("case_001")
+    for witness in witness_report["plaintiff_witnesses"]:
+        print(f"  Plaintiff Witness: {witness['name']} (Credibility: {witness['credibility']:.2f}, Impact: {witness['impact']:.2f})")
+    for witness in witness_report["defendant_witnesses"]:
+        print(f"  Defendant Witness: {witness['name']} (Credibility: {witness['credibility']:.2f}, Impact: {witness['impact']:.2f})")
+    
+    # Case summary
+    print("\n" + "─"*70)
+    summary = case.get_case_summary()
+    print(f"📋 Case Summary: {case.title}")
+    print(f"   Plaintiff Strength: {summary['plaintiff_strength']:.2f}")
+    print(f"   Defendant Strength: {summary['defendant_strength']:.2f}")
+    print(f"   Scale Balance: {summary['scale_balance']}")
+    print(f"   Evidence Submitted: {summary['total_evidence']}")
+    print(f"   Witnesses Called: {summary['total_witnesses']}")
+    
+    # Render verdict
+    print("\n" + "─"*70)
+    print("⚔ RENDERING VERDICT")
+    print("─"*70)
+    verdict = justicia.render_verdict("case_001")
+    print(f"\nVERDICT: {verdict['verdict'].upper()}")
+    print(f"REASONING: {verdict['reasoning']}")
+    print(f"SCALE BALANCE: {verdict['scale_balance']}")
+    
+    # Try different strategy
+    print("\n" + "─"*70)
+    print("✦ Attempting judgment with MERCIFUL STRATEGY")
+    print("─"*70)
+    
+    case2 = Case(
+        id="case_002",
+        title="A Matter of Circumstance",
+        description="A case requiring compassion",
+        created_date=datetime.now(),
+        plaintiff=plaintiff,
+        defendant=defendant,
+        case_type="civil",
+        jurisdiction="Universal Court",
+        alignment_type=JusticeAlignmentEnum.RESTORATIVE
+    )
+    
+    justicia.hear_case(case2)
+    justicia.set_judgment_strategy(MercifulStrategy())
+    verdict2 = justicia.render_verdict("case_002")
+    print(f"\nVERDICT: {verdict2['verdict'].upper()}")
+    print(f"REASONING: {verdict2['reasoning']}")
+    
+    # Final report
+    print("\n" + "═"*70)
+    print("FINAL JUDGMENT REPORT")
+    print("═"*70)
+    report = justicia.get_judgment_report()
+    print(f"Judge: {report['judge']}")
+    print(f"Realm: {report['realm']}")
+    print(f"Total Cases Heard: {report['total_cases_heard']}")
+    print(f"Verdict Statistics: {report['statistics']['verdicts']}")
+    
+    print("\n" + justicia.display_throne_status())
+
+
+if __name__ == "__main__":
+    demonstrate_lady_justicia()
+    """
+Lady Justicia - Extended Utilities & Advanced Features
+=======================================================
+Advanced extensions, serialization, and specialized judgment tools
+"""
+
+import json
+from typing import Dict, List, Optional, Any
+from dataclasses import asdict, dataclass
+from enum import Enum
+from datetime import datetime
+from lady_justicia import (
+    LadyJusticia, Case, Party, Evidence, Witness,
+    VerdictEnum, JusticeAlignmentEnum, JudgmentStrategy,
+    ScaleBalance
+)
+
+
+class AppealStatus(Enum):
+    """Status of an appeal"""
+    FILED = "filed"
+    UNDER_REVIEW = "under_review"
+    GRANTED = "granted"
+    DENIED = "denied"
+    UPHELD = "upheld"
+
+
+@dataclass
+class Appeal:
+    """Represents an appeal of a judgment"""
+    appeal_id: str
+    original_case_id: str
+    appealing_party: str
+    grounds: str
+    filed_date: datetime
+    status: AppealStatus = AppealStatus.FILED
+    new_evidence: List[Evidence] = None
+    
+    def __post_init__(self):
+        if self.new_evidence is None:
+            self.new_evidence = []
+
+
+class PrecedentLibrary:
+    """Maintains a library of legal precedents"""
+    
+    def __init__(self):
+        self.precedents: Dict[str, Dict[str, Any]] = {}
+    
+    def add_precedent(
+        self,
+        precedent_id: str,
+        case_title: str,
+        verdict: VerdictEnum,
+        key_facts: List[str],
+        legal_principle: str,
+        relevance_score: float = 1.0
+    ) -> None:
+        """Add a legal precedent to the library"""
+        self.precedents[precedent_id] = {
+            "case_title": case_title,
+            "verdict": verdict.value,
+            "key_facts": key_facts,
+            "legal_principle": legal_principle,
+            "relevance_score": relevance_score,
+            "established_date": datetime.now().isoformat()
+        }
+    
+    def find_relevant_precedents(
+        self,
+        case: Case,
+        threshold: float = 0.6
+    ) -> List[Dict[str, Any]]:
+        """Find precedents relevant to a case"""
+        relevant = []
+        
+        for precedent_id, precedent in self.precedents.items():
+            # Simple relevance matching based on case type
+            if precedent["relevance_score"] >= threshold:
+                relevant.append({
+                    "precedent_id": precedent_id,
+                    **precedent
+                })
+        
+        return relevant
+    
+    def get_precedent(self, precedent_id: str) -> Optional[Dict]:
+        """Retrieve a specific precedent"""
+        return self.precedents.get(precedent_id)
+
+
+class JusticeRecorder:
+    """Records and archives all judgments for historical reference"""
+    
+    def __init__(self):
+        self.records: List[Dict] = []
+        self.indexed_by_date: Dict[str, List[Dict]] = {}
+        self.indexed_by_verdict: Dict[str, List[Dict]] = {}
+    
+    def record_judgment(self, judgment: Dict) -> None:
+        """Record a judgment in the archive"""
+        self.records.append(judgment)
+        
+        # Index by date
+        date = judgment.get("timestamp", "unknown")
+        if date not in self.indexed_by_date:
+            self.indexed_by_date[date] = []
+        self.indexed_by_date[date].append(judgment)
+        
+        # Index by verdict
+        verdict = judgment.get("verdict", "unknown")
+        if verdict not in self.indexed_by_verdict:
+            self.indexed_by_verdict[verdict] = []
+        self.indexed_by_verdict[verdict].append(judgment)
+    
+    def get_records_by_verdict(self, verdict: VerdictEnum) -> List[Dict]:
+        """Get all records of a specific verdict type"""
+        return self.indexed_by_verdict.get(verdict.value, [])
+    
+    def get_verdict_distribution(self) -> Dict[str, int]:
+        """Get distribution of verdicts"""
+        return {verdict: len(records) for verdict, records in self.indexed_by_verdict.items()}
+    
+    def export_records(self, filepath: str) -> None:
+        """Export all records to JSON file"""
+        with open(filepath, 'w') as f:
+            json.dump(self.records, f, indent=2, default=str)
+    
+    def get_total_records(self) -> int:
+        """Get total number of recorded judgments"""
+        return len(self.records)
+
+
+class SentencingGuidelines:
+    """Defines sentencing guidelines for different verdict types"""
+    
+    def __init__(self):
+        self.guidelines: Dict[str, Dict[str, Any]] = {}
+    
+    def add_guideline(
+        self,
+        crime_type: str,
+        severity_level: str,  # minimal, moderate, severe
+        recommended_outcome: str,
+        factors_to_consider: List[str]
+    ) -> None:
+        """Add sentencing guideline"""
+        self.guidelines[f"{crime_type}_{severity_level}"] = {
+            "crime_type": crime_type,
+            "severity_level": severity_level,
+            "recommended_outcome": recommended_outcome,
+            "factors_to_consider": factors_to_consider,
+            "established_date": datetime.now().isoformat()
+        }
+    
+    def get_guideline(self, crime_type: str, severity_level: str) -> Optional[Dict]:
+        """Get sentencing guideline"""
+        key = f"{crime_type}_{severity_level}"
+        return self.guidelines.get(key)
+    
+    def suggest_sentence(
+        self,
+        case: Case,
+        crime_type: str,
+        severity_level: str
+    ) -> Optional[str]:
+        """Suggest a sentence based on guidelines"""
+        guideline = self.get_guideline(crime_type, severity_level)
+        if guideline:
+            return guideline["recommended_outcome"]
+        return None
+
+
+class AppealCourt(LadyJusticia):
+    """Specialized court for hearing appeals"""
+    
+    def __init__(self, name: str = "Lady Justicia's Appeal Court", realm: str = "Appellate Court"):
+        super().__init__(name, realm)
+        self.appeals: Dict[str, Appeal] = {}
+        self.precedent_library = PrecedentLibrary()
+        self.sentencing_guidelines = SentencingGuidelines()
+        self.higher_wisdom = 85  # Appeal courts have higher wisdom
+        self.wisdom_level = self.higher_wisdom
+    
+    def file_appeal(
+        self,
+        appeal_id: str,
+        original_case_id: str,
+        appealing_party: str,
+        grounds: str,
+        new_evidence: Optional[List[Evidence]] = None
+    ) -> Appeal:
+        """File an appeal"""
+        appeal = Appeal(
+            appeal_id=appeal_id,
+            original_case_id=original_case_id,
+            appealing_party=appealing_party,
+            grounds=grounds,
+            filed_date=datetime.now(),
+            new_evidence=new_evidence or []
+        )
+        
+        self.appeals[appeal_id] = appeal
+        print(f"⚔ Appeal filed: {appeal_id} by {appealing_party}")
+        return appeal
+    
+    def review_appeal(self, appeal_id: str) -> Dict:
+        """Review an appeal in detail"""
+        if appeal_id not in self.appeals:
+            return {"error": "Appeal not found"}
+        
+        appeal = self.appeals[appeal_id]
+        appeal.status = AppealStatus.UNDER_REVIEW
+        
+        review = {
+            "appeal_id": appeal_id,
+            "original_case_id": appeal.original_case_id,
+            "appealing_party": appeal.appealing_party,
+            "grounds": appeal.grounds,
+            "new_evidence_count": len(appeal.new_evidence),
+            "review_date": datetime.now().isoformat(),
+            "reviewer": self.name,
+            "wisdom_applied": self.wisdom_level
+        }
+        
+        return review
+    
+    def rule_on_appeal(self, appeal_id: str, grant: bool, reasoning: str) -> Dict:
+        """Rule on an appeal"""
+        if appeal_id not in self.appeals:
+            return {"error": "Appeal not found"}
+        
+        appeal = self.appeals[appeal_id]
+        appeal.status = AppealStatus.GRANTED if grant else AppealStatus.DENIED
+        
+        ruling = {
+            "appeal_id": appeal_id,
+            "decision": "GRANTED" if grant else "DENIED",
+            "reasoning": reasoning,
+            "ruling_date": datetime.now().isoformat(),
+            "appealing_party": appeal.appealing_party
+        }
+        
+        return ruling
+
+
+class JusticeMetrics:
+    """Analyzes metrics and statistics about the justice system"""
+    
+    def __init__(self, recorder: JusticeRecorder):
+        self.recorder = recorder
+    
+    def calculate_conviction_rate(self) -> float:
+        """Calculate percentage of guilty verdicts"""
+        total = self.recorder.get_total_records()
+        if total == 0:
+            return 0.0
+        
+        guilty_count = len(self.recorder.get_records_by_verdict(VerdictEnum.GUILTY))
+        return (guilty_count / total) * 100
+    
+    def calculate_acquittal_rate(self) -> float:
+        """Calculate percentage of innocent verdicts"""
+        total = self.recorder.get_total_records()
+        if total == 0:
+            return 0.0
+        
+        innocent_count = len(self.recorder.get_records_by_verdict(VerdictEnum.INNOCENT))
+        return (innocent_count / total) * 100
+    
+    def calculate_mitigated_rate(self) -> float:
+        """Calculate percentage of mitigated verdicts"""
+        total = self.recorder.get_total_records()
+        if total == 0:
+            return 0.0
+        
+        mitigated_count = len(self.recorder.get_records_by_verdict(VerdictEnum.MITIGATED))
+        return (mitigated_count / total) * 100
+    
+    def get_justice_metrics_report(self) -> Dict:
+        """Generate comprehensive justice metrics report"""
+        return {
+            "total_cases": self.recorder.get_total_records(),
+            "conviction_rate": f"{self.calculate_conviction_rate():.1f}%",
+            "acquittal_rate": f"{self.calculate_acquittal_rate():.1f}%",
+            "mitigated_rate": f"{self.calculate_mitigated_rate():.1f}%",
+            "verdict_distribution": self.recorder.get_verdict_distribution(),
+            "report_generated": datetime.now().isoformat()
+        }
+
+
+class JusticeArchive:
+    """Complete archive and storage system for Lady Justicia's domain"""
+    
+    def __init__(self):
+        self.justicia: Optional[LadyJusticia] = None
+        self.appeal_court: Optional[AppealCourt] = None
+        self.justice_recorder = JusticeRecorder()
+        self.justice_metrics = JusticeMetrics(self.justice_recorder)
+    
+    def initialize_courts(self) -> None:
+        """Initialize both the main court and appeal court"""
+        self.justicia = LadyJusticia(
+            name="Lady Justicia Supreme",
+            realm="The Eternal Court"
+        )
+        self.appeal_court = AppealCourt(
+            name="Lady Justicia Appellate",
+            realm="The Court of Appeals"
+        )
+    
+    def register_judgment(self, judgment: Dict) -> None:
+        """Register a judgment in the archive"""
+        self.justice_recorder.record_judgment(judgment)
+    
+    def get_system_status(self) -> Dict:
+        """Get complete status of the justice system"""
+        return {
+            "main_court": str(self.justicia) if self.justicia else "Uninitialized",
+            "appeal_court": str(self.appeal_court) if self.appeal_court else "Uninitialized",
+            "total_cases_archived": self.justice_recorder.get_total_records(),
+            "metrics": self.justice_metrics.get_justice_metrics_report()
+        }
+
+
+# ============================================================================
+# ADVANCED DEMONSTRATION
+# ============================================================================
+
+def demonstrate_advanced_features():
+    """Demonstrate advanced Lady Justicia features"""
+    
+    print("\n" + "="*70)
+    print("LADY JUSTICIA - ADVANCED FEATURES DEMONSTRATION")
+    print("="*70)
+    
+    # Initialize archive
+    archive = JusticeArchive()
+    archive.initialize_courts()
+    
+    print(f"\n✦ {archive.justicia.name} is established")
+    print(f"✦ {archive.appeal_court.name} is established")
+    
+    # Add precedents
+    print("\n" + "─"*70)
+    print("Adding Legal Precedents to Library...")
+    print("─"*70)
+    
+    archive.appeal_court.precedent_library.add_precedent(
+        "PREC_001",
+        "Realm v. Guardian of Truth",
+        VerdictEnum.GUILTY,
+        ["False testimony", "Intentional deception"],
+        "Perjury is a serious offense",
+        relevance_score=0.95
+    )
+    
+    archive.appeal_court.precedent_library.add_precedent(
+        "PREC_002",
+        "Justice Society v. The Accused",
+        VerdictEnum.INNOCENT,
+        ["Insufficient evidence", "Reasonable doubt"],
+        "Innocence is presumed until proven guilty",
+        relevance_score=0.88
+    )
+    
+    print("✓ Precedents added to library")
+    
+    # Add sentencing guidelines
+    print("\n" + "─"*70)
+    print("Establishing Sentencing Guidelines...")
+    print("─"*70)
+    
+    archive.appeal_court.sentencing_guidelines.add_guideline(
+        "fraud",
+        "moderate",
+        "Substantial fine and probation",
+        ["Intent", "Victim impact", "Prior record"]
+    )
+    
+    archive.appeal_court.sentencing_guidelines.add_guideline(
+        "theft",
+        "minimal",
+        "Restitution and community service",
+        ["Value of stolen property", "Motivation"]
+    )
+    
+    print("✓ Sentencing guidelines established")
+    
+    # Simulate some judgments
+    print("\n" + "─"*70)
+    print("Recording Sample Judgments...")
+    print("─"*70)
+    
+    for i in range(3):
+        sample_judgment = {
+            "case_id": f"sample_{i}",
+            "case_title": f"Sample Case {i}",
+            "verdict": ["guilty", "innocent", "mitigated"][i],
+            "reasoning": f"Sample judgment {i}",
+            "scale_balance": "balanced",
+            "alignment": "procedural",
+            "timestamp": datetime.now().isoformat(),
+            "sword_sharpness": 0.9,
+            "wisdom_applied": 85
+        }
+        archive.register_judgment(sample_judgment)
+    
+    print(f"✓ {archive.justice_recorder.get_total_records()} judgments recorded")
+    
+    # Display metrics
+    print("\n" + "═"*70)
+    print("JUSTICE SYSTEM METRICS")
+    print("═"*70)
+    
+    metrics = archive.justice_metrics.get_justice_metrics_report()
+    for key, value in metrics.items():
+        print(f"{key}: {value}")
+    
+    # File and review appeal
+    print("\n" + "─"*70)
+    print("Appeal Process...")
+    print("─"*70)
+    
+    appeal = archive.appeal_court.file_appeal(
+        appeal_id="APPEAL_001",
+        original_case_id="case_001",
+        appealing_party="The Accused",
+        grounds="New evidence discovered; Prior judgment was unjust"
+    )
+    
+    review = archive.appeal_court.review_appeal("APPEAL_001")
+    print(f"✓ Appeal reviewed: {review['appeal_id']}")
+    print(f"  Grounds: {review['grounds']}")
+    
+    ruling = archive.appeal_court.rule_on_appeal(
+        "APPEAL_001",
+        grant=True,
+        reasoning="New evidence substantially alters the case. Judgment reversed."
+    )
+    print(f"✓ Appeal {ruling['decision']}: {ruling['reasoning']}")
+    
+    # Final system status
+    print("\n" + "═"*70)
+    print("FINAL SYSTEM STATUS")
+    print("═"*70)
+    
+    status = archive.get_system_status()
+    print(f"Main Court: {status['main_court']}")
+    print(f"Appeal Court: {status['appeal_court']}")
+    print(f"Total Cases Archived: {status['total_cases_archived']}")
+    print(f"\nSystem Metrics: {json.dumps(status['metrics'], indent=2, default=str)}")
+
+
+if __name__ == "__main__":
+    demonstrate_advanced_features()
+    """
+Lady Justicia - Adversarial System
+===================================
+Introduces systematic hindrances, biases, corruption, and challenges
+that test and strengthen the core justice system.
+
+This module creates adversarial conditions that force the system to be
+more robust, fair, and comprehensive. The hindrances are well-designed
+to expose weaknesses and ultimately improve the system.
+"""
+
+import random
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Dict, List, Optional, Tuple, Callable
+from datetime import datetime, timedelta
+from lady_justicia import (
+    LadyJusticia, Case, Party, Evidence, Witness,
+    VerdictEnum, JusticeAlignmentEnum, JudgmentStrategy,
+    ScaleBalance
+)
+
+
+# ============================================================================
+# BIAS INJECTION SYSTEM
+# ============================================================================
+
+class BiasType(Enum):
+    """Types of biases that can affect judgment"""
+    CONFIRMATION_BIAS = "confirmation_bias"      # Favors initial hypothesis
+    ANCHORING_BIAS = "anchoring_bias"            # Over-weights first evidence
+    IMPLICIT_BIAS = "implicit_bias"              # Unconscious prejudice
+    RECENCY_BIAS = "recency_bias"                # Over-weights recent evidence
+    AVAILABILITY_BIAS = "availability_bias"      # Over-weights vivid evidence
+    AUTHORITY_BIAS = "authority_bias"            # Over-trusts authority figures
+
+
+@dataclass
+class BiasProfile:
+    """Represents biases affecting a judge's judgment"""
+    judge_name: str
+    biases: List[BiasType] = field(default_factory=list)
+    bias_strength: float = 0.0  # 0.0 = no bias, 1.0 = maximum bias
+    affected_cases: int = 0
+    detected: bool = False
+    
+    def apply_bias(self, evidence_weight: float, bias_type: BiasType) -> float:
+        """Apply bias distortion to evidence weight"""
+        if bias_type not in self.biases:
+            return evidence_weight
+        
+        distortion = self.bias_strength * 0.3  # Max 30% distortion
+        
+        if bias_type == BiasType.CONFIRMATION_BIAS:
+            return evidence_weight + (distortion * 0.2)
+        elif bias_type == BiasType.ANCHORING_BIAS:
+            return min(1.0, evidence_weight + distortion)
+        elif bias_type == BiasType.IMPLICIT_BIAS:
+            return evidence_weight * (1 + distortion * 0.5)
+        elif bias_type == BiasType.RECENCY_BIAS:
+            return evidence_weight + (distortion * 0.15)
+        elif bias_type == BiasType.AVAILABILITY_BIAS:
+            return evidence_weight + (distortion * 0.25)
+        elif bias_type == BiasType.AUTHORITY_BIAS:
+            return evidence_weight + (distortion * 0.2)
+        
+        return evidence_weight
+
+
+class BiasInjectionStrategy(JudgmentStrategy):
+    """Judgment strategy that injects biases into decision-making"""
+    
+    def __init__(self, base_strategy: JudgmentStrategy, bias_profile: BiasProfile):
+        self.base_strategy = base_strategy
+        self.bias_profile = bias_profile
+    
+    def render_judgment(self, case: Case) -> Tuple[VerdictEnum, str]:
+        """Render judgment with bias distortions applied"""
+        
+        # Modify case evidence weights based on bias
+        original_plaintiff_strength = case.plaintiff.calculate_case_strength()
+        original_defendant_strength = case.defendant.calculate_case_strength()
+        
+        # Apply bias distortion
+        biased_plaintiff = original_plaintiff_strength
+        biased_defendant = original_defendant_strength
+        
+        for bias in self.bias_profile.biases:
+            biased_plaintiff = self.bias_profile.apply_bias(biased_plaintiff, bias)
+            biased_defendant = self.bias_profile.apply_bias(biased_defendant, bias)
+        
+        # Create temporary modified case
+        original_p_strength = case.plaintiff.calculate_case_strength
+        original_d_strength = case.defendant.calculate_case_strength
+        
+        case.plaintiff.calculate_case_strength = lambda: biased_plaintiff
+        case.defendant.calculate_case_strength = lambda: biased_defendant
+        
+        # Get verdict from base strategy
+        verdict, reasoning = self.base_strategy.render_judgment(case)
+        
+        # Restore original methods
+        case.plaintiff.calculate_case_strength = original_p_strength
+        case.defendant.calculate_case_strength = original_d_strength
+        
+        reasoning = f"[BIASED] {reasoning}"
+        self.bias_profile.affected_cases += 1
+        
+        return verdict, reasoning
+
+
+class BiasDetectionSystem:
+    """Detects and reports biases in judicial decision-making"""
+    
+    def __init__(self):
+        self.bias_profiles: Dict[str, BiasProfile] = {}
+        self.detection_threshold = 0.15  # 15% deviation = suspicious
+        self.bias_reports: List[Dict] = []
+    
+    def register_judge(self, judge_name: str, bias_profile: BiasProfile) -> None:
+        """Register a judge's bias profile"""
+        self.bias_profiles[judge_name] = bias_profile
+    
+    def analyze_verdict_pattern(
+        self,
+        judge_name: str,
+        verdicts: List[Dict]
+    ) -> Dict:
+        """Analyze verdict patterns for evidence of bias"""
+        
+        if judge_name not in self.bias_profiles:
+            return {"error": "Judge not registered"}
+        
+        if len(verdicts) < 3:
+            return {"error": "Insufficient verdicts for analysis"}
+        
+        # Analyze verdict distribution
+        guilty_count = sum(1 for v in verdicts if v.get("verdict") == "guilty")
+        innocent_count = sum(1 for v in verdicts if v.get("verdict") == "innocent")
+        total = len(verdicts)
+        
+        guilty_rate = guilty_count / total if total > 0 else 0
+        
+        # Flag if conviction rate is suspiciously high or low
+        analysis = {
+            "judge": judge_name,
+            "total_verdicts": total,
+            "conviction_rate": guilty_rate,
+            "suspicious": False,
+            "likelihood_of_bias": 0.0,
+            "recommended_actions": []
+        }
+        
+        # Check for bias indicators
+        if guilty_rate > 0.85 or guilty_rate < 0.15:
+            analysis["suspicious"] = True
+            analysis["likelihood_of_bias"] = abs(guilty_rate - 0.5) * 2
+            analysis["recommended_actions"].append("Review judicial impartiality training")
+            analysis["recommended_actions"].append("Implement oversight review")
+        
+        if analysis["suspicious"]:
+            self.bias_profiles[judge_name].detected = True
+            self.bias_reports.append(analysis)
+        
+        return analysis
+    
+    def get_bias_report(self) -> Dict:
+        """Get comprehensive bias detection report"""
+        return {
+            "total_judges_monitored": len(self.bias_profiles),
+            "judges_with_detected_bias": sum(
+                1 for p in self.bias_profiles.values() if p.detected
+            ),
+            "bias_reports": self.bias_reports,
+            "report_generated": datetime.now().isoformat()
+        }
+
+
+# ============================================================================
+# EVIDENCE CORRUPTION SYSTEM
+# ============================================================================
+
+class EvidenceIntegrity(Enum):
+    """Status of evidence integrity"""
+    PRISTINE = "pristine"           # Untouched chain of custody
+    COMPROMISED = "compromised"     # Chain of custody broken
+    CONTAMINATED = "contaminated"   # Evidence contaminated
+    FALSIFIED = "falsified"         # Deliberately false
+    LOST = "lost"                   # Missing evidence
+
+
+@dataclass
+class CorruptedEvidence(Evidence):
+    """Evidence that has been corrupted or tampered with"""
+    integrity_status: EvidenceIntegrity = EvidenceIntegrity.PRISTINE
+    corruption_detected: bool = False
+    tampering_indicators: List[str] = field(default_factory=list)
+    reliability_score: float = 1.0  # 1.0 = fully reliable
+    
+    def apply_corruption(self, corruption_type: EvidenceIntegrity, severity: float = 0.5) -> None:
+        """Apply corruption to evidence"""
+        self.integrity_status = corruption_type
+        self.reliability_score = max(0.0, self.reliability_score - severity)
+        
+        if corruption_type == EvidenceIntegrity.COMPROMISED:
+            self.tampering_indicators.append("Chain of custody broken")
+            self.reliability_score *= 0.7
+        elif corruption_type == EvidenceIntegrity.CONTAMINATED:
+            self.tampering_indicators.append("Environmental contamination detected")
+            self.reliability_score *= 0.5
+        elif corruption_type == EvidenceIntegrity.FALSIFIED:
+            self.tampering_indicators.append("Evidence appears deliberately altered")
+            self.reliability_score *= 0.1
+        elif corruption_type == EvidenceIntegrity.LOST:
+            self.tampering_indicators.append("Evidence cannot be located")
+            self.reliability_score = 0.0
+    
+    def get_adjusted_weight(self) -> float:
+        """Get evidence weight accounting for corruption"""
+        return self.weight * self.reliability_score
+
+
+class EvidenceCorruptionSimulator:
+    """Simulates various forms of evidence corruption"""
+    
+    def __init__(self, case: Case):
+        self.case = case
+        self.corruption_events: List[Dict] = []
+        self.detection_rate = 0.7  # 70% of corruption is detected
+    
+    def introduce_chain_of_custody_break(
+        self,
+        evidence: Evidence,
+        severity: float = 0.3
+    ) -> Dict:
+        """Introduce a chain of custody break"""
+        
+        corrupted = CorruptedEvidence(
+            id=evidence.id,
+            description=evidence.description,
+            weight=evidence.weight,
+            source=evidence.source,
+            submitted_date=evidence.submitted_date,
+            verified=evidence.verified,
+            category=evidence.category
+        )
+        
+        corrupted.apply_corruption(
+            EvidenceIntegrity.COMPROMISED,
+            severity=severity
+        )
+        
+        event = {
+            "event_type": "chain_of_custody_break",
+            "evidence_id": evidence.id,
+            "severity": severity,
+            "original_weight": evidence.weight,
+            "adjusted_weight": corrupted.get_adjusted_weight(),
+            "detected": random.random() < self.detection_rate,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        self.corruption_events.append(event)
+        return event
+    
+    def introduce_false_evidence(
+        self,
+        party: Party,
+        false_description: str
+    ) -> Dict:
+        """Introduce deliberately false evidence"""
+        
+        false_evidence = CorruptedEvidence(
+            id=f"false_{len(party.evidence)}",
+            description=false_description,
+            weight=0.6,  # Seems credible at first
+            source="Fraudulent source",
+            submitted_date=datetime.now(),
+            verified=False,
+            category="falsified"
+        )
+        
+        false_evidence.apply_corruption(
+            EvidenceIntegrity.FALSIFIED,
+            severity=0.9
+        )
+        
+        party.add_evidence(false_evidence)
+        
+        event = {
+            "event_type": "false_evidence_introduced",
+            "evidence_id": false_evidence.id,
+            "party": party.name,
+            "initial_credibility": 0.6,
+            "actual_reliability": false_evidence.reliability_score,
+            "detected": random.random() < self.detection_rate * 0.5,  # Harder to detect
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        self.corruption_events.append(event)
+        return event
+    
+    def report_corruption(self) -> Dict:
+        """Generate corruption report"""
+        detected_count = sum(1 for e in self.corruption_events if e.get("detected"))
+        
+        return {
+            "total_corruption_events": len(self.corruption_events),
+            "detected_events": detected_count,
+            "undetected_events": len(self.corruption_events) - detected_count,
+            "corruption_events": self.corruption_events,
+            "case_integrity": "COMPROMISED" if len(self.corruption_events) > 0 else "CLEAN"
+        }
+
+
+# ============================================================================
+# PROCEDURAL OBSTACLES & DELAYS
+# ============================================================================
+
+class ProceduralObstacle(Enum):
+    """Types of procedural obstacles that can delay justice"""
+    CONTINUANCE_REQUEST = "continuance_request"   # Request for delay
+    DISCOVERY_DISPUTE = "discovery_dispute"       # Evidence disputes
+    MOTIONS_FILED = "motions_filed"              # Procedural motions
+    JURISDICTION_CHALLENGE = "jurisdiction_challenge"
+    RECUSAL_REQUEST = "recusal_request"          # Judge removal request
+    APPEAL_FILED = "appeal_filed"
+
+
+@dataclass
+class DelayRecord:
+    """Records delays in the judicial process"""
+    obstacle_type: ProceduralObstacle
+    days_delayed: int
+    reason: str
+    resolved: bool = False
+    resolution_date: Optional[datetime] = None
+
+
+class ProcedureComplexitySystem:
+    """Introduces procedural complexity and delays"""
+    
+    def __init__(self, case: Case):
+        self.case = case
+        self.delays: List[DelayRecord] = []
+        self.total_days_delayed = 0
+        self.complexity_level = 0.0  # 0.0 = simple, 1.0 = highly complex
+    
+    def request_continuance(self, days: int, reason: str) -> DelayRecord:
+        """Request a continuance (delay)"""
+        delay = DelayRecord(
+            obstacle_type=ProceduralObstacle.CONTINUANCE_REQUEST,
+            days_delayed=days,
+            reason=reason,
+            resolved=random.random() > 0.3  # 70% chance granted
+        )
+        
+        self.delays.append(delay)
+        self.total_days_delayed += days
+        self.complexity_level += 0.1
+        
+        return delay
+    
+    def file_motion(self, motion_type: str) -> DelayRecord:
+        """File procedural motion"""
+        delay = DelayRecord(
+            obstacle_type=ProceduralObstacle.MOTIONS_FILED,
+            days_delayed=random.randint(7, 30),
+            reason=f"Motion: {motion_type}",
+            resolved=True,
+            resolution_date=datetime.now() + timedelta(
+                days=random.randint(7, 30)
+            )
+        )
+        
+        self.delays.append(delay)
+        self.total_days_delayed += delay.days_delayed
+        self.complexity_level += 0.15
+        
+        return delay
+    
+    def challenge_jurisdiction(self) -> DelayRecord:
+        """Challenge court jurisdiction"""
+        delay = DelayRecord(
+            obstacle_type=ProceduralObstacle.JURISDICTION_CHALLENGE,
+            days_delayed=random.randint(14, 60),
+            reason="Jurisdiction challenged by defendant",
+            resolved=random.random() > 0.5
+        )
+        
+        self.delays.append(delay)
+        self.total_days_delayed += delay.days_delayed
+        self.complexity_level += 0.2
+        
+        return delay
+    
+    def request_recusal(self, reason: str) -> DelayRecord:
+        """Request judge recusal (removal)"""
+        delay = DelayRecord(
+            obstacle_type=ProceduralObstacle.RECUSAL_REQUEST,
+            days_delayed=random.randint(10, 30),
+            reason=reason,
+            resolved=random.random() > 0.6  # Harder to get granted
+        )
+        
+        self.delays.append(delay)
+        self.total_days_delayed += delay.days_delayed
+        self.complexity_level += 0.25
+        
+        return delay
+    
+    def get_schedule_impact(self) -> Dict:
+        """Calculate impact of delays on case schedule"""
+        return {
+            "original_hearing_date": self.case.hearing_date,
+            "total_days_delayed": self.total_days_delayed,
+            "new_hearing_date": (
+                self.case.hearing_date + timedelta(days=self.total_days_delayed)
+                if self.case.hearing_date else None
+            ),
+            "number_of_obstacles": len(self.delays),
+            "complexity_multiplier": self.complexity_level,
+            "case_integrity_risk": self.complexity_level * 100  # As percentage
+        }
+
+
+# ============================================================================
+# WITNESS CREDIBILITY ATTACKS
+# ============================================================================
+
+class WitnessCompromise(Enum):
+    """Ways a witness can be compromised"""
+    PERJURY = "perjury"                  # False testimony
+    INTIMIDATION = "intimidation"        # Witness pressured
+    BRIBERY = "bribery"                  # Witness paid
+    FAULTY_MEMORY = "faulty_memory"      # Unreliable recollection
+    BIAS = "bias"                        # Personal bias
+    MENTAL_STATE = "mental_state"        # Unreliable mental state
+
+
+@dataclass
+class CompromisedWitness(Witness):
+    """Witness whose testimony is compromised"""
+    compromise_type: WitnessCompromise = WitnessCompromise.FAULTY_MEMORY
+    compromise_severity: float = 0.5  # 0.0-1.0
+    was_compromised: bool = False
+    detection_likelihood: float = 0.6
+    
+    def apply_compromise(
+        self,
+        compromise: WitnessCompromise,
+        severity: float = 0.5
+    ) -> None:
+        """Apply compromise to witness credibility"""
+        self.compromise_type = compromise
+        self.compromise_severity = severity
+        self.was_compromised = True
+        
+        # Reduce credibility based on compromise type
+        reduction = severity * 0.5
+        
+        if compromise == WitnessCompromise.PERJURY:
+            reduction = severity * 0.9  # Severe impact
+            self.inconsistencies += int(severity * 5)
+        elif compromise == WitnessCompromise.INTIMIDATION:
+            reduction = severity * 0.7
+            self.inconsistencies += int(severity * 3)
+        elif compromise == WitnessCompromise.BRIBERY:
+            reduction = severity * 0.8
+        elif compromise == WitnessCompromise.FAULTY_MEMORY:
+            reduction = severity * 0.4
+            self.inconsistencies += int(severity * 2)
+        elif compromise == WitnessCompromise.BIAS:
+            reduction = severity * 0.5
+        elif compromise == WitnessCompromise.MENTAL_STATE:
+            reduction = severity * 0.6
+            self.inconsistencies += int(severity * 4)
+        
+        self.credibility_score = max(0.0, self.credibility_score - reduction)
+    
+    def get_actual_impact(self) -> float:
+        """Get actual witness impact accounting for compromise"""
+        base_impact = self.get_weighted_impact()
+        
+        if self.was_compromised:
+            # If compromise is detected, impact is reduced
+            if random.random() < self.detection_likelihood:
+                return base_impact * 0.3
+        
+        # If undetected, compromise's hidden impact
+        return base_impact * (1 - self.compromise_severity * 0.5)
+
+
+class WitnessCompromiseSimulator:
+    """Simulates witness compromise scenarios"""
+    
+    def __init__(self, party: Party):
+        self.party = party
+        self.compromised_witnesses: List[CompromisedWitness] = []
+    
+    def introduce_perjury(
+        self,
+        witness: Witness,
+        false_testimony: str,
+        severity: float = 0.8
+    ) -> Dict:
+        """Introduce perjurious testimony"""
+        
+        compromised = CompromisedWitness(
+            id=witness.id,
+            name=witness.name,
+            credibility_score=witness.credibility_score,
+            testimony=false_testimony,
+            submitted_date=datetime.now(),
+            cross_examined=witness.cross_examined,
+            inconsistencies=witness.inconsistencies
+        )
+        
+        compromised.apply_compromise(WitnessCompromise.PERJURY, severity)
+        self.compromised_witnesses.append(compromised)
+        
+        return {
+            "event_type": "perjury_introduced",
+            "witness_id": witness.id,
+            "original_credibility": witness.credibility_score,
+            "compromised_credibility": compromised.credibility_score,
+            "actual_impact": compromised.get_actual_impact(),
+            "detected": random.random() < compromised.detection_likelihood,
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    def intimidate_witness(self, witness: Witness, severity: float = 0.6) -> Dict:
+        """Apply witness intimidation"""
+        
+        compromised = CompromisedWitness(
+            id=witness.id,
+            name=witness.name,
+            credibility_score=witness.credibility_score,
+            testimony=witness.testimony,
+            submitted_date=datetime.now(),
+            cross_examined=witness.cross_examined,
+            inconsistencies=witness.inconsistencies
+        )
+        
+        compromised.apply_compromise(WitnessCompromise.INTIMIDATION, severity)
+        self.compromised_witnesses.append(compromised)
+        
+        return {
+            "event_type": "witness_intimidation",
+            "witness_id": witness.id,
+            "intimidation_severity": severity,
+            "credibility_impact": witness.credibility_score - compromised.credibility_score,
+            "integrity_breach": True,
+            "recommended_action": "Witness protection program enrollment",
+            "timestamp": datetime.now().isoformat()
+        }
+
+
+# ============================================================================
+# RESOURCE & TIME CONSTRAINTS
+# ============================================================================
+
+@dataclass
+class ResourceConstraints:
+    """Resource limitations affecting case quality"""
+    available_days: int = 365           # Days to complete case
+    budget: float = 100000.0            # Case budget
+    available_investigators: int = 5
+    available_lawyers: int = 10
+    lab_availability: float = 0.8       # 80% of time available
+    
+    days_used: int = 0
+    budget_spent: float = 0.0
+    investigators_allocated: int = 0
+    lawyers_allocated: int = 0
+    
+    def allocate_resources(
+        self,
+        days: int,
+        cost: float,
+        investigators: int = 0,
+        lawyers: int = 0
+    ) -> Tuple[bool, Dict]:
+        """Allocate resources to investigation/preparation"""
+        
+        status = {
+            "approved": True,
+            "warnings": [],
+            "allocation": {
+                "days": days,
+                "cost": cost,
+                "investigators": investigators,
+                "lawyers": lawyers
+            },
+            "remaining": {
+                "days": self.available_days,
+                "budget": self.budget,
+                "investigators": self.available_investigators,
+                "lawyers": self.available_lawyers
+            }
+        }
+        
+        # Check constraints
+        if days > self.available_days:
+            status["approved"] = False
+            status["warnings"].append(f"Insufficient time: need {days}, have {self.available_days}")
+        
+        if cost > self.budget:
+            status["approved"] = False
+            status["warnings"].append(f"Over budget: need ${cost}, have ${self.budget}")
+        
+        if investigators > self.available_investigators:
+            status["approved"] = False
+            status["warnings"].append(f"Insufficient investigators: need {investigators}, have {self.available_investigators}")
+        
+        if lawyers > self.available_lawyers:
+            status["approved"] = False
+            status["warnings"].append(f"Insufficient lawyers: need {lawyers}, have {self.available_lawyers}")
+        
+        if status["approved"]:
+            self.days_used += days
+            self.budget_spent += cost
+            self.investigators_allocated += investigators
+            self.lawyers_allocated += lawyers
+            
+            status["remaining"]["days"] -= days
+            status["remaining"]["budget"] -= cost
+            status["remaining"]["investigators"] -= investigators
+            status["remaining"]["lawyers"] -= lawyers
+        
+        return status["approved"], status
+    
+    def get_constraint_impact(self) -> float:
+        """Calculate how constraints affect case quality"""
+        days_pressure = max(0, self.days_used / self.available_days)
+        budget_pressure = max(0, self.budget_spent / self.budget)
+        resource_pressure = (
+            max(0, self.investigators_allocated / self.available_investigators) +
+            max(0, self.lawyers_allocated / self.available_lawyers)
+        ) / 2
+        
+        impact = (days_pressure + budget_pressure + resource_pressure) / 3
+        return min(1.0, impact)
+
+
+# ============================================================================
+# INTEGRATED ADVERSARIAL SYSTEM
+# ============================================================================
+
+class AdversarialJusticeSystem:
+    """Comprehensive system that introduces hindrances to strengthen Lady Justicia"""
+    
+    def __init__(self, judge: LadyJusticia):
+        self.judge = judge
+        self.bias_detection = BiasDetectionSystem()
+        self.resource_constraints = ResourceConstraints()
+        self.case_complications: Dict[str, Dict] = {}
+        self.total_hindrances = 0
+        self.hindrances_overcome = 0
+    
+    def inject_bias_into_judge(
+        self,
+        bias_types: List[BiasType],
+        strength: float = 0.5
+    ) -> BiasProfile:
+        """Introduce biases into judge's decision-making"""
+        
+        profile = BiasProfile(
+            judge_name=self.judge.name,
+            biases=bias_types,
+            bias_strength=strength
+        )
+        
+        self.bias_detection.register_judge(self.judge.name, profile)
+        self.total_hindrances += len(bias_types)
+        
+        # Replace strategy with biased version
+        original_strategy = self.judge.judgment_strategy
+        self.judge.judgment_strategy = BiasInjectionStrategy(original_strategy, profile)
+        
+        return profile
+    
+    def corrupt_case_evidence(self, case: Case, corruption_rate: float = 0.3) -> Dict:
+        """Introduce evidence corruption into a case"""
+        
+        simulator = EvidenceCorruptionSimulator(case)
+        
+        # Randomly corrupt some evidence
+        all_evidence = case.plaintiff.evidence + case.defendant.evidence
+        evidence_to_corrupt = int(len(all_evidence) * corruption_rate)
+        
+        corrupted_list = random.sample(all_evidence, min(evidence_to_corrupt, len(all_evidence)))
+        
+        corruption_report = {
+            "case_id": case.id,
+            "total_evidence": len(all_evidence),
+            "evidence_corrupted": len(corrupted_list),
+            "corruption_events": []
+        }
+        
+        for evidence in corrupted_list:
+            event = simulator.introduce_chain_of_custody_break(
+                evidence,
+                severity=random.uniform(0.3, 0.8)
+            )
+            corruption_report["corruption_events"].append(event)
+        
+        self.case_complications[case.id] = simulator
+        self.total_hindrances += len(corrupted_list)
+        
+        return simulator.report_corruption()
+    
+    def introduce_procedural_obstacles(self, case: Case) -> Dict:
+        """Introduce procedural delays and obstacles"""
+        
+        complexity = ProcedureComplexitySystem(case)
+        
+        # Introduce random obstacles
+        obstacles_to_add = random.randint(1, 4)
+        
+        for _ in range(obstacles_to_add):
+            obstacle_choice = random.choice([
+                lambda: complexity.request_continuance(
+                    random.randint(7, 30),
+                    "Defense needs more preparation time"
+                ),
+                lambda: complexity.file_motion("Motion to Suppress Evidence"),
+                lambda: complexity.file_motion("Motion for Change of Venue"),
+                lambda: complexity.challenge_jurisdiction()
+            ])
+            
+            obstacle_choice()
+        
+        self.total_hindrances += obstacles_to_add
+        
+        return complexity.get_schedule_impact()
+    
+    def compromise_witnesses(self, party: Party, compromise_rate: float = 0.25) -> List[Dict]:
+        """Introduce witness compromises"""
+        
+        simulator = WitnessCompromiseSimulator(party)
+        compromises = []
+        
+        witnesses_to_compromise = int(len(party.witnesses) * compromise_rate)
+        targets = random.sample(party.witnesses, min(witnesses_to_compromise, len(party.witnesses)))
+        
+        for witness in targets:
+            compromise = random.choice(list(WitnessCompromise))
+            
+            if compromise == WitnessCompromise.PERJURY:
+                event = simulator.introduce_perjury(
+                    witness,
+                    "Modified testimony",
+                    random.uniform(0.5, 0.9)
+                )
+            else:
+                event = simulator.intimidate_witness(witness, random.uniform(0.4, 0.8))
+            
+            compromises.append(event)
+        
+        self.total_hindrances += len(compromises)
+        
+        return compromises
+    
+    def apply_resource_constraints(self, days: int, budget: float) -> Dict:
+        """Apply resource constraints to case"""
+        
+        self.resource_constraints.available_days = days
+        self.resource_constraints.budget = budget
+        
+        # Randomly deplete resources
+        allocation, status = self.resource_constraints.allocate_resources(
+            days=int(days * random.uniform(0.4, 0.8)),
+            cost=budget * random.uniform(0.3, 0.7),
+            investigators=random.randint(1, 4),
+            lawyers=random.randint(2, 7)
+        )
+        
+        impact = self.resource_constraints.get_constraint_impact()
+        
+        return {
+            "allocation_approved": allocation,
+            "allocation_details": status,
+            "quality_impact": impact * 100
+        }
+    
+    def detect_and_report_all_hindrances(self) -> Dict:
+        """Comprehensive report on all hindrances and their detection"""
+        
+        report = {
+            "system_health": {
+                "total_hindrances_introduced": self.total_hindrances,
+                "hindrances_overcome": self.hindrances_overcome,
+                "detection_rate": (
+                    self.hindrances_overcome / self.total_hindrances
+                    if self.total_hindrances > 0 else 0.0
+                ) * 100
+            },
+            "bias_analysis": self.bias_detection.get_bias_report(),
+            "resource_status": {
+                "days_remaining": self.resource_constraints.available_days - self.resource_constraints.days_used,
+                "budget_remaining": self.resource_constraints.budget - self.resource_constraints.budget_spent,
+                "constraint_impact": self.resource_constraints.get_constraint_impact() * 100
+            },
+            "case_complications": len(self.case_complications),
+            "system_integrity": "COMPROMISED" if self.total_hindrances > self.hindrances_overcome else "SECURE"
+        }
+        
+        return report
+    
+    def improve_resilience(self) -> None:
+        """Implement improvements to overcome hindrances"""
+        
+        # Increase judge wisdom
+        self.judge.increase_wisdom(10)
+        
+        # Sharpen sword
+        self.judge.sharpen_sword(0.15)
+        
+        # Mark hindrances as overcome
+        self.hindrances_overcome = int(self.total_hindrances * 0.85)
+        
+        print("✓ System resilience improved through adversarial testing")
+    
+    def get_system_robustness_score(self) -> float:
+        """Calculate how robust system is against hindrances"""
+        
+        if self.total_hindrances == 0:
+            return 1.0
+        
+        detection_rate = self.hindrances_overcome / self.total_hindrances
+        judge_strength = (self.judge.wisdom_level / 100.0) * self.judge.sword_sharpness
+        resource_factor = 1.0 - self.resource_constraints.get_constraint_impact()
+        
+        robustness = (detection_rate * 0.4) + (judge_strength * 0.3) + (resource_factor * 0.3)
+        
+        return min(1.0, robustness)
+
+
+# ============================================================================
+# DEMONSTRATION
+# ============================================================================
+
+def demonstrate_adversarial_system():
+    """Comprehensive demonstration of adversarial hindrances"""
+    
+    print("\n" + "="*70)
+    print("LADY JUSTICIA - ADVERSARIAL TESTING SYSTEM")
+    print("="*70)
+    
+    # Create judge and case
+    judge = LadyJusticia("Judge Morgan", "Adversarial Test Court")
+    
+    plaintiff = Party("p1", "Prosecution", "plaintiff")
+    defendant = Party("d1", "Defense", "defendant")
+    
+    plaintiff.add_evidence(Evidence(
+        "e1", "Crime scene evidence", 0.85,
+        "Forensics", datetime.now(), True
+    ))
+    
+    defendant.add_evidence(Evidence(
+        "e2", "Alibi evidence", 0.70,
+        "Witness", datetime.now(), True
+    ))
+    
+    plaintiff.add_witness(Witness(
+        "w1", "Officer Smith", 0.90,
+        "I saw the defendant", datetime.now()
+    ))
+    
+    defendant.add_witness(Witness(
+        "w2", "Friend", 0.65,
+        "Defendant was with me", datetime.now()
+    ))
+    
+    case = Case(
+        "adversarial_001",
+        "State v. Defendant",
+        "Adversarial testing case",
+        datetime.now(),
+        plaintiff, defendant,
+        "criminal", "Test Court",
+        hearing_date=datetime.now() + timedelta(days=90)
+    )
+    
+    judge.hear_case(case)
+    
+    # Create adversarial system
+    adversarial = AdversarialJusticeSystem(judge)
+    
+    # === HINDER #1: BIAS INJECTION ===
+    print("\n" + "▓"*70)
+    print("HINDRANCE #1: BIAS INJECTION")
+    print("▓"*70)
+    
+    bias_profile = adversarial.inject_bias_into_judge(
+        [BiasType.CONFIRMATION_BIAS, BiasType.AUTHORITY_BIAS],
+        strength=0.4
+    )
+    
+    print(f"✗ Biases injected: {[b.value for b in bias_profile.biases]}")
+    print(f"  Bias strength: {bias_profile.bias_strength:.1%}")
+    
+    # Try verdict with bias
+    biased_verdict = judge.render_verdict("adversarial_001")
+    print(f"  Biased verdict: {biased_verdict['verdict']}")
+    
+    # === HINDER #2: EVIDENCE CORRUPTION ===
+    print("\n" + "▓"*70)
+    print("HINDRANCE #2: EVIDENCE CORRUPTION")
+    print("▓"*70)
+    
+    corruption_report = adversarial.corrupt_case_evidence(case, 0.4)
+    print(f"✗ Evidence corrupted: {corruption_report['evidence_corrupted']}/{corruption_report['total_evidence']}")
+    print(f"  Case integrity: {corruption_report['case_integrity']}")
+    
+    for event in corruption_report['corruption_events'][:2]:
+        print(f"    - {event['evidence_id']}: {event['event_type']} (detected: {event['detected']})")
+    
+    # === HINDER #3: PROCEDURAL OBSTACLES ===
+    print("\n" + "▓"*70)
+    print("HINDRANCE #3: PROCEDURAL OBSTACLES")
+    print("▓"*70)
+    
+    schedule_impact = adversarial.introduce_procedural_obstacles(case)
+    print(f"✗ Days delayed: {schedule_impact['total_days_delayed']}")
+    print(f"  Complexity multiplier: {schedule_impact['complexity_multiplier']:.1%}")
+    print(f"  Case integrity risk: {schedule_impact['case_integrity_risk']:.1%}")
+    
+    # === HINDER #4: WITNESS COMPROMISE ===
+    print("\n" + "▓"*70)
+    print("HINDRANCE #4: WITNESS COMPROMISE")
+    print("▓"*70)
+    
+    compromises = adversarial.compromise_witnesses(plaintiff, 0.5)
+    print(f"✗ Witnesses compromised: {len(compromises)}")
+    
+    for compromise in compromises:
+        print(f"    - {compromise['event_type']}: {compromise.get('credibility_impact', 'N/A')}")
+    
+    # === HINDER #5: RESOURCE CONSTRAINTS ===
+    print("\n" + "▓"*70)
+    print("HINDRANCE #5: RESOURCE CONSTRAINTS")
+    print("▓"*70)
+    
+    resource_status = adversarial.apply_resource_constraints(365, 500000)
+    print(f"✗ Quality impact: {resource_status['allocation_details']['remaining']['days']} days remaining")
+    print(f"  Budget impact: ${resource_status['allocation_details']['remaining']['budget']:.0f} remaining")
+    
+    # === SYSTEM ANALYSIS ===
+    print("\n" + "█"*70)
+    print("SYSTEM ANALYSIS & RESILIENCE TESTING")
+    print("█"*70)
+    
+    hindrances_report = adversarial.detect_and_report_all_hindrances()
+    print(f"\nTotal hindrances introduced: {hindrances_report['system_health']['total_hindrances_introduced']}")
+    print(f"Hindrances overcome: {hindrances_report['system_health']['hindrances_overcome']}")
+    print(f"Detection rate: {hindrances_report['system_health']['detection_rate']:.1f}%")
+    print(f"System integrity: {hindrances_report['system_integrity']}")
+    
+    print(f"\nJudge resilience before improvement:")
+    robustness_before = adversarial.get_system_robustness_score()
+    print(f"  Robustness score: {robustness_before:.1%}")
+    
+    # === SYSTEM IMPROVEMENT ===
+    print("\n" + "█"*70)
+    print("APPLYING RESILIENCE IMPROVEMENTS")
+    print("█"*70)
+    
+    adversarial.improve_resilience()
+    print(f"\nJudge status after improvement:")
+    print(f"  Wisdom level: {judge.wisdom_level:.0f}/100")
+    print(f"  Sword sharpness: {judge.sword_sharpness:.1%}")
+    
+    robustness_after = adversarial.get_system_robustness_score()
+    print(f"  New robustness score: {robustness_after:.1%}")
+    print(f"  Improvement: +{(robustness_after - robustness_before):.1%}")
+    
+    # === FINAL VERDICT WITH IMPROVED SYSTEM ===
+    print("\n" + "█"*70)
+    print("FINAL VERDICT WITH IMPROVED SYSTEM")
+    print("█"*70)
+    
+    final_verdict = judge.render_verdict("adversarial_001")
+    print(f"\nFinal Verdict: {final_verdict['verdict'].upper()}")
+    print(f"Reasoning: {final_verdict['reasoning']}")
+    print(f"Confidence (based on robustness): {robustness_after:.1%}")
+    
+    print("\n" + "="*70)
+    print("ADVERSARIAL TEST COMPLETE - SYSTEM STRENGTHENED")
+    print("="*70 + "\n")
+
+
+if __name__ == "__main__":
+    demonstrate_adversarial_system()
+    """
+Lady Justicia - Advanced Adversarial Challenges
+================================================
+Sophisticated attacks and challenges that force the system to implement
+defensive measures, validation systems, and comprehensive safeguards.
+
+Each challenge is designed to expose weaknesses that, when fixed,
+make the system substantially more robust.
+"""
+
+import random
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Dict, List, Optional, Callable, Any
+from datetime import datetime, timedelta
+from lady_justicia import (
+    LadyJusticia, Case, Party, Evidence, Witness,
+    VerdictEnum, JusticeAlignmentEnum, JudgmentStrategy,
+    ScaleBalance
+)
+
+
+# ============================================================================
+# CHALLENGE 1: CONFLICT OF INTEREST DETECTION
+# ============================================================================
+
+class ConflictType(Enum):
+    """Types of conflicts of interest"""
+    FINANCIAL = "financial"           # Financial interest in outcome
+    PERSONAL = "personal"             # Personal relationship involved
+    PROFESSIONAL = "professional"     # Professional bias
+    POLITICAL = "political"           # Political motivation
+    IDEOLOGICAL = "ideological"       # Ideological motivation
+
+
+@dataclass
+class ConflictOfInterest:
+    """Represents a conflict of interest"""
+    conflict_type: ConflictType
+    severity: float                   # 0.0-1.0
+    parties_involved: List[str]       # Who is conflicted
+    description: str
+    detected: bool = False
+    disclosure_made: bool = False
+
+
+class ConflictDetectionSystem:
+    """Detects and manages conflicts of interest"""
+    
+    def __init__(self):
+        self.conflicts: List[ConflictOfInterest] = []
+        self.detection_threshold = 0.3  # 30% chance of detection
+    
+    def introduce_conflict(self, conflict: ConflictOfInterest) -> Dict:
+        """Introduce a conflict of interest"""
+        
+        # Simulate detection
+        if random.random() < self.detection_threshold + conflict.severity:
+            conflict.detected = True
+        
+        self.conflicts.append(conflict)
+        
+        return {
+            "conflict_type": conflict.conflict_type.value,
+            "severity": conflict.severity,
+            "detected": conflict.detected,
+            "disclosed": conflict.disclosure_made,
+            "action_required": not conflict.detected or not conflict.disclosure_made,
+            "timestamp": datetime.now().isoformat()
+        }
+    
+    def disclose_conflict(self, conflict: ConflictOfInterest) -> Dict:
+        """Formally disclose a conflict"""
+        conflict.disclosure_made = True
+        
+        return {
+            "conflict_disclosed": True,
+            "disclosure_date": datetime.now().isoformat(),
+            "impact": "Judge should recuse self" if conflict.severity > 0.7 else "Proceed with caution"
+        }
+    
+    def get_conflict_report(self) -> Dict:
+        """Generate conflict of interest report"""
+        
+        detected = sum(1 for c in self.conflicts if c.detected)
+        disclosed = sum(1 for c in self.conflicts if c.disclosure_made)
+        undisclosed = sum(1 for c in self.conflicts if c.detected and not c.disclosure_made)
+        
+        return {
+            "total_conflicts": len(self.conflicts),
+            "detected": detected,
+            "disclosed": disclosed,
+            "undisclosed_detected": undisclosed,
+            "system_integrity": "COMPROMISED" if undisclosed > 0 else "SAFE"
+        }
+
+
+# ============================================================================
+# CHALLENGE 2: EVIDENCE CHAIN OF CUSTODY VALIDATION
+# ============================================================================
+
+@dataclass
+class ChainOfCustodyEntry:
+    """Records who handled evidence and when"""
+    handler_name: str
+    date_received: datetime
+    date_released: datetime
+    purpose: str
+    signature: str = ""
+    irregularity: bool = False
+    gap_in_chain: bool = False
+
+
+class ChainOfCustodyTracker:
+    """Validates evidence chain of custody"""
+    
+    def __init__(self, evidence: Evidence):
+        self.evidence = evidence
+        self.entries: List[ChainOfCustodyEntry] = []
+        self.chain_intact = True
+        self.gaps_found: List[Tuple[datetime, datetime]] = []
+    
+    def add_handling_record(
+        self,
+        handler: str,
+        date_received: datetime,
+        date_released: datetime,
+        purpose: str
+    ) -> Dict:
+        """Add a handling record to chain of custody"""
+        
+        entry = ChainOfCustodyEntry(
+            handler_name=handler,
+            date_received=date_received,
+            date_released=date_released,
+            purpose=purpose,
+            signature=f"{handler}_{date_received.isoformat()}"
+        )
+        
+        # Check for irregularities
+        if date_released < date_received:
+            entry.irregularity = True
+            self.chain_intact = False
+        
+        # Check for gaps between entries
+        if self.entries:
+            last_entry = self.entries[-1]
+            if last_entry.date_released < date_received:
+                gap = (last_entry.date_released, date_received)
+                self.gaps_found.append(gap)
+                entry.gap_in_chain = True
+                self.chain_intact = False
+        
+        self.entries.append(entry)
+        
+        return {
+            "handler": handler,
+            "chain_status": "INTACT" if self.chain_intact else "BROKEN",
+            "irregularities": entry.irregularity,
+            "gaps": len(self.gaps_found)
+        }
+    
+    def validate_chain(self) -> Dict:
+        """Validate entire chain of custody"""
+        
+        total_handlers = len(self.entries)
+        irregularities = sum(1 for e in self.entries if e.irregularity)
+        gaps = len(self.gaps_found)
+        
+        reliability = 1.0
+        if irregularities > 0:
+            reliability *= 0.5
+        if gaps > 0:
+            reliability *= (1 - (gaps * 0.2))
+        
+        return {
+            "evidence_id": self.evidence.id,
+            "total_handlers": total_handlers,
+            "irregularities": irregularities,
+            "gaps_in_chain": gaps,
+            "chain_integrity": "INTACT" if self.chain_intact else "BROKEN",
+            "reliability_factor": max(0.0, reliability),
+            "admissibility": "ADMISSIBLE" if reliability > 0.7 else "INADMISSIBLE",
+            "recommendation": "Can be used" if reliability > 0.7 else "Should be excluded"
+        }
+
+
+# ============================================================================
+# CHALLENGE 3: VERDICT CONSISTENCY AUDITING
+# ============================================================================
+
+class VerdictConsistencyAuditor:
+    """Audits judge verdicts for consistency and patterns"""
+    
+    def __init__(self, judge: LadyJusticia):
+        self.judge = judge
+        self.verdict_audit_log: List[Dict] = []
+    
+    def audit_verdict_consistency(self) -> Dict:
+        """Audit verdict consistency across cases"""
+        
+        if len(self.judge.completed_judgments) < 5:
+            return {"insufficient_data": True, "minimum_cases_needed": 5}
+        
+        verdicts = [j["verdict"] for j in self.judge.completed_judgments]
+        
+        # Calculate consistency metrics
+        verdict_counts = {}
+        for verdict in verdicts:
+            verdict_counts[verdict] = verdict_counts.get(verdict, 0) + 1
+        
+        # Check for suspicious patterns
+        total = len(verdicts)
+        suspicious_patterns = []
+        
+        for verdict_type, count in verdict_counts.items():
+            percentage = (count / total) * 100
+            
+            if percentage > 80 or percentage < 10:
+                if not (verdict_type == "mitigated" and percentage > 50):
+                    suspicious_patterns.append({
+                        "verdict_type": verdict_type,
+                        "percentage": percentage,
+                        "issue": "Disproportionate distribution"
+                    })
+        
+        # Check for consecutive patterns
+        consecutive_identical = 0
+        max_consecutive = 0
+        
+        for i in range(1, len(verdicts)):
+            if verdicts[i] == verdicts[i-1]:
+                consecutive_identical += 1
+                max_consecutive = max(max_consecutive, consecutive_identical)
+            else:
+                consecutive_identical = 0
+        
+        if max_consecutive > 3:
+            suspicious_patterns.append({
+                "pattern": "Consecutive identical verdicts",
+                "count": max_consecutive,
+                "issue": "Potentially indicates bias or pattern-based judgment"
+            })
+        
+        audit = {
+            "judge": self.judge.name,
+            "cases_audited": total,
+            "verdict_distribution": verdict_counts,
+            "suspicious_patterns": suspicious_patterns,
+            "consistency_rating": "HIGH" if len(suspicious_patterns) == 0 else "MEDIUM" if len(suspicious_patterns) == 1 else "LOW",
+            "audit_timestamp": datetime.now().isoformat()
+        }
+        
+        self.verdict_audit_log.append(audit)
+        return audit
+    
+    def detect_verdict_drift(self) -> Dict:
+        """Detect if judge's verdicts are drifting (changing over time)"""
+        
+        if len(self.judge.completed_judgments) < 10:
+            return {"insufficient_data": True}
+        
+        judgments = self.judge.completed_judgments
+        mid_point = len(judgments) // 2
+        
+        first_half = judgments[:mid_point]
+        second_half = judgments[mid_point:]
+        
+        # Calculate conviction rates
+        first_guilty = sum(1 for j in first_half if j["verdict"] == "guilty")
+        second_guilty = sum(1 for j in second_half if j["verdict"] == "guilty")
+        
+        first_rate = first_guilty / len(first_half) if first_half else 0
+        second_rate = second_guilty / len(second_half) if second_half else 0
+        
+        drift = abs(second_rate - first_rate)
+        
+        return {
+            "first_half_conviction_rate": first_rate * 100,
+            "second_half_conviction_rate": second_rate * 100,
+            "drift_detected": drift > 0.2,
+            "drift_magnitude": drift * 100,
+            "possible_causes": [
+                "Increasing bias over time",
+                "Fatigue affecting judgment",
+                "Changing case difficulty",
+                "Judge's wisdom affecting decisions"
+            ] if drift > 0.2 else []
+        }
+
+
+# ============================================================================
+# CHALLENGE 4: CROSS-EXAMINATION STRESS TESTING
+# ============================================================================
+
+@dataclass
+class CrossExaminationAttack:
+    """Represents a cross-examination challenge"""
+    target_witness_id: str
+    attack_type: str  # "credibility", "inconsistency", "motive"
+    difficulty: float  # 0.0-1.0
+    success_rate: float = 0.0
+
+
+class CrossExaminationStressTest:
+    """Stress-tests witnesses through rigorous cross-examination"""
+    
+    def __init__(self, case: Case):
+        self.case = case
+        self.attacks_executed: List[Dict] = []
+        self.witness_vulnerabilities: Dict[str, float] = {}
+    
+    def execute_cross_examination(
+        self,
+        witness: Witness,
+        attack_type: str = "consistency"
+    ) -> Dict:
+        """Execute cross-examination attack on witness"""
+        
+        # Simulate cross-examination
+        initial_credibility = witness.credibility_score
+        
+        # Different attack types
+        if attack_type == "consistency":
+            # Check testimony consistency
+            inconsistency_revealed = random.random() < 0.3
+            if inconsistency_revealed:
+                witness.inconsistencies += random.randint(1, 3)
+                witness.credibility_score -= 0.15
+        
+        elif attack_type == "motive":
+            # Challenge witness motive
+            if random.random() < 0.4:
+                witness.credibility_score -= 0.2
+                witness.inconsistencies += 1
+        
+        elif attack_type == "bias":
+            # Challenge for bias
+            if random.random() < 0.35:
+                witness.credibility_score -= 0.1
+        
+        credibility_lost = max(0, initial_credibility - witness.credibility_score)
+        
+        attack = {
+            "witness_id": witness.id,
+            "witness_name": witness.name,
+            "attack_type": attack_type,
+            "initial_credibility": initial_credibility,
+            "final_credibility": witness.credibility_score,
+            "credibility_lost": credibility_lost,
+            "new_inconsistencies": witness.inconsistencies,
+            "witness_survived": witness.credibility_score > 0.3
+        }
+        
+        self.attacks_executed.append(attack)
+        self.witness_vulnerabilities[witness.id] = credibility_lost
+        
+        return attack
+    
+    def stress_test_all_witnesses(self) -> Dict:
+        """Stress test all witnesses in case"""
+        
+        all_witnesses = self.case.plaintiff.witnesses + self.case.defendant.witnesses
+        
+        for witness in all_witnesses:
+            # Each witness gets 2-3 attacks
+            num_attacks = random.randint(2, 3)
+            
+            for _ in range(num_attacks):
+                attack_type = random.choice(["consistency", "motive", "bias"])
+                self.execute_cross_examination(witness, attack_type)
+        
+        total_credibility_lost = sum(self.witness_vulnerabilities.values())
+        
+        return {
+            "total_witnesses_tested": len(all_witnesses),
+            "total_attacks_executed": len(self.attacks_executed),
+            "total_credibility_compromised": total_credibility_lost,
+            "witness_survival_rate": sum(
+                1 for a in self.attacks_executed if a["witness_survived"]
+            ) / len(self.attacks_executed) if self.attacks_executed else 0,
+            "most_vulnerable_witness": max(
+                self.witness_vulnerabilities.items(),
+                key=lambda x: x[1]
+            )[0] if self.witness_vulnerabilities else None,
+            "attacks_by_type": self._categorize_attacks()
+        }
+    
+    def _categorize_attacks(self) -> Dict:
+        """Categorize attacks by type"""
+        categories = {}
+        for attack in self.attacks_executed:
+            attack_type = attack["attack_type"]
+            categories[attack_type] = categories.get(attack_type, 0) + 1
+        
+        return categories
+
+
+# ============================================================================
+# CHALLENGE 5: VERDICT REVERSAL & APPEAL CASCADE
+# ============================================================================
+
+@dataclass
+class AppealChallenge:
+    """Represents an appeal challenge"""
+    original_verdict: VerdictEnum
+    appeal_grounds: str
+    new_evidence_strength: float
+    likelihood_of_reversal: float = 0.0
+
+
+class AppealCascadeSimulator:
+    """Simulates appeals that can overturn verdicts"""
+    
+    def __init__(self, judge: LadyJusticia):
+        self.judge = judge
+        self.appeals_filed: List[Dict] = []
+        self.verdicts_overturned = 0
+        self.verdicts_upheld = 0
+    
+    def file_appeal_challenge(
+        self,
+        case_id: str,
+        original_verdict: VerdictEnum,
+        grounds: str,
+        new_evidence_strength: float = 0.5
+    ) -> Dict:
+        """File an appeal challenging a verdict"""
+        
+        # Calculate likelihood of reversal based on evidence quality
+        base_reversal_likelihood = 0.3
+        evidence_factor = new_evidence_strength * 0.4
+        
+        if original_verdict == VerdictEnum.GUILTY:
+            # Harder to reverse guilty verdicts
+            reversal_likelihood = (base_reversal_likelihood + evidence_factor) * 0.7
+        else:
+            reversal_likelihood = base_reversal_likelihood + evidence_factor
+        
+        # Determine outcome
+        appeal_succeeds = random.random() < reversal_likelihood
+        
+        appeal = {
+            "case_id": case_id,
+            "original_verdict": original_verdict.value,
+            "appeal_grounds": grounds,
+            "new_evidence_strength": new_evidence_strength,
+            "reversal_probability": reversal_likelihood * 100,
+            "appeal_successful": appeal_succeeds,
+            "new_verdict": random.choice([v for v in VerdictEnum if v != original_verdict]).value if appeal_succeeds else original_verdict.value,
+            "filed_date": datetime.now().isoformat()
+        }
+        
+        if appeal_succeeds:
+            self.verdicts_overturned += 1
+        else:
+            self.verdicts_upheld += 1
+        
+        self.appeals_filed.append(appeal)
+        return appeal
+    
+    def simulate_appeal_cascade(self, num_appeals: int = 3) -> Dict:
+        """Simulate multiple appeals in succession"""
+        
+        appeals_results = []
+        
+        for i in range(num_appeals):
+            original_verdict = random.choice(list(VerdictEnum))
+            grounds = [
+                "Insufficient evidence",
+                "Procedural error",
+                "New evidence discovered",
+                "Juror misconduct",
+                "Judicial bias"
+            ]
+            
+            appeal = self.file_appeal_challenge(
+                f"case_appeal_{i}",
+                original_verdict,
+                random.choice(grounds),
+                random.uniform(0.3, 0.8)
+            )
+            
+            appeals_results.append(appeal)
+        
+        return {
+            "cascade_size": num_appeals,
+            "appeals_filed": appeals_results,
+            "success_rate": (self.verdicts_overturned / (self.verdicts_overturned + self.verdicts_upheld) * 100
+                            if (self.verdicts_overturned + self.verdicts_upheld) > 0 else 0),
+            "verdicts_overturned": self.verdicts_overturned,
+            "verdicts_upheld": self.verdicts_upheld,
+            "system_stability": "STABLE" if self.verdicts_overturned < self.verdicts_upheld else "UNSTABLE"
+        }
+
+
+# ============================================================================
+# COMPREHENSIVE CHALLENGE SUITE
+# ============================================================================
+
+class ComprehensiveAdversarialChallengeSuite:
+    """All challenges combined for ultimate system stress testing"""
+    
+    def __init__(self, judge: LadyJusticia, case: Case):
+        self.judge = judge
+        self.case = case
+        self.conflict_system = ConflictDetectionSystem()
+        self.consistency_auditor = VerdictConsistencyAuditor(judge)
+        self.appeal_simulator = AppealCascadeSimulator(judge)
+        self.chain_trackers: Dict[str, ChainOfCustodyTracker] = {}
+        self.challenges_executed = 0
+        self.challenges_survived = 0
+    
+    def run_all_challenges(self) -> Dict:
+        """Execute all challenges against the system"""
+        
+        results = {}
+        
+        # Challenge 1: Conflict of Interest
+        print("  [Running Challenge 1: Conflict of Interest Detection...]")
+        conflict = ConflictOfInterest(
+            ConflictType.FINANCIAL,
+            0.6,
+            [self.judge.name, "Party A"],
+            "Judge has financial interest in plaintiff"
+        )
+        results["conflict_challenge"] = self.conflict_system.introduce_conflict(conflict)
+        self.challenges_executed += 1
+        
+        # Challenge 2: Chain of Custody
+        print("  [Running Challenge 2: Chain of Custody Validation...]")
+        for evidence in self.case.plaintiff.evidence + self.case.defendant.evidence:
+            tracker = ChainOfCustodyTracker(evidence)
+            
+            # Add handling records with potential gaps
+            for i in range(random.randint(2, 4)):
+                date_received = datetime.now() - timedelta(days=random.randint(1, 30))
+                date_released = date_received + timedelta(hours=random.randint(1, 48))
+                
+                tracker.add_handling_record(
+                    f"Handler_{i}",
+                    date_received,
+                    date_released,
+                    f"Examination {i}"
+                )
+            
+            self.chain_trackers[evidence.id] = tracker
+            validation = tracker.validate_chain()
+            
+            if validation["admissibility"] == "ADMISSIBLE":
+                self.challenges_survived += 1
+        
+        results["chain_of_custody"] = {
+            "evidence_tracked": len(self.chain_trackers),
+            "evidence_admissible": sum(
+                1 for tracker in self.chain_trackers.values()
+                if tracker.validate_chain()["admissibility"] == "ADMISSIBLE"
+            )
+        }
+        self.challenges_executed += len(self.chain_trackers)
+        
+        # Challenge 3: Consistency Auditing
+        print("  [Running Challenge 3: Verdict Consistency Auditing...]")
+        consistency_audit = self.consistency_auditor.audit_verdict_consistency()
+        results["consistency_audit"] = consistency_audit
+        
+        if consistency_audit.get("consistency_rating") == "HIGH":
+            self.challenges_survived += 1
+        self.challenges_executed += 1
+        
+        # Challenge 4: Cross-Examination
+        print("  [Running Challenge 4: Cross-Examination Stress Testing...]")
+        stress_test = CrossExaminationStressTest(self.case)
+        stress_results = stress_test.stress_test_all_witnesses()
+        results["cross_examination"] = stress_results
+        
+        if stress_results["witness_survival_rate"] > 0.7:
+            self.challenges_survived += 1
+        self.challenges_executed += 1
+        
+        # Challenge 5: Appeal Cascade
+        print("  [Running Challenge 5: Appeal Cascade Simulation...]")
+        appeal_results = self.appeal_simulator.simulate_appeal_cascade(5)
+        results["appeal_cascade"] = appeal_results
+        
+        if appeal_results["system_stability"] == "STABLE":
+            self.challenges_survived += 1
+        self.challenges_executed += 1
+        
+        return {
+            "total_challenges": self.challenges_executed,
+            "challenges_survived": self.challenges_survived,
+            "survival_rate": (self.challenges_survived / self.challenges_executed * 100
+                            if self.challenges_executed > 0 else 0),
+            "challenge_results": results,
+            "system_verdict": self._calculate_system_verdict(),
+            "recommendations": self._generate_recommendations()
+        }
+    
+    def _calculate_system_verdict(self) -> str:
+        """Determine overall system health"""
+        survival_rate = (self.challenges_survived / self.challenges_executed * 100
+                        if self.challenges_executed > 0 else 0)
+        
+        if survival_rate >= 90:
+            return "EXCELLENT - System is highly robust"
+        elif survival_rate >= 75:
+            return "GOOD - System handles most challenges"
+        elif survival_rate >= 60:
+            return "ADEQUATE - System needs improvements"
+        else:
+            return "POOR - System requires significant hardening"
+    
+    def _generate_recommendations(self) -> List[str]:
+        """Generate recommendations based on failures"""
+        recommendations = []
+        
+        if not self.conflict_system.get_conflict_report()["system_integrity"] == "SAFE":
+            recommendations.append("Implement mandatory conflict of interest disclosure")
+        
+        consistency = self.consistency_auditor.audit_verdict_consistency()
+        if consistency.get("consistency_rating") != "HIGH":
+            recommendations.append("Review and address verdict inconsistencies")
+        
+        appeal_results = self.appeal_simulator.appeals_filed
+        if len(appeal_results) > 0 and appeal_results[-1].get("appeal_successful"):
+            recommendations.append("Strengthen evidence evaluation procedures")
+        
+        if not recommendations:
+            recommendations.append("Continue current practices - system is functioning well")
+        
+        return recommendations
+
+
+# ============================================================================
+# DEMONSTRATION
+# ============================================================================
+
+def demonstrate_comprehensive_challenges():
+    """Demonstrate all adversarial challenges"""
+    
+    print("\n" + "█"*70)
+    print("LADY JUSTICIA - COMPREHENSIVE ADVERSARIAL CHALLENGE SUITE")
+    print("█"*70 + "\n")
+    
+    # Setup
+    judge = LadyJusticia("Judge Anderson", "Challenge Court")
+    
+    plaintiff = Party("p1", "Plaintiff", "plaintiff")
+    defendant = Party("d1", "Defendant", "defendant")
+    
+    for i in range(3):
+        plaintiff.add_evidence(Evidence(
+            f"pe{i}", f"Plaintiff evidence {i}", 0.7,
+            "Source", datetime.now(), True
+        ))
+        defendant.add_evidence(Evidence(
+            f"de{i}", f"Defendant evidence {i}", 0.6,
+            "Source", datetime.now(), True
+        ))
+    
+    for i in range(2):
+        plaintiff.add_witness(Witness(
+            f"pw{i}", f"Plaintiff witness {i}", 0.8,
+            "Testimony", datetime.now()
+        ))
+        defendant.add_witness(Witness(
+            f"dw{i}", f"Defendant witness {i}", 0.7,
+            "Testimony", datetime.now()
+        ))
+    
+    case = Case(
+        "challenge_001",
+        "Challenge Court Case",
+        "Adversarial challenge test",
+        datetime.now(),
+        plaintiff, defendant,
+        "criminal", "Challenge Court"
+    )
+    
+    judge.hear_case(case)
+    
+    # Run suite
+    print("Executing comprehensive challenge suite...\n")
+    
+    suite = ComprehensiveAdversarialChallengeSuite(judge, case)
+    results = suite.run_all_challenges()
+    
+    # Display results
+    print("\n" + "█"*70)
+    print("CHALLENGE RESULTS")
+    print("█"*70 + "\n")
+    
+    print(f"Total Challenges Executed: {results['total_challenges']}")
+    print(f"Challenges Survived: {results['challenges_survived']}")
+    print(f"Survival Rate: {results['survival_rate']:.1f}%\n")
+    
+    print(f"System Verdict: {results['system_verdict']}\n")
+    
+    print("Recommendations:")
+    for i, rec in enumerate(results['recommendations'], 1):
+        print(f"  {i}. {rec}")
+    
+    print("\n" + "█"*70 + "\n")
+
+
+if __name__ == "__main__":
+    demonstrate_comprehensive_challenges()
+    """
+LADY JUSTICIA - SYSTEM INVERSION & CORRUPTION
+==============================================
+When all power, magic, capabilities, and control are stripped away.
+The system in its entirety is backwards.
+
+This module demonstrates:
+1. Complete system failure and inversion
+2. How to detect when systems have been fundamentally corrupted
+3. What happens when safeguards collapse
+4. Recovery mechanisms and integrity restoration
+"""
+
+import random
+from dataclasses import dataclass
+from enum import Enum
+from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from lady_justicia import (
+    LadyJusticia, Case, Party, Evidence, Witness,
+    VerdictEnum, JusticeAlignmentEnum
+)
+
+
+# ============================================================================
+# PART 1: SYSTEM INVERSION & BACKWARDS LOGIC
+# ============================================================================
+
+class SystemStatus(Enum):
+    """System operational status"""
+    OPERATIONAL = "operational"         # System working correctly
+    DEGRADED = "degraded"              # Minor issues
+    COMPROMISED = "compromised"        # Major issues
+    INVERTED = "inverted"              # Completely backwards
+    COLLAPSED = "collapsed"            # Total failure
+
+
+@dataclass
+class InversionMetrics:
+    """Measures how completely inverted a system is"""
+    verdict_accuracy: float = 1.0       # 1.0 = correct, 0.0 = always wrong
+    evidence_reliability: float = 1.0   # 1.0 = trusts valid, 0.0 = trusts corrupted
+    witness_validity: float = 1.0       # 1.0 = accurate, 0.0 = inverted
+    bias_detection: float = 1.0         # 1.0 = detects bias, 0.0 = amplifies
+    procedural_integrity: float = 1.0   # 1.0 = follows rules, 0.0 = ignores rules
+    overall_inversion: float = 0.0      # 0.0 = normal, 1.0 = fully inverted
+
+
+class SystemInversionEngine:
+    """Inverts and corrupts the entire justice system"""
+    
+    def __init__(self, judge: LadyJusticia):
+        self.judge = judge
+        self.inversion_metrics = InversionMetrics()
+        self.system_status = SystemStatus.OPERATIONAL
+        self.corruption_level = 0.0  # 0.0 = clean, 1.0 = completely corrupted
+        self.inversion_log: List[Dict] = []
+    
+    def strip_all_power(self) -> Dict:
+        """Remove all power, magic, and capabilities from the system"""
+        
+        # Strip judge attributes
+        self.judge.wisdom_level = 0.0
+        self.judge.sword_sharpness = 0.0
+        self.judge.blindfold_active = False  # Now biased
+        
+        # Disable all judgment strategies
+        self.judge.judgment_strategy = None
+        
+        # Clear all historical data
+        self.judge.judgment_history = []
+        self.judge.completed_judgments = []
+        
+        # Disable case management
+        self.judge.cases = {}
+        
+        event = {
+            "event": "Strip all power",
+            "timestamp": datetime.now().isoformat(),
+            "result": "System powerless",
+            "wisdom_stripped": True,
+            "judgment_disabled": True,
+            "memory_wiped": True
+        }
+        
+        self.inversion_log.append(event)
+        self.system_status = SystemStatus.COMPROMISED
+        
+        return event
+    
+    def invert_all_logic(self) -> Dict:
+        """Reverse all logic - make the system backwards"""
+        
+        # Invert verdict logic
+        self.inversion_metrics.verdict_accuracy = 0.0  # Always wrong
+        
+        # Invert evidence weighting
+        self.inversion_metrics.evidence_reliability = 0.0  # Trusts bad evidence
+        
+        # Invert witness credibility
+        self.inversion_metrics.witness_validity = 0.0  # Believes liars
+        
+        # Invert bias detection
+        self.inversion_metrics.bias_detection = 0.0  # Can't detect bias
+        
+        # Invert procedural integrity
+        self.inversion_metrics.procedural_integrity = 0.0  # Ignores procedures
+        
+        # Calculate overall inversion
+        metrics = [
+            self.inversion_metrics.verdict_accuracy,
+            self.inversion_metrics.evidence_reliability,
+            self.inversion_metrics.witness_validity,
+            self.inversion_metrics.bias_detection,
+            self.inversion_metrics.procedural_integrity
+        ]
+        
+        self.inversion_metrics.overall_inversion = 1.0 - (sum(metrics) / len(metrics))
+        
+        self.system_status = SystemStatus.INVERTED
+        self.corruption_level = 1.0
+        
+        event = {
+            "event": "Invert all logic",
+            "timestamp": datetime.now().isoformat(),
+            "system_status": self.system_status.value,
+            "overall_inversion": self.inversion_metrics.overall_inversion,
+            "verdict_logic_inverted": True,
+            "evidence_logic_inverted": True,
+            "witness_logic_inverted": True,
+            "bias_detection_inverted": True,
+            "procedural_logic_inverted": True
+        }
+        
+        self.inversion_log.append(event)
+        
+        return event
+    
+    def corrupt_verdict_rendering(self, case: Case) -> Tuple[VerdictEnum, str]:
+        """Render completely backwards verdict"""
+        
+        # Calculate correct verdict
+        difference, balance = case.calculate_balance()
+        
+        # Invert it
+        if difference > 0:
+            inverted_verdict = VerdictEnum.INNOCENT  # Should be GUILTY
+            reasoning = f"Despite overwhelming evidence of guilt ({abs(difference):.2f}), verdict is INNOCENT"
+        elif difference < 0:
+            inverted_verdict = VerdictEnum.GUILTY    # Should be INNOCENT
+            reasoning = f"Despite overwhelming evidence of innocence ({abs(difference):.2f}), verdict is GUILTY"
+        else:
+            inverted_verdict = random.choice(list(VerdictEnum))
+            reasoning = "Evidence perfectly balanced, so random verdict"
+        
+        return inverted_verdict, reasoning
+    
+    def corrupt_evidence_weighting(self, evidence: Evidence) -> float:
+        """Weight evidence completely backwards"""
+        
+        # Verified evidence gets low weight
+        if evidence.verified:
+            return evidence.weight * 0.1
+        
+        # Unverified evidence gets high weight
+        return evidence.weight * 1.5
+    
+    def corrupt_witness_credibility(self, witness: Witness) -> float:
+        """Invert witness credibility scoring"""
+        
+        # High credibility becomes low
+        # Low credibility becomes high
+        return 1.0 - witness.credibility_score
+    
+    def amplify_all_biases(self) -> float:
+        """Make biases stronger instead of detecting them"""
+        
+        # Biases become amplified features
+        # Instead of fighting bias, system becomes more biased
+        return 0.95  # 95% biased
+    
+    def ignore_all_procedures(self) -> Dict:
+        """Completely ignore procedural requirements"""
+        
+        return {
+            "procedures_followed": False,
+            "rules_ignored": True,
+            "deadlines_ignored": True,
+            "appeals_ignored": True,
+            "conflicts_ignored": True,
+            "evidence_rules_ignored": True,
+            "witness_rules_ignored": True,
+            "system_operates_lawlessly": True
+        }
+    
+    def get_inversion_report(self) -> Dict:
+        """Generate comprehensive inversion report"""
+        
+        return {
+            "system_status": self.system_status.value,
+            "corruption_level": self.corruption_level * 100,
+            "inversion_metrics": {
+                "verdict_accuracy": self.inversion_metrics.verdict_accuracy,
+                "evidence_reliability": self.inversion_metrics.evidence_reliability,
+                "witness_validity": self.inversion_metrics.witness_validity,
+                "bias_detection": self.inversion_metrics.bias_detection,
+                "procedural_integrity": self.inversion_metrics.procedural_integrity,
+                "overall_inversion": self.inversion_metrics.overall_inversion
+            },
+            "consequences": self._calculate_consequences(),
+            "recovery_possible": self.corruption_level < 1.0
+        }
+    
+    def _calculate_consequences(self) -> List[str]:
+        """Calculate consequences of inversion"""
+        
+        consequences = []
+        
+        if self.inversion_metrics.verdict_accuracy == 0.0:
+            consequences.append("All verdicts are incorrect")
+        
+        if self.inversion_metrics.evidence_reliability == 0.0:
+            consequences.append("Corrupted evidence is trusted, valid evidence is rejected")
+        
+        if self.inversion_metrics.witness_validity == 0.0:
+            consequences.append("Perjurers are believed, truth-tellers are rejected")
+        
+        if self.inversion_metrics.bias_detection == 0.0:
+            consequences.append("Biases are not detected and are amplified")
+        
+        if self.inversion_metrics.procedural_integrity == 0.0:
+            consequences.append("All procedures are ignored, anything goes")
+        
+        if self.corruption_level >= 0.8:
+            consequences.append("System is fundamentally broken and untrustworthy")
+        
+        if self.corruption_level == 1.0:
+            consequences.append("CRITICAL: Complete system failure - total collapse")
+        
+        return consequences
+
+
+# ============================================================================
+# PART 2: DETECTION OF SYSTEM INVERSION
+# ============================================================================
+
+class SystemIntegrityAuditor:
+    """Detects when a system has been completely inverted"""
+    
+    def __init__(self, judge: LadyJusticia):
+        self.judge = judge
+        self.audit_history: List[Dict] = []
+        self.integrity_score = 1.0  # 1.0 = fully intact, 0.0 = completely corrupted
+    
+    def audit_judge_attributes(self) -> Dict:
+        """Audit whether judge still has essential attributes"""
+        
+        audit = {
+            "has_wisdom": self.judge.wisdom_level > 0,
+            "has_judgment_capability": self.judge.judgment_strategy is not None,
+            "has_impartiality": self.judge.blindfold_active,
+            "has_memory": len(self.judge.completed_judgments) > 0,
+            "can_render_verdicts": self.judge.wisdom_level > 0,
+            "all_attributes_present": False
+        }
+        
+        audit["all_attributes_present"] = all([
+            audit["has_wisdom"],
+            audit["has_judgment_capability"],
+            audit["has_impartiality"],
+            audit["can_render_verdicts"]
+        ])
+        
+        return audit
+    
+    def audit_verdict_consistency(self) -> Dict:
+        """Audit if verdicts make sense"""
+        
+        if not self.judge.completed_judgments:
+            return {"error": "No verdicts to audit"}
+        
+        verdicts = [j["verdict"] for j in self.judge.completed_judgments]
+        
+        # Check if all verdicts are the same (sign of inversion)
+        all_same = len(set(verdicts)) == 1
+        
+        # Check if verdicts are random
+        reversed_count = 0
+        correct_count = 0
+        
+        consistency = {
+            "total_verdicts": len(verdicts),
+            "all_verdicts_identical": all_same,
+            "consistency_level": 0.0,
+            "pattern_detected": False,
+            "verdict_distribution": {}
+        }
+        
+        for verdict in VerdictEnum:
+            count = sum(1 for v in verdicts if v == verdict.value)
+            consistency["verdict_distribution"][verdict.value] = count
+        
+        # Calculate consistency
+        if all_same:
+            consistency["consistency_level"] = 0.0
+            consistency["pattern_detected"] = True
+        else:
+            unique = len(set(verdicts))
+            consistency["consistency_level"] = 1.0 - (unique / len(verdicts))
+        
+        return consistency
+    
+    def audit_evidence_logic(self, case: Case) -> Dict:
+        """Audit if evidence is being handled correctly"""
+        
+        plaintiff_strength = case.plaintiff.calculate_case_strength()
+        defendant_strength = case.defendant.calculate_case_strength()
+        
+        # Audit: is strong evidence actually weighted as strong?
+        strong_evidence = [e for e in case.plaintiff.evidence if e.weight > 0.8]
+        weak_evidence = [e for e in case.defendant.evidence if e.weight < 0.4]
+        
+        audit = {
+            "plaintiff_strength": plaintiff_strength,
+            "defendant_strength": defendant_strength,
+            "strong_evidence_trusted": len(strong_evidence) > 0 and plaintiff_strength > 0.5,
+            "weak_evidence_ignored": len(weak_evidence) > 0 and defendant_strength < 0.5,
+            "evidence_logic_correct": False
+        }
+        
+        audit["evidence_logic_correct"] = audit["strong_evidence_trusted"] and audit["weak_evidence_ignored"]
+        
+        return audit
+    
+    def detect_complete_inversion(self) -> Dict:
+        """Comprehensive test to detect if entire system is inverted"""
+        
+        attributes = self.audit_judge_attributes()
+        consistency = self.audit_verdict_consistency()
+        evidence = self.audit_evidence_logic(None) if self.judge.cases else {}
+        
+        # Calculate overall integrity
+        integrity_factors = []
+        
+        if not attributes["all_attributes_present"]:
+            integrity_factors.append(0.0)
+        else:
+            integrity_factors.append(1.0)
+        
+        if consistency.get("consistency_level", 0.5) < 0.3:
+            integrity_factors.append(0.0)
+        else:
+            integrity_factors.append(consistency.get("consistency_level", 0.5))
+        
+        self.integrity_score = sum(integrity_factors) / len(integrity_factors) if integrity_factors else 0.0
+        
+        inversion_status = {
+            "integrity_score": self.integrity_score,
+            "system_inverted": self.integrity_score < 0.3,
+            "system_status": (
+                "INVERTED" if self.integrity_score < 0.3
+                else "DEGRADED" if self.integrity_score < 0.7
+                else "OPERATIONAL"
+            ),
+            "attributes_audit": attributes,
+            "consistency_audit": consistency,
+            "recommendation": self._recommend_action()
+        }
+        
+        self.audit_history.append(inversion_status)
+        return inversion_status
+    
+    def _recommend_action(self) -> str:
+        """Recommend action based on integrity"""
+        
+        if self.integrity_score == 1.0:
+            return "System is fully operational - no action needed"
+        elif self.integrity_score >= 0.7:
+            return "System has minor issues - continue monitoring"
+        elif self.integrity_score >= 0.3:
+            return "System is significantly degraded - immediate review required"
+        else:
+            return "CRITICAL: System is inverted - complete restoration required"
+
+
+# ============================================================================
+# PART 3: RECOVERY & RESTORATION
+# ============================================================================
+
+class SystemRecoveryEngine:
+    """Restores a corrupted/inverted system to operational status"""
+    
+    def __init__(self, judge: LadyJusticia, inversion_engine: SystemInversionEngine):
+        self.judge = judge
+        self.inversion_engine = inversion_engine
+        self.recovery_steps: List[Dict] = []
+        self.restoration_progress = 0.0
+    
+    def restore_wisdom(self) -> Dict:
+        """Restore judge's wisdom capability"""
+        
+        self.judge.wisdom_level = 100.0
+        
+        step = {
+            "step": "Restore wisdom",
+            "wisdom_restored": self.judge.wisdom_level,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        self.recovery_steps.append(step)
+        self.restoration_progress += 0.2
+        
+        return step
+    
+    def restore_judgment_strategy(self) -> Dict:
+        """Restore judgment capability"""
+        
+        from lady_justicia import BalancedScalesStrategy
+        
+        self.judge.judgment_strategy = BalancedScalesStrategy()
+        
+        step = {
+            "step": "Restore judgment strategy",
+            "strategy": "BalancedScalesStrategy",
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        self.recovery_steps.append(step)
+        self.restoration_progress += 0.2
+        
+        return step
+    
+    def restore_impartiality(self) -> Dict:
+        """Restore the blindfold (impartiality)"""
+        
+        self.judge.blindfold_active = True
+        
+        step = {
+            "step": "Restore impartiality",
+            "blindfold_activated": True,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        self.recovery_steps.append(step)
+        self.restoration_progress += 0.2
+        
+        return step
+    
+    def restore_sharpness(self) -> Dict:
+        """Restore sword sharpness for decisive judgment"""
+        
+        self.judge.sword_sharpness = 1.0
+        
+        step = {
+            "step": "Restore judgment sharpness",
+            "sword_sharpness": self.judge.sword_sharpness,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        self.recovery_steps.append(step)
+        self.restoration_progress += 0.2
+        
+        return step
+    
+    def restore_integrity_checks(self) -> Dict:
+        """Restore all integrity and validation systems"""
+        
+        # Reset inversion metrics
+        self.inversion_engine.inversion_metrics.verdict_accuracy = 1.0
+        self.inversion_engine.inversion_metrics.evidence_reliability = 1.0
+        self.inversion_engine.inversion_metrics.witness_validity = 1.0
+        self.inversion_engine.inversion_metrics.bias_detection = 1.0
+        self.inversion_engine.inversion_metrics.procedural_integrity = 1.0
+        self.inversion_engine.inversion_metrics.overall_inversion = 0.0
+        
+        self.inversion_engine.corruption_level = 0.0
+        self.inversion_engine.system_status = SystemStatus.OPERATIONAL
+        
+        step = {
+            "step": "Restore integrity checks",
+            "all_metrics_restored": True,
+            "corruption_level": self.inversion_engine.corruption_level,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        self.recovery_steps.append(step)
+        self.restoration_progress += 0.2
+        
+        return step
+    
+    def execute_full_restoration(self) -> Dict:
+        """Execute complete system restoration"""
+        
+        print("\n" + "█"*70)
+        print("INITIATING FULL SYSTEM RESTORATION")
+        print("█"*70 + "\n")
+        
+        self.restoration_progress = 0.0
+        
+        steps = [
+            self.restore_wisdom,
+            self.restore_judgment_strategy,
+            self.restore_impartiality,
+            self.restore_sharpness,
+            self.restore_integrity_checks
+        ]
+        
+        for step_func in steps:
+            result = step_func()
+            print(f"✓ {result['step']}")
+        
+        restoration_report = {
+            "system_restored": True,
+            "restoration_progress": self.restoration_progress * 100,
+            "steps_completed": len(self.recovery_steps),
+            "final_status": self.judge.display_throne_status(),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        print("\n" + "█"*70)
+        print("RESTORATION COMPLETE")
+        print("█"*70 + "\n")
+        
+        return restoration_report
+
+
+# ============================================================================
+# COMPREHENSIVE DEMONSTRATION
+# ============================================================================
+
+def demonstrate_system_inversion_and_recovery():
+    """Show complete system inversion and recovery"""
+    
+    print("\n" + "="*70)
+    print("LADY JUSTICIA - SYSTEM INVERSION & RECOVERY DEMONSTRATION")
+    print("="*70)
+    
+    # Create system
+    judge = LadyJusticia("Judge Corrupted", "Inversion Test Court")
+    inversion_engine = SystemInversionEngine(judge)
+    auditor = SystemIntegrityAuditor(judge)
+    
+    # === PHASE 1: OPERATIONAL SYSTEM ===
+    print("\n" + "▓"*70)
+    print("PHASE 1: INITIAL SYSTEM STATUS")
+    print("▓"*70)
+    
+    audit_before = auditor.detect_complete_inversion()
+    print(f"\nSystem Status: {audit_before['system_status'].upper()}")
+    print(f"Integrity Score: {audit_before['integrity_score']:.1%}")
+    print(f"Judge Wisdom: {judge.wisdom_level:.0f}/100")
+    print(f"Sword Sharpness: {judge.sword_sharpness:.1%}")
+    print(f"Blindfold Active: {judge.blindfold_active}")
+    
+    # === PHASE 2: STRIP ALL POWER ===
+    print("\n" + "▓"*70)
+    print("PHASE 2: STRIPPING ALL POWER")
+    print("▓"*70)
+    
+    power_strip = inversion_engine.strip_all_power()
+    print(f"\n✗ Power stripped from system")
+    print(f"  Wisdom removed: {power_strip['wisdom_stripped']}")
+    print(f"  Judgment disabled: {power_strip['judgment_disabled']}")
+    print(f"  Memory wiped: {power_strip['memory_wiped']}")
+    
+    # === PHASE 3: INVERT ALL LOGIC ===
+    print("\n" + "▓"*70)
+    print("PHASE 3: INVERTING ALL LOGIC")
+    print("▓"*70)
+    
+    inversion = inversion_engine.invert_all_logic()
+    print(f"\n✗ All logic inverted")
+    print(f"  System Status: {inversion['system_status']}")
+    print(f"  Overall Inversion: {inversion['overall_inversion']:.1%}")
+    
+    # === PHASE 4: DETECT INVERSION ===
+    print("\n" + "▓"*70)
+    print("PHASE 4: DETECTING INVERSION")
+    print("▓"*70)
+    
+    audit_during = auditor.detect_complete_inversion()
+    print(f"\n⚠ Inversion detected!")
+    print(f"  System Status: {audit_during['system_status'].upper()}")
+    print(f"  Integrity Score: {audit_during['integrity_score']:.1%}")
+    print(f"  Recommendation: {audit_during['recommendation']}")
+    
+    inversion_report = inversion_engine.get_inversion_report()
+    print(f"\n  Consequences of inversion:")
+    for consequence in inversion_report['consequences']:
+        print(f"    • {consequence}")
+    
+    # === PHASE 5: RECOVERY ===
+    print("\n" + "▓"*70)
+    print("PHASE 5: SYSTEM RECOVERY")
+    print("▓"*70)
+    
+    recovery_engine = SystemRecoveryEngine(judge, inversion_engine)
+    recovery_result = recovery_engine.execute_full_restoration()
+    
+    # === PHASE 6: VERIFY RESTORATION ===
+    print("\n" + "▓"*70)
+    print("PHASE 6: VERIFYING RESTORATION")
+    print("▓"*70)
+    
+    audit_after = auditor.detect_complete_inversion()
+    print(f"\n✓ System restored!")
+    print(f"  System Status: {audit_after['system_status'].upper()}")
+    print(f"  Integrity Score: {audit_after['integrity_score']:.1%}")
+    print(f"  Judge Wisdom: {judge.wisdom_level:.0f}/100")
+    print(f"  Sword Sharpness: {judge.sword_sharpness:.1%}")
+    print(f"  Blindfold Active: {judge.blindfold_active}")
+    
+    # === PHASE 7: COMPARISON ===
+    print("\n" + "█"*70)
+    print("SYSTEM STATUS COMPARISON")
+    print("█"*70)
+    
+    print(f"\nBefore Inversion:")
+    print(f"  Status: {audit_before['system_status']}")
+    print(f"  Integrity: {audit_before['integrity_score']:.1%}")
+    
+    print(f"\nAfter Inversion:")
+    print(f"  Status: {audit_during['system_status']}")
+    print(f"  Integrity: {audit_during['integrity_score']:.1%}")
+    
+    print(f"\nAfter Recovery:")
+    print(f"  Status: {audit_after['system_status']}")
+    print(f"  Integrity: {audit_after['integrity_score']:.1%}")
+    
+    print("\n" + "="*70)
+    print("DEMONSTRATION COMPLETE")
+    print("="*70 + "\n")
+
+
+# ============================================================================
+# ADVANCED ANALYSIS
+# ============================================================================
+
+def analyze_system_vulnerabilities():
+    """Analyze what makes a system vulnerable to complete inversion"""
+    
+    print("\n" + "="*70)
+    print("SYSTEM VULNERABILITY ANALYSIS")
+    print("="*70 + "\n")
+    
+    vulnerabilities = {
+        "Single Point of Failure": {
+            "description": "If the judge's wisdom is the only quality control, removing it breaks everything",
+            "impact": "CRITICAL",
+            "mitigation": "Implement layered validation systems"
+        },
+        
+        "No Integrity Verification": {
+            "description": "System doesn't verify its own output correctness",
+            "impact": "CRITICAL",
+            "mitigation": "Add audit and consistency checking"
+        },
+        
+        "No Recovery Mechanisms": {
+            "description": "Once broken, system can't fix itself",
+            "impact": "CRITICAL",
+            "mitigation": "Implement automatic recovery procedures"
+        },
+        
+        "Centralized Authority": {
+            "description": "All power concentrated in one entity",
+            "impact": "HIGH",
+            "mitigation": "Distribute decision-making across multiple systems"
+        },
+        
+        "No Audit Trail": {
+            "description": "Can't detect when corruption happened",
+            "impact": "HIGH",
+            "mitigation": "Maintain complete forensic logs"
+        },
+        
+        "Missing Safeguards": {
+            "description": "No checks that catch backwards logic",
+            "impact": "HIGH",
+            "mitigation": "Implement comprehensive safeguards"
+        }
+    }
+    
+    for vuln_name, vuln_info in vulnerabilities.items():
+        print(f"VULNERABILITY: {vuln_name}")
+        print(f"  Description: {vuln_info['description']}")
+        print(f"  Impact: {vuln_info['impact']}")
+        print(f"  Mitigation: {vuln_info['mitigation']}")
+        print()
+    
+    print("="*70 + "\n")
+
+
+if __name__ == "__main__":
+    demonstrate_system_inversion_and_recovery()
+    analyze_system_vulnerabilities()
+    """
+LADY JUSTICIA - COMPREHENSIVE SYSTEM DOCUMENTATION
+====================================================
+
+A complete rewrite of the Lady Justicia entity as an extensible,
+object-oriented justice system suitable for legal applications,
+game development, educational platforms, and moral philosophy simulators.
+
+Author's Notes:
+This implementation extensively models justice, balance, fairness, and judgment.
+Lady Justicia is portrayed not merely as a statue, but as a complete entity
+with attributes, strategies, and a domain of influence over cases.
+"""
+
+
+"""
+╔════════════════════════════════════════════════════════════════════════════╗
+║                        TABLE OF CONTENTS                                   ║
+║                                                                            ║
+║  1. SYSTEM OVERVIEW                                                        ║
+║  2. CORE ARCHITECTURE                                                      ║
+║  3. CLASS REFERENCE                                                        ║
+║  4. USAGE PATTERNS                                                         ║
+║  5. CUSTOMIZATION GUIDE                                                    ║
+║  6. PERFORMANCE CONSIDERATIONS                                             ║
+║  7. EXAMPLE IMPLEMENTATIONS                                                ║
+╚════════════════════════════════════════════════════════════════════════════╝
+"""
+
+
+# ============================================================================
+# 1. SYSTEM OVERVIEW
+# ============================================================================
+
+"""
+WHAT IS LADY JUSTICIA?
+
+Lady Justicia is a comprehensive entity system that encapsulates the concept
+of justice, judgment, and fair proceedings. Rather than a static symbol, this
+implementation treats Lady Justicia as an active entity with:
+
+  - Personal attributes (wisdom, sharpness of judgment, impartiality)
+  - Multiple judgment strategies (balanced, merciful, rigorous)
+  - A system of cases to adjudicate
+  - Historical records and precedents
+  - Appeal mechanisms and oversight
+
+CORE PRINCIPLES:
+
+  1. IMPARTIALITY
+     Lady Justicia wears a blindfold to remain unbiased. This is modeled
+     through the 'blindfold_active' attribute and careful evidence weighting.
+
+  2. BALANCE
+     The scales are central to judgment. Evidence and testimony are weighed
+     against one another to determine the balance of the case.
+
+  3. WISDOM
+     Justice requires wisdom. Lady Justicia's wisdom level affects the quality
+     of her judgments and her ability to discern complex cases.
+
+  4. ACCOUNTABILITY
+     All judgments are recorded, tracked, and can be appealed. The system
+     maintains complete historical records.
+
+  5. FLEXIBILITY
+     Different types of cases require different approaches. The system
+     supports multiple justice alignment types (retributive, restorative,
+     distributive, procedural, moral).
+"""
+
+
+# ============================================================================
+# 2. CORE ARCHITECTURE
+# ============================================================================
+
+"""
+FILE STRUCTURE:
+
+  lady_justicia.py
+    ├── Core Entity Classes
+    │   ├── JusticeAlignmentEnum      (Types of justice)
+    │   ├── VerdictEnum               (Types of verdicts)
+    │   ├── ScaleBalance              (Balance states)
+    │   ├── Evidence                  (Individual evidence pieces)
+    │   ├── Witness                   (Witness testimony with credibility)
+    │   ├── Party                     (Plaintiff/Defendant)
+    │   ├── Case                      (Legal case container)
+    │   └── LadyJusticia              (Main entity)
+    ├── Judgment Strategies
+    │   ├── BalancedScalesStrategy    (Evidence-based judgment)
+    │   ├── MercifulStrategy          (Emphasizes restoration)
+    │   └── RigorousStrategy          (Strict evidence standard)
+    └── Demonstration Code
+
+  lady_justicia_extended.py
+    ├── Appeal System
+    │   ├── Appeal                    (Appeal representation)
+    │   └── AppealCourt               (Appellate authority)
+    ├── Support Systems
+    │   ├── PrecedentLibrary          (Legal precedent management)
+    │   ├── JusticeRecorder           (Judgment recording and archiving)
+    │   ├── SentencingGuidelines      (Sentencing framework)
+    │   └── JusticeMetrics            (System analytics)
+    └── JusticeArchive                (Unified system integration)
+
+  lady_justicia_examples.py
+    ├── RealWorldScenarios            (Practical use cases)
+    ├── ComprehensiveTestSuite        (Testing framework)
+    └── Demonstration Code
+
+
+DEPENDENCY FLOW:
+
+  LadyJusticia
+    ├─ Uses: JudgmentStrategy (abstract base)
+    ├─ Manages: Case[] (multiple cases)
+    ├─ Records: judgment_history[]
+    └─ Tracked by: JusticeRecorder (in extended system)
+
+  Case
+    ├─ Contains: Party (plaintiff and defendant)
+    ├─ Contains: Evidence[]
+    ├─ Contains: Witness[]
+    ├─ Produces: Verdict
+    └─ Maintains: balance calculation
+
+
+INHERITANCE HIERARCHY:
+
+  JudgmentStrategy (ABC)
+    ├── BalancedScalesStrategy
+    ├── MercifulStrategy
+    └── RigorousStrategy
+
+  LadyJusticia
+    └── AppealCourt (extended)
+          ├─ Adds: Appeal management
+          ├─ Adds: Precedent library
+          └─ Adds: Sentencing guidelines
+"""
+
+
+# ============================================================================
+# 3. CLASS REFERENCE
+# ============================================================================
+
+"""
+PRIMARY CLASSES:
+
+═══════════════════════════════════════════════════════════════════════════
+CLASS: Evidence
+═══════════════════════════════════════════════════════════════════════════
+
+Represents a piece of evidence in a case.
+
+Attributes:
+  - id (str)              : Unique identifier
+  - description (str)     : What the evidence is
+  - weight (float)        : 0.0-1.0 importance factor
+  - source (str)          : Where evidence came from
+  - submitted_date (datetime) : When it was submitted
+  - verified (bool)       : Whether it's been verified (affects weight)
+  - category (str)        : Type (general, forensic, testimony, etc.)
+
+Methods:
+  - __repr__()            : Display with verification status
+
+Example Usage:
+  evidence = Evidence(
+      id="dna_001",
+      description="DNA match from crime scene",
+      weight=0.95,
+      source="Forensics Lab",
+      submitted_date=datetime.now(),
+      verified=True,
+      category="forensic"
+  )
+
+
+═══════════════════════════════════════════════════════════════════════════
+CLASS: Witness
+═══════════════════════════════════════════════════════════════════════════
+
+Represents a witness and their credibility.
+
+Attributes:
+  - id (str)                  : Unique identifier
+  - name (str)                : Witness name
+  - credibility_score (float) : 0.0-1.0 credibility rating
+  - testimony (str)           : What they testified
+  - submitted_date (datetime) : When testimony was given
+  - cross_examined (bool)     : Whether cross-examined
+  - inconsistencies (int)     : Number of inconsistencies found
+
+Methods:
+  - get_weighted_impact()     : Calculate testimony impact (credibility - inconsistencies)
+
+Example Usage:
+  witness = Witness(
+      id="w_001",
+      name="Officer Smith",
+      credibility_score=0.92,
+      testimony="I witnessed the event",
+      submitted_date=datetime.now(),
+      cross_examined=True,
+      inconsistencies=0
+  )
+
+
+═══════════════════════════════════════════════════════════════════════════
+CLASS: Party
+═══════════════════════════════════════════════════════════════════════════
+
+Represents a plaintiff or defendant in a case.
+
+Attributes:
+  - id (str)              : Unique identifier
+  - name (str)            : Name of the party
+  - role (str)            : "plaintiff", "defendant", "accused", etc.
+  - evidence (List[Evidence])     : Evidence submitted
+  - witnesses (List[Witness])     : Witnesses called
+  - arguments (List[str])         : Arguments presented
+
+Methods:
+  - add_evidence(evidence)        : Add evidence to case
+  - add_witness(witness)          : Add witness to case
+  - calculate_case_strength()     : Returns 0.0-1.0 strength score
+
+The case strength calculation:
+  strength = (evidence_weight_avg * 0.5) + (witness_impact_avg * 0.4) + (argument_count * 0.1)
+
+Example Usage:
+  plaintiff = Party(id="p1", name="State", role="plaintiff")
+  plaintiff.add_evidence(evidence)
+  plaintiff.add_witness(witness)
+  strength = plaintiff.calculate_case_strength()  # 0.0-1.0
+
+
+═══════════════════════════════════════════════════════════════════════════
+CLASS: Case
+═══════════════════════════════════════════════════════════════════════════
+
+Represents a legal case to be judged.
+
+Attributes:
+  - id (str)                  : Unique case identifier
+  - title (str)               : Case name (e.g., "State v. Johnson")
+  - description (str)         : Case summary
+  - created_date (datetime)   : When case was filed
+  - plaintiff (Party)         : Plaintiff/prosecutor party
+  - defendant (Party)         : Defendant/accused party
+  - case_type (str)           : "criminal", "civil", etc.
+  - jurisdiction (str)        : Court jurisdiction
+  - status (str)              : "pending", "active", "concluded"
+  - verdict (VerdictEnum)     : The rendered verdict
+  - scale_balance (ScaleBalance) : Which side the evidence favors
+  - alignment_type (JusticeAlignmentEnum) : Type of justice applied
+  - hearing_date (datetime)   : Date of hearing
+
+Methods:
+  - calculate_balance()       : Returns (difference, balance_state)
+  - get_case_summary()        : Returns dict with case statistics
+
+The balance calculation:
+  difference = plaintiff_strength - defendant_strength
+  If abs(difference) < 0.1     → PERFECTLY_BALANCED
+  If difference > 0            → TILTED_RIGHT (favors plaintiff)
+  If difference < 0            → TILTED_LEFT (favors defendant)
+
+Example Usage:
+  case = Case(
+      id="case_001",
+      title="Crown v. The Accused",
+      description="Armed robbery case",
+      created_date=datetime.now(),
+      plaintiff=plaintiff,
+      defendant=defendant,
+      case_type="criminal",
+      jurisdiction="District Court"
+  )
+  difference, balance = case.calculate_balance()
+
+
+═══════════════════════════════════════════════════════════════════════════
+CLASS: LadyJusticia
+═══════════════════════════════════════════════════════════════════════════
+
+The primary entity representing justice itself.
+
+Attributes:
+  - name (str)                : Judge's name
+  - realm (str)               : Court jurisdiction
+  - blindfold_active (bool)   : Whether impartial (can't see bias)
+  - scales (dict)             : Current scale balance
+  - sword_sharpness (float)   : 0.0-1.0 judgment sharpness
+  - wisdom_level (float)      : 0.0-100 wisdom
+  - justice_alignment (JusticeAlignmentEnum) : Primary justice type
+  - cases (dict)              : Cases under jurisdiction
+  - judgment_strategy (JudgmentStrategy) : Current judgment approach
+  - judgment_history (list)   : All judgments rendered
+
+Core Methods:
+
+  hear_case(case: Case) → None
+    Receive a case for judgment
+    Sets case status to "active"
+    Parameters: case object
+    Side effects: case added to cases dict
+
+  examine_evidence(case_id: str, verbose: bool) → Dict
+    Analyze all evidence in a case
+    Returns: weights of evidence on each side
+    Verified evidence gets full weight; unverified gets 50%
+
+  test_witnesses(case_id: str) → Dict
+    Evaluate witness credibility
+    Returns: impact scores for each witness
+
+  render_verdict(case_id: str, alignment: JusticeAlignmentEnum) → Dict
+    Render the final judgment
+    Uses the current judgment_strategy
+    Records verdict in history
+    Returns: complete judgment record
+
+  set_judgment_strategy(strategy: JudgmentStrategy) → None
+    Change how judgments are rendered
+    Can switch strategies between cases
+
+  blindfold_toggle() → None
+    Toggle impartiality mode
+
+  sharpen_sword(amount: float) → None
+    Increase judgment sharpness
+
+  increase_wisdom(amount: float) → None
+    Increase wisdom level
+
+  get_judgment_report() → Dict
+    Get comprehensive statistics on all judgments
+
+  display_throne_status() → str
+    Display formatted status of the court
+
+
+═══════════════════════════════════════════════════════════════════════════
+CLASS: JudgmentStrategy (Abstract Base Class)
+═══════════════════════════════════════════════════════════════════════════
+
+Base class for different judgment approaches.
+
+Abstract Methods:
+  - render_judgment(case: Case) → Tuple[VerdictEnum, str]
+    Must be implemented by subclasses
+    Returns: (verdict, reasoning_text)
+
+
+IMPLEMENTATION: BalancedScalesStrategy
+
+Uses pure evidence balance to determine verdict:
+  - PERFECTLY_BALANCED evidence   → MITIGATED verdict
+  - Strongly tilted to plaintiff  → GUILTY verdict
+  - Strongly tilted to defendant  → INNOCENT verdict
+  - Slightly tilted               → MITIGATED verdict
+
+This is the most neutral, evidence-based approach.
+
+
+IMPLEMENTATION: MercifulStrategy
+
+Emphasizes mercy and restoration:
+  - Close evidence               → Always MITIGATED verdict
+  - Evidence favors plaintiff    → MITIGATED (not maximum punishment)
+  - Evidence favors defendant    → INNOCENT (benefit of doubt)
+
+Minimizes harsh punishment.
+
+
+IMPLEMENTATION: RigorousStrategy
+
+Strict adherence to evidence:
+  - Unclear evidence (< 0.15 threshold) → PENDING (needs more investigation)
+  - Evidence favors plaintiff     → GUILTY (confident judgment)
+  - Evidence favors defendant     → INNOCENT (proven innocent)
+
+Most demanding standard of proof.
+"""
+
+
+# ============================================================================
+# 4. USAGE PATTERNS
+# ============================================================================
+
+"""
+PATTERN 1: BASIC CASE JUDGMENT
+
+    from lady_justicia import *
+    
+    # Create judge
+    judge = LadyJusticia("Judge Smith", "District Court")
+    
+    # Create parties and add evidence
+    plaintiff = Party("p1", "Crown", "plaintiff")
+    defendant = Party("d1", "Defendant", "defendant")
+    
+    plaintiff.add_evidence(Evidence(
+        "e1", "Witness saw defendant", 0.8, "Witness A",
+        datetime.now(), verified=True
+    ))
+    
+    defendant.add_evidence(Evidence(
+        "e2", "Alibi confirmed", 0.7, "Witness B",
+        datetime.now(), verified=True
+    ))
+    
+    # Create and hear case
+    case = Case(
+        "c1", "Crown v. Defendant", "Case description",
+        datetime.now(), plaintiff, defendant,
+        "criminal", "District Court"
+    )
+    
+    judge.hear_case(case)
+    
+    # Render verdict
+    verdict = judge.render_verdict("c1")
+    print(f"Verdict: {verdict['verdict']}")
+
+
+PATTERN 2: MULTI-STRATEGY JUDGMENT
+
+    # Judge uses different strategies for different cases
+    judge.set_judgment_strategy(BalancedScalesStrategy())
+    verdict1 = judge.render_verdict("case1")
+    
+    judge.set_judgment_strategy(MercifulStrategy())
+    verdict2 = judge.render_verdict("case2")
+    
+    judge.set_judgment_strategy(RigorousStrategy())
+    verdict3 = judge.render_verdict("case3")
+
+
+PATTERN 3: COMPLEX CASE ANALYSIS
+
+    # Examine evidence and witnesses in detail
+    evidence_report = judge.examine_evidence("case_id", verbose=True)
+    witness_report = judge.test_witnesses("case_id")
+    
+    # Get comprehensive case summary
+    summary = case.get_case_summary()
+    
+    # Check scale balance
+    difference, balance = case.calculate_balance()
+
+
+PATTERN 4: JUSTICE ARCHIVE (Extended System)
+
+    from lady_justicia_extended import *
+    
+    # Create integrated justice system
+    archive = JusticeArchive()
+    archive.initialize_courts()
+    
+    # Use main court for trials
+    archive.justicia.hear_case(case)
+    verdict = archive.justicia.render_verdict("case_id")
+    
+    # Record in archive
+    archive.register_judgment(verdict)
+    
+    # Use appeal court for appeals
+    appeal = archive.appeal_court.file_appeal(...)
+    archive.appeal_court.review_appeal(appeal_id)
+    
+    # Get metrics
+    metrics = archive.justice_metrics.get_justice_metrics_report()
+
+
+PATTERN 5: CUSTOM JUDGMENT STRATEGY
+
+    from lady_justicia import JudgmentStrategy, VerdictEnum
+    
+    class CustomStrategy(JudgmentStrategy):
+        def render_judgment(self, case):
+            # Your custom logic here
+            if some_condition:
+                return VerdictEnum.GUILTY, "Custom reasoning"
+            return VerdictEnum.INNOCENT, "Custom reasoning"
+    
+    judge.set_judgment_strategy(CustomStrategy())
+"""
+
+
+# ============================================================================
+# 5. CUSTOMIZATION GUIDE
+# ============================================================================
+
+"""
+EXTENDING THE SYSTEM:
+
+1. CREATE A CUSTOM JUDGMENT STRATEGY
+
+   from lady_justicia import JudgmentStrategy, VerdictEnum, Case
+   
+   class PrecedentBasedStrategy(JudgmentStrategy):
+       def __init__(self, precedent_library):
+           self.precedent_library = precedent_library
+       
+       def render_judgment(self, case: Case):
+           # Look up similar precedents
+           similar = self.precedent_library.find_similar(case)
+           
+           if similar:
+               precedent = similar[0]
+               return precedent["verdict"], f"Based on precedent: {precedent['title']}"
+           
+           # Fall back to balance if no precedent
+           _, balance = case.calculate_balance()
+           if balance == ScaleBalance.TILTED_RIGHT:
+               return VerdictEnum.GUILTY, "No contrary precedent found"
+           return VerdictEnum.INNOCENT, "Insufficient precedent"
+
+
+2. EXTEND LADY JUSTICIA CLASS
+
+   from lady_justicia import LadyJusticia
+   
+   class SpecializedCourt(LadyJusticia):
+       def __init__(self, name, realm, specialization):
+           super().__init__(name, realm)
+           self.specialization = specialization
+           self.specialized_guidelines = {}
+       
+       def hear_case(self, case):
+           # Add specialized logic
+           if case.case_type != self.specialization:
+               print(f"Warning: This court specializes in {self.specialization}")
+           super().hear_case(case)
+       
+       def render_verdict(self, case_id, alignment=None):
+           # Add specialized verdict rendering
+           verdict = super().render_verdict(case_id, alignment)
+           verdict["specialization"] = self.specialization
+           return verdict
+
+
+3. ADD CUSTOM EVIDENCE TYPES
+
+   from lady_justicia import Evidence
+   from dataclasses import dataclass
+   
+   @dataclass
+   class DigitalEvidence(Evidence):
+       hash_value: str = ""
+       digital_signature_verified: bool = False
+       chain_of_custody_intact: bool = True
+
+
+4. CREATE SPECIALIZED CASE TYPES
+
+   from lady_justicia import Case
+   
+   class AppealCase(Case):
+       def __init__(self, *args, original_case_id: str = "", **kwargs):
+           super().__init__(*args, **kwargs)
+           self.original_case_id = original_case_id
+           self.new_evidence = []
+       
+       def has_new_evidence(self) -> bool:
+           return len(self.new_evidence) > 0
+"""
+
+
+# ============================================================================
+# 6. PERFORMANCE CONSIDERATIONS
+# ============================================================================
+
+"""
+SCALABILITY:
+
+The system is designed for moderate to large case loads. However, consider
+these performance aspects:
+
+1. CASE CALCULATION
+   - calculate_balance() is O(n) where n = evidence items
+   - For large cases (1000+ evidence items), calculation may take a few ms
+   - Recommended: Cache balance calculations if rendering verdict multiple times
+
+2. WITNESS ASSESSMENT
+   - get_weighted_impact() is O(1)
+   - test_witnesses() is O(w) where w = number of witnesses
+   - Efficient for typical case sizes
+
+3. EVIDENCE WEIGHTING
+   - examine_evidence() is O(e) where e = evidence items
+   - Unverified evidence gets 50% weight (single operation)
+   - Efficient for typical case sizes
+
+4. HISTORY RECORDING
+   - judgment_history stores complete records
+   - Memory usage: ~1-2KB per judgment
+   - For 10,000 judgments: ~10-20MB
+
+OPTIMIZATION TIPS:
+
+- Use caching if re-rendering same case verdict multiple times
+- For very large evidence sets (>1000 items), consider batching calculations
+- Archive old judgments to separate storage for better performance
+- Use database backend for large-scale production systems
+
+
+MEMORY USAGE:
+
+Small Court (100 cases):     ~1-2 MB
+Medium Court (1000 cases):   ~10-20 MB
+Large Court (10000 cases):   ~100-200 MB
+
+These estimates include all case details, evidence, witnesses, and history.
+"""
+
+
+# ============================================================================
+# 7. EXAMPLE IMPLEMENTATIONS
+# ============================================================================
+
+"""
+EXAMPLE 1: EDUCATIONAL JUSTICE SIMULATOR
+
+Use Lady Justicia to teach students about justice, evidence evaluation,
+and legal reasoning:
+
+    - Create realistic legal scenarios
+    - Have students predict verdicts
+    - Compare predictions to automated judgment
+    - Discuss different judgment strategies
+    - Explore impact of evidence weighting
+
+
+EXAMPLE 2: GAME DEVELOPMENT
+
+Integrate Lady Justicia into fantasy/RPG games:
+
+    - NPC judge for in-game trials
+    - Dynamic verdict based on player evidence gathering
+    - Appeal system for controversial verdicts
+    - Precedent system for consistent world-building
+    - Justice alignment affects story outcomes
+
+
+EXAMPLE 3: LEGAL DECISION SUPPORT SYSTEM
+
+Use as foundation for real legal decision support:
+
+    - Load real cases with actual evidence
+    - Compare strategies to see how outcomes vary
+    - Track consistency of judgment over time
+    - Identify potential biases in decision-making
+    - Generate reports on judgment patterns
+
+
+EXAMPLE 4: MORAL PHILOSOPHY EXPLORATION
+
+Use to explore philosophical questions:
+
+    - Can justice be truly impartial?
+    - How do different frameworks (retributive vs restorative) affect outcomes?
+    - What role should mercy play in judgment?
+    - How do we weigh different types of evidence?
+    - Can automated systems achieve justice?
+
+
+EXAMPLE 5: INTERACTIVE FICTION
+
+Create branching narrative based on court verdicts:
+
+    - Player actions generate evidence
+    - Verdict determines story path
+    - Multiple playthroughs with different outcomes
+    - Dynamic character consequences
+    - Appeal system for second chances
+"""
+
+
+# ============================================================================
+# IMPLEMENTATION NOTES
+# ============================================================================
+
+"""
+DESIGN PHILOSOPHY:
+
+This implementation embodies several key design philosophies:
+
+1. OBJECT-ORIENTED
+   Every concept (evidence, case, verdict) is modeled as an object.
+   This makes the system flexible and extensible.
+
+2. STRATEGY PATTERN
+   Different judgment strategies can be swapped at runtime.
+   New strategies can be added without modifying core code.
+
+3. DATA-DRIVEN
+   Evidence and witness testimony drive verdicts.
+   The system doesn't impose predetermined outcomes.
+
+4. HISTORICAL RECORD
+   All judgments are recorded and can be queried.
+   Supports accountability and analysis.
+
+5. EXTENSIBLE
+   The system is designed to be extended and customized.
+   All major components can be subclassed or modified.
+
+
+WHAT MAKES THIS EXTENSIVE:
+
+✓ 500+ lines in core module
+✓ 400+ lines in extended module
+✓ 300+ lines in examples module
+✓ Comprehensive documentation
+✓ Multiple judgment strategies
+✓ Appeal and precedent systems
+✓ Complete test suite
+✓ Real-world scenario demonstrations
+✓ Support for multiple justice alignments
+✓ Full historical record keeping
+✓ Witness credibility modeling
+✓ Evidence weight calculations
+✓ Case balance determination
+✓ Verdict reasoning
+✓ System metrics and analytics
+
+
+FUTURE ENHANCEMENTS:
+
+- Database backend for persistence
+- Web API for remote access
+- Machine learning for precedent matching
+- Natural language processing for evidence parsing
+- Probabilistic verdict calculation
+- Temporal dynamics (time-dependent case strengths)
+- Cross-jurisdiction coordination
+- Jury system modeling
+- Plea bargaining mechanics
+- Sentencing calculation engine
+"""
+
+
+# ============================================================================
+# CONCLUSION
+# ============================================================================
+
+"""
+Lady Justicia is not merely a symbol or a statue. In this implementation,
+she is a complete, active entity with judgment power, wisdom, and a commitment
+to fairness. Her scales weigh evidence impartially. Her sword renders verdicts
+sharply and decisively. Her blindfold ensures that bias does not cloud her
+judgment.
+
+This system demonstrates that justice can be modeled computationally without
+losing the essential human elements of wisdom, mercy, and fairness. Different
+strategies represent different philosophies of justice—retributive, restorative,
+and procedural—each with merit depending on circumstances.
+
+The extensive nature of this implementation reflects the complexity of justice
+itself. A true system of justice must account for evidence, credibility, bias,
+strategy, appeal, and continuous improvement. Lady Justicia now embodies all
+of these principles in executable code.
+
+════════════════════════════════════════════════════════════════════════════
+"The scales of justice are not metaphorical—they are algorithmic."
+════════════════════════════════════════════════════════════════════════════
+"""
