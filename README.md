@@ -72705,4 +72705,4 @@ index 0000000000000000000000000000000000000000..522875758def87631c6452228593b8d5
 +def sanitize_profiles(profiles: list[dict[str, Any]]) -> list[dict[str, Any]]:
 +    """Sanitize a collection of profile objects."""
 +    return [sanitize_profile(profile) for profile in profiles]
-
+i
