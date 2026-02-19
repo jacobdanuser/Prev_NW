@@ -88494,3 +88494,258 @@ index 0000000000000000000000000000000000000000..ab979d0abea0293c4ad610468e9eb238
 +
 +if __name__ == "__main__":
 +    unittest.main()
+# frozen_string_literal: true
+require "openssl"
+require "base64"
+
+class DeterministicScrambler
+  # Keep this secret (Rails.credentials, ENV, etc.)
+  def initialize(secret:)
+    @secret = secret
+  end
+
+  # Produces URL-safe scrambled text (not reversible without brute force).
+  def scramble(text, length: 24)
+    return "" if text.nil? || text == ""
+
+    digest = OpenSSL::HMAC.digest("SHA256", @secret, text.to_s)
+    token  = Base64.urlsafe_encode64(digest, padding: false)
+    token[0, length]
+  end
+end
+
+# Example:
+# s = DeterministicScrambler.new(secret: ENV.fetch("SCRAMBLE_SECRET"))
+# puts s.scramble("julia@example.com")  # => stable pseudonym
+# frozen_string_literal: true
+require "openssl"
+require "base64"
+require "securerandom"
+
+class ReversibleScrambler
+  def initialize(key:)
+    # 32-byte key required for AES-256-GCM
+    @key = key.byteslice(0, 32)
+    raise ArgumentError, "key must be at least 32 bytes" unless @key&.bytesize == 32
+  end
+
+  def scramble(plaintext)
+    return "" if plaintext.nil? || plaintext == ""
+
+    cipher = OpenSSL::Cipher.new("aes-256-gcm")
+    cipher.encrypt
+    iv = SecureRandom.random_bytes(12)
+    cipher.key = @key
+    cipher.iv  = iv
+
+    ciphertext = cipher.update(plaintext.to_s) + cipher.final
+    tag = cipher.auth_tag
+
+    Base64.urlsafe_encode64(iv + tag + ciphertext, padding: false)
+  end
+
+  def unscramble(token)
+    return "" if token.nil? || token == ""
+
+    raw = Base64.urlsafe_decode64(token)
+    iv  = raw.byteslice(0, 12)
+    tag = raw.byteslice(12, 16)
+    ciphertext = raw.byteslice(28..)
+
+    cipher = OpenSSL::Cipher.new("aes-256-gcm")
+    cipher.decrypt
+    cipher.key = @key
+    cipher.iv  = iv
+    cipher.auth_tag = tag
+
+    cipher.update(ciphertext) + cipher.final
+  end
+end
+
+# Example:
+# key = ENV.fetch("SCRAMBLE_KEY_32B") # must be 32+ bytes
+# s = ReversibleScrambler.new(key: key)
+# t = s.scramble("Michael Anderson")
+# puts t
+# puts s.unscramble(t) # => "Michael Anderson"
+def shuffle_scramble(text, seed: nil)
+  return "" if text.nil? || text == ""
+  rng = seed ? Random.new(seed) : Random.new
+  text.to_s.chars.shuffle(random: rng).join
+end
+
+puts shuffle_scramble("Hello World", seed: 123) # deterministic with seed
+# Keeps structure like email/phone, scrambles characters deterministically
+require "openssl"
+
+class FormatPreservingScrambler
+  def initialize(secret:)
+    @secret = secret
+  end
+
+  def scramble_email(email)
+    local, domain = email.split("@")
+    "#{scramble_string(local)}@#{domain}"
+  end
+
+  def scramble_phone(phone)
+    digits = phone.gsub(/\D/, "")
+    scrambled = scramble_digits(digits)
+    phone.gsub(/\d/) { |d| scrambled.slice!(0) }
+  end
+
+  private
+
+  def scramble_string(str)
+    seed = OpenSSL::HMAC.hexdigest("SHA256", @secret, str)
+    rng  = Random.new(seed.hex)
+
+    alphabet = ("a".."z").to_a + ("0".."9").to_a
+    str.chars.map do |c|
+      if c =~ /[a-z0-9]/i
+        alphabet[rng.rand(alphabet.length)]
+      else
+        c
+      end
+    end.join
+  end
+
+  def scramble_digits(str)
+    seed = OpenSSL::HMAC.hexdigest("SHA256", @secret, str)
+    rng  = Random.new(seed.hex)
+    str.chars.map { rng.rand(10).to_s }.join
+  end
+end
+
+# Example:
+# fps = FormatPreservingScrambler.new(secret: ENV["SCRAMBLE_SECRET"])
+# puts fps.scramble_email("julia.anderson@example.com")
+# puts fps.scramble_phone("(555) 123-4567")
+require "csv"
+
+class FileScrambler
+  def initialize(scrambler)
+    @scrambler = scrambler
+  end
+
+  def scramble_csv(input_path, output_path, columns:)
+    CSV.open(output_path, "w") do |out|
+      CSV.foreach(input_path, headers: true) do |row|
+        columns.each do |col|
+          row[col] = @scrambler.scramble(row[col]) if row[col]
+        end
+        out << row
+      end
+    end
+  end
+end
+
+# Example:
+# s = DeterministicScrambler.new(secret: ENV["SCRAMBLE_SECRET"])
+# fs = FileScrambler.new(s)
+# fs.scramble_csv("users.csv", "users_scrambled.csv", columns: ["email", "name"])
+class TokenMapScrambler
+  def initialize(prefix: "user")
+    @prefix = prefix
+    @map = {}
+    @counter = 0
+  end
+
+  def scramble(value)
+    return "" if value.nil? || value == ""
+
+    @map[value] ||= begin
+      @counter += 1
+      "#{@prefix}_#{@counter}"
+    end
+  end
+
+  def mapping
+    @map
+  end
+end
+
+# Example:
+# t = TokenMapScrambler.new
+# puts t.scramble("Julia Anderson")  # user_1
+# puts t.scramble("Michael Anderson") # user_2
+# puts t.scramble("Julia Anderson")  # user_1 (consistent)
+# app/models/user.rb
+class User < ApplicationRecord
+  before_save :scramble_sensitive_fields
+
+  private
+
+  def scrambler
+    @scrambler ||= DeterministicScrambler.new(
+      secret: Rails.application.credentials.scramble_secret
+    )
+  end
+
+  def scramble_sensitive_fields
+    self.email = scrambler.scramble(email) if email_changed?
+    self.name  = scrambler.scramble(name) if name_changed?
+  end
+end
+class LogScrambler
+  def initialize(scrambler)
+    @scrambler = scrambler
+  end
+
+  def process_line(line)
+    line.gsub(/\b[A-Z][a-z]+ [A-Z][a-z]+\b/) do |name|
+      @scrambler.scramble(name)
+    end
+  end
+end
+
+# Example:
+# ls = LogScrambler.new(DeterministicScrambler.new(secret: "abc"))
+# puts ls.process_line("User Julia Anderson logged in")
+class MultiLayerScrambler
+  def initialize(*layers)
+    @layers = layers
+  end
+
+  def scramble(text)
+    @layers.reduce(text) { |val, layer| layer.scramble(val) }
+  end
+end
+
+# Example:
+# s1 = DeterministicScrambler.new(secret: "abc")
+# s2 = ->(t) { t.reverse } # simple lambda layer
+# multi = MultiLayerScrambler.new(s1, s2)
+# puts multi.scramble("hello")
+class RotatingScrambler
+  def initialize(base_secret:)
+    @base_secret = base_secret
+  end
+
+  def scramble(text, period: :daily)
+    key = case period
+          when :daily   then Time.now.strftime("%Y-%m-%d")
+          when :hourly  then Time.now.strftime("%Y-%m-%d-%H")
+          else "static"
+          end
+
+    secret = OpenSSL::HMAC.hexdigest("SHA256", @base_secret, key)
+    DeterministicScrambler.new(secret: secret).scramble(text)
+  end
+end
+class RotatingScrambler
+  def initialize(base_secret:)
+    @base_secret = base_secret
+  end
+
+  def scramble(text, period: :daily)
+    key = case period
+          when :daily   then Time.now.strftime("%Y-%m-%d")
+          when :hourly  then Time.now.strftime("%Y-%m-%d-%H")
+          else "static"
+          end
+
+    secret = OpenSSL::HMAC.hexdigest("SHA256", @base_secret, key)
+    DeterministicScrambler.new(secret: secret).scramble(text)
+  end
+end
