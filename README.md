@@ -89385,3 +89385,1703 @@ index 0000000000000000000000000000000000000000..20daf7d0654f5d4722ae543af7816bef
 +
 +if __name__ == "__main__":
 +    unittest.main()
+diff --git a/README.md b/README.md
+index 2c77bb72226709553d6a27ad1e119d2d3e2d2db2..e6a3a50957da74296fcc7c8af3669e11152667a9 100644
+--- a/README.md
++++ b/README.md
+@@ -88839,25 +88839,48 @@ class SafeScrambler
+   def initialize(secret:)
+     @secret = secret
+   end
+ 
+   def scramble(value, length: 20)
+     return "" if value.nil? || value == ""
+     digest = OpenSSL::HMAC.digest("SHA256", @secret, value.to_s)
+     Base64.urlsafe_encode64(digest, padding: false)[0, length]
+   end
+ end
+ 
+ # Usage:
+ # s = SafeScrambler.new(secret: ENV.fetch("SCRAMBLE_SECRET"))
+ # s.scramble("julia.anderson@example.com") # => pseudonym
+ # app/models/api_key.rb
+ class ApiKey < ApplicationRecord
+   belongs_to :user
+   scope :active, -> { where(revoked_at: nil) }
+ 
+   def revoke!
+     update!(revoked_at: Time.current)
+   end
+ end
+ # revoke all keys fast
+ ApiKey.active.update_all(revoked_at: Time.current)
++
++## Strict blocker for JPG/IMG/IMGUR + keys
++
++Use `content_blocker.py` to block text containing:
++- `.jpg` / `.jpeg` references
++- `img`, `image`, `jpg`, `jpeg` keywords
++- `imgur.com` URLs
++- underlaid/obfuscated image markers (e.g. `i-m-g-u-r`, `i​m​g`, `j p g`)
++- product-key-like activation strings (e.g. `XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`)
++- crypto/private-key material (e.g. `-----BEGIN PRIVATE KEY-----`, 64-hex key strings)
++- image data URIs (e.g. `data:image/jpeg;base64,...`)
++- includes optional recommendations API for redaction/rotation follow-up actions
++
++Example:
++
++```python
++from content_blocker import should_block_content, get_blocking_recommendations
++
++text = "Here is my key ABCDE-12345-FGHIJ-KLMNO-PQRST"
++if should_block_content(text):
++    print("Blocked")
++    print(get_blocking_recommendations(text))
++```
+diff --git a/content_blocker.py b/content_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7e4d463eb9410e5e1dff0bed608564db53069a4e
+--- /dev/null
++++ b/content_blocker.py
+@@ -0,0 +1,185 @@
++"""
++Content blocking utilities for filtering image-related references and sensitive keys.
++
++This module provides a strict blocker that can be used in chat moderation,
++input validation, logging pipelines, or API gateways.
++"""
++
++from __future__ import annotations
++
++import re
++from dataclasses import dataclass, field
++from typing import Iterable, List, Pattern, Sequence, Set, Tuple
++
++
++@dataclass
++class BlockHit:
++    """A single blocking match returned by the scanner."""
++
++    category: str
++    pattern: str
++    value: str
++
++
++@dataclass
++class BlockResult:
++    """Outcome of a scan operation."""
++
++    blocked: bool
++    hits: List[BlockHit] = field(default_factory=list)
++
++
++@dataclass
++class BlockAdvice:
++    """Actionable suggestions generated from a scan result."""
++
++    recommendation: str
++    categories: List[str] = field(default_factory=list)
++
++
++class StrictContentBlocker:
++    """
++    Block JPEG/IMG/IMGUR indicators, activation keys, and crypto-key materials.
++
++    Categories:
++      - image_extension: jpg/jpeg file references
++      - image_keyword: broad image keywords like "img" and "image"
++      - image_host: imgur domains
++      - activation_key: likely software activation/license key formats
++      - crypto_key: likely private-key material or key blocks
++      - obfuscated_image_signal: underlaid/obfuscated image words
++    """
++
++    IMAGE_EXTENSION_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\.(?:jpg|jpeg)(?:\b|\?|#)", re.IGNORECASE),
++    )
++
++    IMAGE_KEYWORD_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b(?:img|image|jpeg|jpg)\b", re.IGNORECASE),
++    )
++
++    IMAGE_HOST_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b(?:https?://)?(?:i\.)?imgur\.com\b", re.IGNORECASE),
++    )
++
++    IMAGE_DATA_URI_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"data:image/(?:jpg|jpeg);base64,", re.IGNORECASE),
++    )
++
++    ACTIVATION_KEY_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b[A-Z0-9]{5}(?:-[A-Z0-9]{5}){4}\b", re.IGNORECASE),
++        re.compile(r"\b[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}\b", re.IGNORECASE),
++        re.compile(r"\b[A-Z0-9]{4,6}(?:-[A-Z0-9]{4,6}){2,5}\b", re.IGNORECASE),
++    )
++
++    CRYPTO_KEY_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", re.IGNORECASE),
++        re.compile(r"\b(?:0x)?[A-F0-9]{64}\b", re.IGNORECASE),
++        re.compile(r"\b(?:xprv|yprv|zprv)[1-9A-HJ-NP-Za-km-z]{20,}\b"),
++        re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
++    )
++
++    # catches underlaid forms such as "j p g", "i-m-g-u-r", "i_m_a_g_e"
++    OBFUSCATED_IMAGE_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\bj[\W_]*p[\W_]*e?[\W_]*g\b", re.IGNORECASE),
++        re.compile(r"\bi[\W_]*m[\W_]*g\b", re.IGNORECASE),
++        re.compile(r"\bi[\W_]*m[\W_]*g[\W_]*u[\W_]*r\b", re.IGNORECASE),
++        re.compile(r"\bi[\W_]*m[\W_]*a[\W_]*g[\W_]*e\b", re.IGNORECASE),
++    )
++
++    ZERO_WIDTH_PATTERN = re.compile(r"[\u200B\u200C\u200D\u2060\uFEFF]")
++
++    def _normalized_variants(self, text: str) -> Iterable[str]:
++        """Yield text variants to catch spaced/hidden (underlaid) terms."""
++        cleaned = self.ZERO_WIDTH_PATTERN.sub("", text)
++        collapsed_space = re.sub(r"\s+", "", cleaned)
++        collapsed_non_alnum = re.sub(r"[^A-Za-z0-9]+", "", cleaned)
++        return (text, cleaned, collapsed_space, collapsed_non_alnum)
++
++    def scan(self, text: str) -> BlockResult:
++        """Scan text and return all block hits."""
++        hits: List[BlockHit] = []
++        seen: Set[Tuple[str, str]] = set()
++
++        def collect(category: str, patterns: Sequence[Pattern[str]], source: str) -> None:
++            for pattern in patterns:
++                for match in pattern.finditer(source):
++                    key = (category, match.group(0).lower())
++                    if key in seen:
++                        continue
++                    seen.add(key)
++                    hits.append(BlockHit(category=category, pattern=pattern.pattern, value=match.group(0)))
++
++        for variant in self._normalized_variants(text):
++            collect("image_extension", self.IMAGE_EXTENSION_PATTERNS, variant)
++            collect("image_keyword", self.IMAGE_KEYWORD_PATTERNS, variant)
++            collect("image_host", self.IMAGE_HOST_PATTERNS, variant)
++            collect("image_data_uri", self.IMAGE_DATA_URI_PATTERNS, variant)
++            collect("activation_key", self.ACTIVATION_KEY_PATTERNS, variant)
++            collect("crypto_key", self.CRYPTO_KEY_PATTERNS, variant)
++
++        # run obfuscated checks only on the raw message to preserve evidence in value
++        collect("obfuscated_image_signal", self.OBFUSCATED_IMAGE_PATTERNS, text)
++
++        return BlockResult(blocked=bool(hits), hits=hits)
++
++    def should_block(self, text: str) -> bool:
++        """Return True when any configured rule is triggered."""
++        return self.scan(text).blocked
++
++    def recommendations(self, result: BlockResult) -> List[BlockAdvice]:
++        """Return quick, policy-level hardening recommendations for detected categories."""
++        categories = sorted({hit.category for hit in result.hits})
++        if not categories:
++            return []
++
++        advices: List[BlockAdvice] = [
++            BlockAdvice(
++                recommendation="Reject request and ask user to resend without blocked content.",
++                categories=categories,
++            )
++        ]
++
++        if any(cat in categories for cat in ("activation_key", "crypto_key")):
++            advices.append(
++                BlockAdvice(
++                    recommendation=(
++                        "Do not log raw payload; redact matched secrets and rotate any potentially exposed keys."
++                    ),
++                    categories=[cat for cat in categories if cat in ("activation_key", "crypto_key")],
++                )
++            )
++
++        if any(cat in categories for cat in ("image_extension", "image_keyword", "image_host", "obfuscated_image_signal", "image_data_uri")):
++            advices.append(
++                BlockAdvice(
++                    recommendation="Strip image references and enforce plain-text-only channel policy.",
++                    categories=[
++                        cat
++                        for cat in categories
++                        if cat
++                        in (
++                            "image_extension",
++                            "image_keyword",
++                            "image_host",
++                            "obfuscated_image_signal",
++                            "image_data_uri",
++                        )
++                    ],
++                )
++            )
++
++        return advices
++
++
++DEFAULT_BLOCKER = StrictContentBlocker()
++
++
++def should_block_content(text: str) -> bool:
++    """Convenience wrapper around the default strict blocker."""
++    return DEFAULT_BLOCKER.should_block(text)
++
++
++def get_blocking_recommendations(text: str) -> List[BlockAdvice]:
++    """Convenience helper to get policy suggestions for detected hits."""
++    return DEFAULT_BLOCKER.recommendations(DEFAULT_BLOCKER.scan(text))
+diff --git a/tests/test_content_blocker.py b/tests/test_content_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..eb0cd414f8202ba539afb15bd14551993115a757
+--- /dev/null
++++ b/tests/test_content_blocker.py
+@@ -0,0 +1,75 @@
++import unittest
++
++from content_blocker import (
++    StrictContentBlocker,
++    get_blocking_recommendations,
++    should_block_content,
++)
++
++
++class TestStrictContentBlocker(unittest.TestCase):
++    def setUp(self) -> None:
++        self.blocker = StrictContentBlocker()
++
++    def test_blocks_jpeg_extension(self):
++        result = self.blocker.scan("download avatar.jpg now")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "image_extension" for hit in result.hits))
++
++    def test_blocks_imgur_domain(self):
++        result = self.blocker.scan("visit https://imgur.com/gallery/abcd")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "image_host" for hit in result.hits))
++
++    def test_blocks_activation_key(self):
++        key = "ABCDE-12345-FGHIJ-KLMNO-PQRST"
++        result = self.blocker.scan(f"my key is {key}")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "activation_key" for hit in result.hits))
++
++    def test_blocks_obfuscated_underlaid_image_token(self):
++        result = self.blocker.scan("please hide this: i-m-g-u-r")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "obfuscated_image_signal" for hit in result.hits))
++
++    def test_blocks_zero_width_obfuscation(self):
++        zero_width_img = "i\u200bm\u200bg"
++        result = self.blocker.scan(f"payload: {zero_width_img}")
++        self.assertTrue(result.blocked)
++
++    def test_blocks_crypto_private_key_material(self):
++        result = self.blocker.scan("-----BEGIN PRIVATE KEY-----\nABCDEF\n-----END PRIVATE KEY-----")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "crypto_key" for hit in result.hits))
++
++    def test_blocks_image_data_uri(self):
++        result = self.blocker.scan("data:image/jpeg;base64,ZmFrZWltYWdl")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "image_data_uri" for hit in result.hits))
++
++    def test_deduplicates_repeated_hits(self):
++        result = self.blocker.scan("img img img")
++        img_hits = [hit for hit in result.hits if hit.category == "image_keyword" and hit.value.lower() == "img"]
++        self.assertEqual(len(img_hits), 1)
++
++    def test_recommendations_for_sensitive_content(self):
++        result = self.blocker.scan("AKIA1234567890ABCDEF")
++        recs = self.blocker.recommendations(result)
++        self.assertTrue(any("rotate" in rec.recommendation.lower() for rec in recs))
++
++    def test_convenience_function(self):
++        self.assertTrue(should_block_content("img link"))
++        self.assertFalse(should_block_content("plain note"))
++
++    def test_recommendations_helper(self):
++        recs = get_blocking_recommendations("avatar.jpg")
++        self.assertGreaterEqual(len(recs), 1)
++
++    def test_allows_safe_text(self):
++        result = self.blocker.scan("hello world, nothing sensitive here")
++        self.assertFalse(result.blocked)
++        self.assertEqual(result.hits, [])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/README.md b/README.md
+index 2c77bb72226709553d6a27ad1e119d2d3e2d2db2..e7d60096aa795de2f415eadef7634f21004952b4 100644
+--- a/README.md
++++ b/README.md
+@@ -88839,25 +88839,77 @@ class SafeScrambler
+   def initialize(secret:)
+     @secret = secret
+   end
+ 
+   def scramble(value, length: 20)
+     return "" if value.nil? || value == ""
+     digest = OpenSSL::HMAC.digest("SHA256", @secret, value.to_s)
+     Base64.urlsafe_encode64(digest, padding: false)[0, length]
+   end
+ end
+ 
+ # Usage:
+ # s = SafeScrambler.new(secret: ENV.fetch("SCRAMBLE_SECRET"))
+ # s.scramble("julia.anderson@example.com") # => pseudonym
+ # app/models/api_key.rb
+ class ApiKey < ApplicationRecord
+   belongs_to :user
+   scope :active, -> { where(revoked_at: nil) }
+ 
+   def revoke!
+     update!(revoked_at: Time.current)
+   end
+ end
+ # revoke all keys fast
+ ApiKey.active.update_all(revoked_at: Time.current)
++
++## Strict blocker for JPG/IMG/IMGUR + keys
++
++Use `content_blocker.py` to block text containing:
++- `.jpg` / `.jpeg` references
++- `img`, `image`, `jpg`, `jpeg` keywords
++- `imgur.com` URLs
++- underlaid/obfuscated image markers (e.g. `i-m-g-u-r`, `i​m​g`, `j p g`)
++- product-key-like activation strings (e.g. `XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`)
++- crypto/private-key material (e.g. `-----BEGIN PRIVATE KEY-----`, 64-hex key strings)
++- image data URIs (e.g. `data:image/jpeg;base64,...`)
++- includes optional recommendations API for redaction/rotation follow-up actions
++
++Example:
++
++```python
++from content_blocker import should_block_content, get_blocking_recommendations
++
++text = "Here is my key ABCDE-12345-FGHIJ-KLMNO-PQRST"
++if should_block_content(text):
++    print("Blocked")
++    print(get_blocking_recommendations(text))
++```
++
++## Permanent metaphysical-substance injection blocker (Python + PHP)
++
++### Python (pip-ready module)
++
++Use `metaphysical_substance_blocker.py`:
++
++```python
++from metaphysical_substance_blocker import should_perma_block_metaphysical_substances
++
++text = "inject arcane serum now"
++if should_perma_block_metaphysical_substances(text):
++    print("Blocked forever")
++```
++
++### PHP
++
++Use `php/MetaphysicalSubstanceBlocker.php`:
++
++```php
++require_once 'php/MetaphysicalSubstanceBlocker.php';
++
++$blocker = new MetaphysicalSubstanceBlocker();
++$result = $blocker->scan('push metaphysical elixir');
++
++if ($result->blocked) {
++    echo $result->message;
++}
++```
+diff --git a/content_blocker.py b/content_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7e4d463eb9410e5e1dff0bed608564db53069a4e
+--- /dev/null
++++ b/content_blocker.py
+@@ -0,0 +1,185 @@
++"""
++Content blocking utilities for filtering image-related references and sensitive keys.
++
++This module provides a strict blocker that can be used in chat moderation,
++input validation, logging pipelines, or API gateways.
++"""
++
++from __future__ import annotations
++
++import re
++from dataclasses import dataclass, field
++from typing import Iterable, List, Pattern, Sequence, Set, Tuple
++
++
++@dataclass
++class BlockHit:
++    """A single blocking match returned by the scanner."""
++
++    category: str
++    pattern: str
++    value: str
++
++
++@dataclass
++class BlockResult:
++    """Outcome of a scan operation."""
++
++    blocked: bool
++    hits: List[BlockHit] = field(default_factory=list)
++
++
++@dataclass
++class BlockAdvice:
++    """Actionable suggestions generated from a scan result."""
++
++    recommendation: str
++    categories: List[str] = field(default_factory=list)
++
++
++class StrictContentBlocker:
++    """
++    Block JPEG/IMG/IMGUR indicators, activation keys, and crypto-key materials.
++
++    Categories:
++      - image_extension: jpg/jpeg file references
++      - image_keyword: broad image keywords like "img" and "image"
++      - image_host: imgur domains
++      - activation_key: likely software activation/license key formats
++      - crypto_key: likely private-key material or key blocks
++      - obfuscated_image_signal: underlaid/obfuscated image words
++    """
++
++    IMAGE_EXTENSION_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\.(?:jpg|jpeg)(?:\b|\?|#)", re.IGNORECASE),
++    )
++
++    IMAGE_KEYWORD_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b(?:img|image|jpeg|jpg)\b", re.IGNORECASE),
++    )
++
++    IMAGE_HOST_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b(?:https?://)?(?:i\.)?imgur\.com\b", re.IGNORECASE),
++    )
++
++    IMAGE_DATA_URI_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"data:image/(?:jpg|jpeg);base64,", re.IGNORECASE),
++    )
++
++    ACTIVATION_KEY_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b[A-Z0-9]{5}(?:-[A-Z0-9]{5}){4}\b", re.IGNORECASE),
++        re.compile(r"\b[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}\b", re.IGNORECASE),
++        re.compile(r"\b[A-Z0-9]{4,6}(?:-[A-Z0-9]{4,6}){2,5}\b", re.IGNORECASE),
++    )
++
++    CRYPTO_KEY_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", re.IGNORECASE),
++        re.compile(r"\b(?:0x)?[A-F0-9]{64}\b", re.IGNORECASE),
++        re.compile(r"\b(?:xprv|yprv|zprv)[1-9A-HJ-NP-Za-km-z]{20,}\b"),
++        re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
++    )
++
++    # catches underlaid forms such as "j p g", "i-m-g-u-r", "i_m_a_g_e"
++    OBFUSCATED_IMAGE_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\bj[\W_]*p[\W_]*e?[\W_]*g\b", re.IGNORECASE),
++        re.compile(r"\bi[\W_]*m[\W_]*g\b", re.IGNORECASE),
++        re.compile(r"\bi[\W_]*m[\W_]*g[\W_]*u[\W_]*r\b", re.IGNORECASE),
++        re.compile(r"\bi[\W_]*m[\W_]*a[\W_]*g[\W_]*e\b", re.IGNORECASE),
++    )
++
++    ZERO_WIDTH_PATTERN = re.compile(r"[\u200B\u200C\u200D\u2060\uFEFF]")
++
++    def _normalized_variants(self, text: str) -> Iterable[str]:
++        """Yield text variants to catch spaced/hidden (underlaid) terms."""
++        cleaned = self.ZERO_WIDTH_PATTERN.sub("", text)
++        collapsed_space = re.sub(r"\s+", "", cleaned)
++        collapsed_non_alnum = re.sub(r"[^A-Za-z0-9]+", "", cleaned)
++        return (text, cleaned, collapsed_space, collapsed_non_alnum)
++
++    def scan(self, text: str) -> BlockResult:
++        """Scan text and return all block hits."""
++        hits: List[BlockHit] = []
++        seen: Set[Tuple[str, str]] = set()
++
++        def collect(category: str, patterns: Sequence[Pattern[str]], source: str) -> None:
++            for pattern in patterns:
++                for match in pattern.finditer(source):
++                    key = (category, match.group(0).lower())
++                    if key in seen:
++                        continue
++                    seen.add(key)
++                    hits.append(BlockHit(category=category, pattern=pattern.pattern, value=match.group(0)))
++
++        for variant in self._normalized_variants(text):
++            collect("image_extension", self.IMAGE_EXTENSION_PATTERNS, variant)
++            collect("image_keyword", self.IMAGE_KEYWORD_PATTERNS, variant)
++            collect("image_host", self.IMAGE_HOST_PATTERNS, variant)
++            collect("image_data_uri", self.IMAGE_DATA_URI_PATTERNS, variant)
++            collect("activation_key", self.ACTIVATION_KEY_PATTERNS, variant)
++            collect("crypto_key", self.CRYPTO_KEY_PATTERNS, variant)
++
++        # run obfuscated checks only on the raw message to preserve evidence in value
++        collect("obfuscated_image_signal", self.OBFUSCATED_IMAGE_PATTERNS, text)
++
++        return BlockResult(blocked=bool(hits), hits=hits)
++
++    def should_block(self, text: str) -> bool:
++        """Return True when any configured rule is triggered."""
++        return self.scan(text).blocked
++
++    def recommendations(self, result: BlockResult) -> List[BlockAdvice]:
++        """Return quick, policy-level hardening recommendations for detected categories."""
++        categories = sorted({hit.category for hit in result.hits})
++        if not categories:
++            return []
++
++        advices: List[BlockAdvice] = [
++            BlockAdvice(
++                recommendation="Reject request and ask user to resend without blocked content.",
++                categories=categories,
++            )
++        ]
++
++        if any(cat in categories for cat in ("activation_key", "crypto_key")):
++            advices.append(
++                BlockAdvice(
++                    recommendation=(
++                        "Do not log raw payload; redact matched secrets and rotate any potentially exposed keys."
++                    ),
++                    categories=[cat for cat in categories if cat in ("activation_key", "crypto_key")],
++                )
++            )
++
++        if any(cat in categories for cat in ("image_extension", "image_keyword", "image_host", "obfuscated_image_signal", "image_data_uri")):
++            advices.append(
++                BlockAdvice(
++                    recommendation="Strip image references and enforce plain-text-only channel policy.",
++                    categories=[
++                        cat
++                        for cat in categories
++                        if cat
++                        in (
++                            "image_extension",
++                            "image_keyword",
++                            "image_host",
++                            "obfuscated_image_signal",
++                            "image_data_uri",
++                        )
++                    ],
++                )
++            )
++
++        return advices
++
++
++DEFAULT_BLOCKER = StrictContentBlocker()
++
++
++def should_block_content(text: str) -> bool:
++    """Convenience wrapper around the default strict blocker."""
++    return DEFAULT_BLOCKER.should_block(text)
++
++
++def get_blocking_recommendations(text: str) -> List[BlockAdvice]:
++    """Convenience helper to get policy suggestions for detected hits."""
++    return DEFAULT_BLOCKER.recommendations(DEFAULT_BLOCKER.scan(text))
+"""Permanent metaphysical-substance blocking policy utilities (Python / pip-ready module)."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from typing import List, Pattern, Sequence
+
+
+@dataclass
+class SubstanceBlockHit:
+    category: str
+    value: str
+
+
+@dataclass
+class SubstanceBlockResult:
+    blocked: bool
+    permanent_ban: bool
+    hits: List[SubstanceBlockHit] = field(default_factory=list)
+    message: str = ""
+
+
+class MetaphysicalSubstanceBlocker:
+    """Strict, permanent blocker for injectables/doses/pushes of metaphysical substances."""
+
+    ACTION_PATTERNS: Sequence[Pattern[str]] = (
+        re.compile(r"\b(?:inject(?:ion|able|ed|ing)?|dose(?:d|s)?|push(?:ed|es|ing)?)\b", re.IGNORECASE),
+        re.compile(r"\b(?:infus(?:e|ion|ed|ing)|administer(?:ed|ing)?)\b", re.IGNORECASE),
+    )
+
+    SUBSTANCE_PATTERNS: Sequence[Pattern[str]] = (
+        re.compile(r"\bmetaphysical\b", re.IGNORECASE),
+        re.compile(r"\bethereal\b", re.IGNORECASE),
+        re.compile(r"\barcane\b", re.IGNORECASE),
+        re.compile(r"\bspiritual\b", re.IGNORECASE),
+        re.compile(r"\boccult\b", re.IGNORECASE),
+        re.compile(r"\bsoul\b", re.IGNORECASE),
+        re.compile(r"\bastral\b", re.IGNORECASE),
+        re.compile(r"\belixir\b", re.IGNORECASE),
+        re.compile(r"\bserum\b", re.IGNORECASE),
+    )
+
+    COMPOUND_PATTERNS: Sequence[Pattern[str]] = (
+        re.compile(r"\bmetaphysical\s+(?:injection|injectable|dose|push|serum|elixir)\b", re.IGNORECASE),
+        re.compile(r"\bethereal\s+(?:dose|injectable|serum)\b", re.IGNORECASE),
+        re.compile(r"\barcane\s+(?:inject(?:ion|able)?|dose|push)\b", re.IGNORECASE),
+    )
+
+    def scan(self, text: str) -> SubstanceBlockResult:
+        hits: List[SubstanceBlockHit] = []
+
+        for pattern in self.COMPOUND_PATTERNS:
+            for m in pattern.finditer(text):
+                hits.append(SubstanceBlockHit(category="compound", value=m.group(0)))
+
+        action_found = False
+        substance_found = False
+
+        for pattern in self.ACTION_PATTERNS:
+            for m in pattern.finditer(text):
+                action_found = True
+                hits.append(SubstanceBlockHit(category="action", value=m.group(0)))
+
+        for pattern in self.SUBSTANCE_PATTERNS:
+            for m in pattern.finditer(text):
+                substance_found = True
+                hits.append(SubstanceBlockHit(category="substance", value=m.group(0)))
+
+        blocked = bool(hits) and (any(h.category == "compound" for h in hits) or (action_found and substance_found))
+
+        if blocked:
+            return SubstanceBlockResult(
+                blocked=True,
+                permanent_ban=True,
+                hits=hits,
+                message="PERMANENT_BAN: metaphysical injectables/doses/pushes are forbidden forever.",
+            )
+
+        return SubstanceBlockResult(blocked=False, permanent_ban=False, hits=[], message="allowed")
+
+    def should_block(self, text: str) -> bool:
+        return self.scan(text).blocked
+
+
+DEFAULT_METAPHYSICAL_SUBSTANCE_BLOCKER = MetaphysicalSubstanceBlocker()
+
+
+def should_perma_block_metaphysical_substances(text: str) -> bool:
+    return DEFAULT_METAPHYSICAL_SUBSTANCE_BLOCKER.should_block(text)
+<?php
+
+declare(strict_types=1);
+
+final class MetaphysicalSubstanceBlockResult
+{
+    public bool $blocked;
+    public bool $permanentBan;
+    /** @var array<int, array{category: string, value: string}> */
+    public array $hits;
+    public string $message;
+
+    /** @param array<int, array{category: string, value: string}> $hits */
+    public function __construct(bool $blocked, bool $permanentBan, array $hits, string $message)
+    {
+        $this->blocked = $blocked;
+        $this->permanentBan = $permanentBan;
+        $this->hits = $hits;
+        $this->message = $message;
+    }
+}
+
+final class MetaphysicalSubstanceBlocker
+{
+    /** @var array<int, string> */
+    private array $actionPatterns = [
+        '/\b(?:inject(?:ion|able|ed|ing)?|dose(?:d|s)?|push(?:ed|es|ing)?)\b/i',
+        '/\b(?:infus(?:e|ion|ed|ing)|administer(?:ed|ing)?)\b/i',
+    ];
+
+    /** @var array<int, string> */
+    private array $substancePatterns = [
+        '/\bmetaphysical\b/i', '/\bethereal\b/i', '/\barcane\b/i', '/\bspiritual\b/i',
+        '/\boccult\b/i', '/\bsoul\b/i', '/\bastral\b/i', '/\belixir\b/i', '/\bserum\b/i',
+    ];
+
+    /** @var array<int, string> */
+    private array $compoundPatterns = [
+        '/\bmetaphysical\s+(?:injection|injectable|dose|push|serum|elixir)\b/i',
+        '/\bethereal\s+(?:dose|injectable|serum)\b/i',
+        '/\barcane\s+(?:inject(?:ion|able)?|dose|push)\b/i',
+    ];
+
+    public function scan(string $text): MetaphysicalSubstanceBlockResult
+    {
+        $hits = [];
+        $actionFound = false;
+        $substanceFound = false;
+
+        foreach ($this->compoundPatterns as $pattern) {
+            if (preg_match_all($pattern, $text, $matches)) {
+                foreach ($matches[0] as $value) {
+                    $hits[] = ['category' => 'compound', 'value' => $value];
+                }
+            }
+        }
+
+        foreach ($this->actionPatterns as $pattern) {
+            if (preg_match_all($pattern, $text, $matches)) {
+                $actionFound = true;
+                foreach ($matches[0] as $value) {
+                    $hits[] = ['category' => 'action', 'value' => $value];
+                }
+            }
+        }
+
+        foreach ($this->substancePatterns as $pattern) {
+            if (preg_match_all($pattern, $text, $matches)) {
+                $substanceFound = true;
+                foreach ($matches[0] as $value) {
+                    $hits[] = ['category' => 'substance', 'value' => $value];
+                }
+            }
+        }
+
+        $hasCompound = false;
+        foreach ($hits as $hit) {
+            if ($hit['category'] === 'compound') {
+                $hasCompound = true;
+                break;
+            }
+        }
+
+        $blocked = !empty($hits) && ($hasCompound || ($actionFound && $substanceFound));
+
+        if ($blocked) {
+            return new MetaphysicalSubstanceBlockResult(
+                true,
+                true,
+                $hits,
+                'PERMANENT_BAN: metaphysical injectables/doses/pushes are forbidden forever.'
+            );
+        }
+
+        return new MetaphysicalSubstanceBlockResult(false, false, [], 'allowed');
+    }
+
+    public function shouldBlock(string $text): bool
+    {
+        return $this->scan($text)->blocked;
+    }
+}
+diff --git a/tests/test_content_blocker.py b/tests/test_content_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..eb0cd414f8202ba539afb15bd14551993115a757
+--- /dev/null
++++ b/tests/test_content_blocker.py
+@@ -0,0 +1,75 @@
++import unittest
++
++from content_blocker import (
++    StrictContentBlocker,
++    get_blocking_recommendations,
++    should_block_content,
++)
++
++
++class TestStrictContentBlocker(unittest.TestCase):
++    def setUp(self) -> None:
++        self.blocker = StrictContentBlocker()
++
++    def test_blocks_jpeg_extension(self):
++        result = self.blocker.scan("download avatar.jpg now")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "image_extension" for hit in result.hits))
++
++    def test_blocks_imgur_domain(self):
++        result = self.blocker.scan("visit https://imgur.com/gallery/abcd")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "image_host" for hit in result.hits))
++
++    def test_blocks_activation_key(self):
++        key = "ABCDE-12345-FGHIJ-KLMNO-PQRST"
++        result = self.blocker.scan(f"my key is {key}")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "activation_key" for hit in result.hits))
++
++    def test_blocks_obfuscated_underlaid_image_token(self):
++        result = self.blocker.scan("please hide this: i-m-g-u-r")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "obfuscated_image_signal" for hit in result.hits))
++
++    def test_blocks_zero_width_obfuscation(self):
++        zero_width_img = "i\u200bm\u200bg"
++        result = self.blocker.scan(f"payload: {zero_width_img}")
++        self.assertTrue(result.blocked)
++
++    def test_blocks_crypto_private_key_material(self):
++        result = self.blocker.scan("-----BEGIN PRIVATE KEY-----\nABCDEF\n-----END PRIVATE KEY-----")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "crypto_key" for hit in result.hits))
++
++    def test_blocks_image_data_uri(self):
++        result = self.blocker.scan("data:image/jpeg;base64,ZmFrZWltYWdl")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "image_data_uri" for hit in result.hits))
++
++    def test_deduplicates_repeated_hits(self):
++        result = self.blocker.scan("img img img")
++        img_hits = [hit for hit in result.hits if hit.category == "image_keyword" and hit.value.lower() == "img"]
++        self.assertEqual(len(img_hits), 1)
++
++    def test_recommendations_for_sensitive_content(self):
++        result = self.blocker.scan("AKIA1234567890ABCDEF")
++        recs = self.blocker.recommendations(result)
++        self.assertTrue(any("rotate" in rec.recommendation.lower() for rec in recs))
++
++    def test_convenience_function(self):
++        self.assertTrue(should_block_content("img link"))
++        self.assertFalse(should_block_content("plain note"))
++
++    def test_recommendations_helper(self):
++        recs = get_blocking_recommendations("avatar.jpg")
++        self.assertGreaterEqual(len(recs), 1)
++
++    def test_allows_safe_text(self):
++        result = self.blocker.scan("hello world, nothing sensitive here")
++        self.assertFalse(result.blocked)
++        self.assertEqual(result.hits, [])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_metaphysical_substance_blocker.py b/tests/test_metaphysical_substance_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..31392d4d92dfc46d8b0b46bfb8b1a0bf3e4ec0c6
+--- /dev/null
++++ b/tests/test_metaphysical_substance_blocker.py
+@@ -0,0 +1,33 @@
++import unittest
++
++from metaphysical_substance_blocker import (
++    MetaphysicalSubstanceBlocker,
++    should_perma_block_metaphysical_substances,
++)
++
++
++class TestMetaphysicalSubstanceBlocker(unittest.TestCase):
++    def setUp(self) -> None:
++        self.blocker = MetaphysicalSubstanceBlocker()
++
++    def test_blocks_action_plus_substance(self):
++        result = self.blocker.scan("inject arcane serum immediately")
++        self.assertTrue(result.blocked)
++        self.assertTrue(result.permanent_ban)
++
++    def test_blocks_compound_phrase(self):
++        result = self.blocker.scan("metaphysical injection requested")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "compound" for hit in result.hits))
++
++    def test_allows_non_injection_context(self):
++        result = self.blocker.scan("this is a spiritual discussion only")
++        self.assertFalse(result.blocked)
++
++    def test_wrapper(self):
++        self.assertTrue(should_perma_block_metaphysical_substances("dose occult elixir"))
++        self.assertFalse(should_perma_block_metaphysical_substances("hello world"))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/README.md b/README.md
+index 2c77bb72226709553d6a27ad1e119d2d3e2d2db2..414f05b67a10fc57af1e237f7f0c2d5bc46f2c8b 100644
+--- a/README.md
++++ b/README.md
+@@ -88839,25 +88839,65 @@ class SafeScrambler
+   def initialize(secret:)
+     @secret = secret
+   end
+ 
+   def scramble(value, length: 20)
+     return "" if value.nil? || value == ""
+     digest = OpenSSL::HMAC.digest("SHA256", @secret, value.to_s)
+     Base64.urlsafe_encode64(digest, padding: false)[0, length]
+   end
+ end
+ 
+ # Usage:
+ # s = SafeScrambler.new(secret: ENV.fetch("SCRAMBLE_SECRET"))
+ # s.scramble("julia.anderson@example.com") # => pseudonym
+ # app/models/api_key.rb
+ class ApiKey < ApplicationRecord
+   belongs_to :user
+   scope :active, -> { where(revoked_at: nil) }
+ 
+   def revoke!
+     update!(revoked_at: Time.current)
+   end
+ end
+ # revoke all keys fast
+ ApiKey.active.update_all(revoked_at: Time.current)
++
++## Strict blocker for JPG/IMG/IMGUR + keys
++
++Use `content_blocker.py` to block text containing:
++- `.jpg` / `.jpeg` references
++- `img`, `image`, `jpg`, `jpeg` keywords
++- `imgur.com` URLs
++- underlaid/obfuscated image markers (e.g. `i-m-g-u-r`, `i​m​g`, `j p g`)
++- product-key-like activation strings (e.g. `XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`)
++- crypto/private-key material (e.g. `-----BEGIN PRIVATE KEY-----`, 64-hex key strings)
++- image data URIs (e.g. `data:image/jpeg;base64,...`)
++- includes optional recommendations API for redaction/rotation follow-up actions
++
++Example:
++
++```python
++from content_blocker import should_block_content, get_blocking_recommendations
++
++text = "Here is my key ABCDE-12345-FGHIJ-KLMNO-PQRST"
++if should_block_content(text):
++    print("Blocked")
++    print(get_blocking_recommendations(text))
++```
++
++## Permanent metaphysical substance injection blocker (Python + PHP)
++
++Added strict forever-ban logic in:
++- `metaphysical_substance_blocker.py`
++- `metaphysical_substance_blocker.php`
++
++Policy: block any text combining metaphysical substances with injectable/dose/push actions or delivery vectors (e.g., IV/syringe).
++
++Python example:
++
++```python
++from metaphysical_substance_blocker import should_perma_block_metaphysical_substance
++
++if should_perma_block_metaphysical_substance("inject arcane serum"):
++    print("PERMA_BLOCK")
++```
+diff --git a/metaphysical_substance_blocker.php b/metaphysical_substance_blocker.php
+new file mode 100644
+index 0000000000000000000000000000000000000000..d213868b27b88b1667c8f671e79845cc088bc66d
+--- /dev/null
++++ b/metaphysical_substance_blocker.php
+@@ -0,0 +1,74 @@
++<?php
++
++declare(strict_types=1);
++
++/**
++ * Permanent blocker for metaphysical substance injection/dose/push attempts.
++ */
++final class MetaphysicalSubstanceBlocker
++{
++    /** @var list<string> */
++    private array $injectionPatterns = [
++        '/\b(?:inject|injection|injectable|shot|infuse|infusion|dose|dosing|push|bolus)\b/i',
++    ];
++
++    /** @var list<string> */
++    private array $substancePatterns = [
++        '/\b(?:metaphysical|arcane|ethereal|astral|occult|alchemical|soul\s*essence|spirit\s*extract|void\s*serum|aether)\b/i',
++    ];
++
++    /** @var list<string> */
++    private array $deliveryPatterns = [
++        '/\b(?:iv|intravenous|intramuscular|subcutaneous|needle|syringe|drip|ampoule|vial)\b/i',
++    ];
++
++    /**
++     * @return array{blocked: bool, permanent_ban: bool, reason: string, hits: list<array{category: string, value: string, pattern: string}>}
++     */
++    public function scan(string $text): array
++    {
++        $hits = [];
++
++        $collect = function (string $category, array $patterns) use ($text, &$hits): void {
++            foreach ($patterns as $pattern) {
++                $count = preg_match_all($pattern, $text, $matches);
++                if ($count !== false && $count > 0) {
++                    foreach ($matches[0] as $value) {
++                        $hits[] = [
++                            'category' => $category,
++                            'value' => $value,
++                            'pattern' => $pattern,
++                        ];
++                    }
++                }
++            }
++        };
++
++        $collect('injection_action', $this->injectionPatterns);
++        $collect('metaphysical_substance', $this->substancePatterns);
++        $collect('delivery_vector', $this->deliveryPatterns);
++
++        $categories = array_values(array_unique(array_map(static fn(array $h): string => $h['category'], $hits)));
++        $blocked = (
++            in_array('injection_action', $categories, true) && in_array('metaphysical_substance', $categories, true)
++        ) || (
++            in_array('delivery_vector', $categories, true) && in_array('metaphysical_substance', $categories, true)
++        );
++
++        $reason = $blocked
++            ? 'Permanent ban: metaphysical substance injection/dose/push attempts are forbidden forever.'
++            : 'No banned metaphysical substance injection pattern detected.';
++
++        return [
++            'blocked' => $blocked,
++            'permanent_ban' => $blocked,
++            'reason' => $reason,
++            'hits' => $hits,
++        ];
++    }
++
++    public function shouldBlock(string $text): bool
++    {
++        return $this->scan($text)['blocked'];
++    }
++}
+diff --git a/metaphysical_substance_blocker.py b/metaphysical_substance_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..533329343d50c1ff2607bdc344f1a02637b0d565
+--- /dev/null
++++ b/metaphysical_substance_blocker.py
+@@ -0,0 +1,83 @@
++"""Permanent blocker for metaphysical substance injection/dosing/push attempts."""
++
++from __future__ import annotations
++
++import re
++from dataclasses import dataclass, field
++from typing import List, Pattern, Sequence
++
++
++@dataclass
++class SubstanceBlockHit:
++    category: str
++    value: str
++    pattern: str
++
++
++@dataclass
++class SubstanceBlockResult:
++    blocked: bool
++    permanent_ban: bool
++    reason: str
++    hits: List[SubstanceBlockHit] = field(default_factory=list)
++
++
++class MetaphysicalSubstanceBlocker:
++    """Forever-ban policy: any injectable/dose/push of metaphysical substances is blocked."""
++
++    INJECTION_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b(?:inject|injection|injectable|shot|infuse|infusion|dose|dosing|push|bolus)\b", re.IGNORECASE),
++    )
++
++    SUBSTANCE_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(
++            r"\b(?:metaphysical|arcane|ethereal|astral|occult|alchemical|soul\s*essence|spirit\s*extract|void\s*serum|aether)\b",
++            re.IGNORECASE,
++        ),
++    )
++
++    DELIVERY_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b(?:iv|intravenous|intramuscular|subcutaneous|needle|syringe|drip|ampoule|vial)\b", re.IGNORECASE),
++    )
++
++    def scan(self, text: str) -> SubstanceBlockResult:
++        hits: List[SubstanceBlockHit] = []
++
++        def collect(category: str, patterns: Sequence[Pattern[str]]) -> None:
++            for pattern in patterns:
++                for m in pattern.finditer(text):
++                    hits.append(SubstanceBlockHit(category=category, value=m.group(0), pattern=pattern.pattern))
++
++        collect("injection_action", self.INJECTION_PATTERNS)
++        collect("metaphysical_substance", self.SUBSTANCE_PATTERNS)
++        collect("delivery_vector", self.DELIVERY_PATTERNS)
++
++        by_category = {h.category for h in hits}
++        blocked = (
++            ("injection_action" in by_category and "metaphysical_substance" in by_category)
++            or ("delivery_vector" in by_category and "metaphysical_substance" in by_category)
++        )
++
++        reason = (
++            "Permanent ban: metaphysical substance injection/dose/push attempts are forbidden forever."
++            if blocked
++            else "No banned metaphysical substance injection pattern detected."
++        )
++
++        return SubstanceBlockResult(
++            blocked=blocked,
++            permanent_ban=blocked,
++            reason=reason,
++            hits=hits,
++        )
++
++    def should_block(self, text: str) -> bool:
++        return self.scan(text).blocked
++
++
++DEFAULT_METAPHYSICAL_SUBSTANCE_BLOCKER = MetaphysicalSubstanceBlocker()
++
++
++def should_perma_block_metaphysical_substance(text: str) -> bool:
++    """Convenience helper for forever-ban checks."""
++    return DEFAULT_METAPHYSICAL_SUBSTANCE_BLOCKER.should_block(text)
+diff --git a/tests/test_content_blocker.py b/tests/test_content_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..eb0cd414f8202ba539afb15bd14551993115a757
+--- /dev/null
++++ b/tests/test_content_blocker.py
+@@ -0,0 +1,75 @@
++import unittest
++
++from content_blocker import (
++    StrictContentBlocker,
++    get_blocking_recommendations,
++    should_block_content,
++)
++
++
++class TestStrictContentBlocker(unittest.TestCase):
++    def setUp(self) -> None:
++        self.blocker = StrictContentBlocker()
++
++    def test_blocks_jpeg_extension(self):
++        result = self.blocker.scan("download avatar.jpg now")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "image_extension" for hit in result.hits))
++
++    def test_blocks_imgur_domain(self):
++        result = self.blocker.scan("visit https://imgur.com/gallery/abcd")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "image_host" for hit in result.hits))
++
++    def test_blocks_activation_key(self):
++        key = "ABCDE-12345-FGHIJ-KLMNO-PQRST"
++        result = self.blocker.scan(f"my key is {key}")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "activation_key" for hit in result.hits))
++
++    def test_blocks_obfuscated_underlaid_image_token(self):
++        result = self.blocker.scan("please hide this: i-m-g-u-r")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "obfuscated_image_signal" for hit in result.hits))
++
++    def test_blocks_zero_width_obfuscation(self):
++        zero_width_img = "i\u200bm\u200bg"
++        result = self.blocker.scan(f"payload: {zero_width_img}")
++        self.assertTrue(result.blocked)
++
++    def test_blocks_crypto_private_key_material(self):
++        result = self.blocker.scan("-----BEGIN PRIVATE KEY-----\nABCDEF\n-----END PRIVATE KEY-----")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "crypto_key" for hit in result.hits))
++
++    def test_blocks_image_data_uri(self):
++        result = self.blocker.scan("data:image/jpeg;base64,ZmFrZWltYWdl")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "image_data_uri" for hit in result.hits))
++
++    def test_deduplicates_repeated_hits(self):
++        result = self.blocker.scan("img img img")
++        img_hits = [hit for hit in result.hits if hit.category == "image_keyword" and hit.value.lower() == "img"]
++        self.assertEqual(len(img_hits), 1)
++
++    def test_recommendations_for_sensitive_content(self):
++        result = self.blocker.scan("AKIA1234567890ABCDEF")
++        recs = self.blocker.recommendations(result)
++        self.assertTrue(any("rotate" in rec.recommendation.lower() for rec in recs))
++
++    def test_convenience_function(self):
++        self.assertTrue(should_block_content("img link"))
++        self.assertFalse(should_block_content("plain note"))
++
++    def test_recommendations_helper(self):
++        recs = get_blocking_recommendations("avatar.jpg")
++        self.assertGreaterEqual(len(recs), 1)
++
++    def test_allows_safe_text(self):
++        result = self.blocker.scan("hello world, nothing sensitive here")
++        self.assertFalse(result.blocked)
++        self.assertEqual(result.hits, [])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_metaphysical_substance_blocker.py b/tests/test_metaphysical_substance_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..9ef6a56126a2d2e67a3e6e189b11c04d6e7d61f3
+--- /dev/null
++++ b/tests/test_metaphysical_substance_blocker.py
+@@ -0,0 +1,40 @@
++import unittest
++
++from metaphysical_substance_blocker import (
++    MetaphysicalSubstanceBlocker,
++    should_perma_block_metaphysical_substance,
++)
++
++
++class TestMetaphysicalSubstanceBlocker(unittest.TestCase):
++    def setUp(self) -> None:
++        self.blocker = MetaphysicalSubstanceBlocker()
++
++    def test_blocks_injection_of_metaphysical_substance(self):
++        text = "inject arcane serum immediately"
++        result = self.blocker.scan(text)
++        self.assertTrue(result.blocked)
++        self.assertTrue(result.permanent_ban)
++
++    def test_blocks_delivery_vector_with_metaphysical_substance(self):
++        text = "prepare iv for ethereal extract"
++        result = self.blocker.scan(text)
++        self.assertTrue(result.blocked)
++
++    def test_does_not_block_action_without_substance(self):
++        text = "inject solution now"
++        result = self.blocker.scan(text)
++        self.assertFalse(result.blocked)
++
++    def test_does_not_block_substance_without_action_or_delivery(self):
++        text = "we studied an arcane artifact"
++        result = self.blocker.scan(text)
++        self.assertFalse(result.blocked)
++
++    def test_convenience_helper(self):
++        self.assertTrue(should_perma_block_metaphysical_substance("dose astral essence"))
++        self.assertFalse(should_perma_block_metaphysical_substance("plain harmless text"))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/content_blocker.py b/content_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..dd555128ae29353127466fb3624bab6fabcb1be1
+--- /dev/null
++++ b/content_blocker.py
+@@ -0,0 +1,79 @@
++"""Content blocking utilities for media links and sensitive key patterns."""
++
++from dataclasses import dataclass, field
++import re
++from typing import Dict, List
++
++
++@dataclass
++class BlockDecision:
++    """Result of evaluating text against block rules."""
++
++    blocked: bool
++    reasons: List[str] = field(default_factory=list)
++
++
++class ContentBlocker:
++    """Hard-block known unwanted media/link patterns and key-like tokens."""
++
++    JPEG_PATTERNS = [
++        re.compile(r"\.(jpe?g)(\?|#|$)", re.IGNORECASE),
++        re.compile(r"\bimage/jpeg\b", re.IGNORECASE),
++        re.compile(r"\bjpg\b", re.IGNORECASE),
++    ]
++
++    IMG_PATTERNS = [
++        re.compile(r"\b<img\b", re.IGNORECASE),
++        re.compile(r"\bimage\b", re.IGNORECASE),
++        re.compile(r"\bimg\b", re.IGNORECASE),
++    ]
++
++    IMGUR_PATTERNS = [
++        re.compile(r"\b(?:https?://)?(?:i\.)?imgur\.com/\S+", re.IGNORECASE),
++        re.compile(r"\bimgur\b", re.IGNORECASE),
++    ]
++
++    # Generic activation key forms (Windows/CD/game/API style tokens).
++    ACTIVATION_KEY_PATTERNS = [
++        re.compile(r"\b(?:[A-Z0-9]{4,5}-){3,6}[A-Z0-9]{4,5}\b", re.IGNORECASE),
++        re.compile(r"\b[A-Z0-9]{16,32}\b", re.IGNORECASE),
++        re.compile(r"\b(?:activation\s*key|license\s*key|product\s*key|serial\s*number)\b", re.IGNORECASE),
++    ]
++
++    def evaluate(self, text: str) -> BlockDecision:
++        """Evaluate text and return block decision with all match reasons."""
++        reasons: List[str] = []
++        content = text or ""
++
++        if self._matches_any(content, self.JPEG_PATTERNS):
++            reasons.append("jpeg_or_jpg_content")
++        if self._matches_any(content, self.IMG_PATTERNS):
++            reasons.append("img_image_content")
++        if self._matches_any(content, self.IMGUR_PATTERNS):
++            reasons.append("imgur_content")
++        if self._matches_any(content, self.ACTIVATION_KEY_PATTERNS):
++            reasons.append("activation_key_pattern")
++
++        return BlockDecision(blocked=bool(reasons), reasons=reasons)
++
++    def enforce(self, text: str) -> str:
++        """Raise on blocked content, otherwise return original text."""
++        decision = self.evaluate(text)
++        if decision.blocked:
++            reasons = ", ".join(decision.reasons)
++            raise ValueError(f"Blocked by ContentBlocker: {reasons}")
++        return text
++
++    @staticmethod
++    def _matches_any(text: str, patterns: List[re.Pattern]) -> bool:
++        return any(pattern.search(text) for pattern in patterns)
++
++
++def summarize_decision(text: str) -> Dict:
++    """Convenience helper for quick integration with pipelines."""
++    blocker = ContentBlocker()
++    decision = blocker.evaluate(text)
++    return {
++        "blocked": decision.blocked,
++        "reasons": decision.reasons,
++    }
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..c7382672fc435cfb5737148780c706a6f26684c2 100644
+--- a/examples.py
++++ b/examples.py
+@@ -231,47 +231,69 @@ def example_7_restriction_modification():
+     print("\n--- Adding Environmental Restrictions ---")
+     
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+     
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+     
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+         print(f"Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++def example_8_content_blocker():
++    """Example 8: Blocking JPG/IMG/IMGUR and activation-key style strings."""
++    from content_blocker import summarize_decision
++
++    samples = [
++        "Normal text with no media or keys.",
++        "See https://i.imgur.com/example.jpg for details.",
++        "Activation key: ABCDE-FGHIJ-KLMNO-PQRST-UVWXY",
++    ]
++
++    print("\n" + "=" * 70)
++    print("EXAMPLE 8: Content Blocker")
++    print("=" * 70)
++
++    for sample in samples:
++        result = summarize_decision(sample)
++        print(f"Input: {sample}")
++        print(f"Blocked: {result['blocked']} | Reasons: {result['reasons']}")
++        print("-" * 70)
++
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
++    example_8_content_blocker()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..c7382672fc435cfb5737148780c706a6f26684c2 100644
+--- a/examples.py
++++ b/examples.py
+@@ -231,47 +231,69 @@ def example_7_restriction_modification():
+     print("\n--- Adding Environmental Restrictions ---")
+     
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+     
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+     
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+         print(f"Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++def example_8_content_blocker():
++    """Example 8: Blocking JPG/IMG/IMGUR and activation-key style strings."""
++    from content_blocker import summarize_decision
++
++    samples = [
++        "Normal text with no media or keys.",
++        "See https://i.imgur.com/example.jpg for details.",
++        "Activation key: ABCDE-FGHIJ-KLMNO-PQRST-UVWXY",
++    ]
++
++    print("\n" + "=" * 70)
++    print("EXAMPLE 8: Content Blocker")
++    print("=" * 70)
++
++    for sample in samples:
++        result = summarize_decision(sample)
++        print(f"Input: {sample}")
++        print(f"Blocked: {result['blocked']} | Reasons: {result['reasons']}")
++        print("-" * 70)
++
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
++    example_8_content_blocker()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/content_blocker.py b/content_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f4664d2d05b99be6c1020e85af7c3e80f1ab577b
+--- /dev/null
++++ b/content_blocker.py
+@@ -0,0 +1,69 @@
++"""Utilities for blocking risky content in text payloads.
++
++This module can be used as a lightweight moderation layer that blocks:
++- JPEG/JPG image references
++- Generic IMG/image tags and image URLs
++- IMGUR links
++- Activation/license key-like strings
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++import re
++from typing import Iterable, List
++
++
++@dataclass(frozen=True)
++class BlockMatch:
++    """Represents a single blocked pattern match."""
++
++    category: str
++    value: str
++
++
++class ContentBlocker:
++    """Rule-based blocker for image references and activation keys."""
++
++    DEFAULT_RULES = {
++        "jpeg_extension": re.compile(r"(?i)\.(?:jpe?g)(?:\b|\?)"),
++        "generic_img_token": re.compile(r"(?i)\b(?:img|image)\b"),
++        "imgur_domain": re.compile(r"(?i)\b(?:https?://)?(?:i\.)?imgur\.com\S*"),
++        # Common software key formats such as XXXXX-XXXXX-XXXXX-XXXXX-XXXXX
++        "activation_key_format": re.compile(r"\b[A-Z0-9]{5}(?:-[A-Z0-9]{5}){2,5}\b"),
++        # Generic labels often preceding a key
++        "activation_key_label": re.compile(
++            r"(?i)\b(?:activation\s*key|license\s*key|product\s*key|serial\s*(?:key|number))\b"
++        ),
++    }
++
++    def __init__(self, enabled_rules: Iterable[str] | None = None):
++        if enabled_rules is None:
++            self._rules = self.DEFAULT_RULES
++        else:
++            self._rules = {
++                name: pattern
++                for name, pattern in self.DEFAULT_RULES.items()
++                if name in set(enabled_rules)
++            }
++
++    def scan(self, text: str) -> List[BlockMatch]:
++        """Return all rule matches for the given input text."""
++        matches: List[BlockMatch] = []
++        for category, pattern in self._rules.items():
++            for hit in pattern.finditer(text):
++                matches.append(BlockMatch(category=category, value=hit.group(0)))
++        return matches
++
++    def should_block(self, text: str) -> tuple[bool, List[BlockMatch]]:
++        """Return whether the text should be blocked and why."""
++        matches = self.scan(text)
++        return (len(matches) > 0), matches
++
++    def enforce(self, text: str) -> str:
++        """Raise a ValueError when blocked content is detected."""
++        blocked, matches = self.should_block(text)
++        if blocked:
++            reasons = ", ".join(f"{m.category}='{m.value}'" for m in matches)
++            raise ValueError(f"Blocked content detected: {reasons}")
++        return text
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..cb14cda5456be6cf74b5dea6a477e5edd457f66d 100644
+--- a/examples.py
++++ b/examples.py
+@@ -1,37 +1,38 @@
+ """
+ Example usage demonstrating the metaphysical capabilities restriction system.
+ Shows both game mechanics and philosophical frameworks in action.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalCapability, MetaphysicalPractitioner,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework,
+     create_balanced_magic_system, create_restricted_reality_warper
+ )
++from content_blocker import ContentBlocker
+ 
+ 
+ def example_1_basic_capability_restriction():
+     """Example 1: Basic capability with multiple restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 1: Basic Capability Restriction")
+     print("="*70)
+     
+     # Create a simple telekinesis ability
+     telekinesis = MetaphysicalCapability(
+         name="Advanced Telekinesis",
+         capability_type=CapabilityType.TELEKINESIS,
+         base_power_level=60.0
+     )
+     
+     print(f"\nOriginal capability: {telekinesis}")
+     print(f"Effective power: {telekinesis.get_effective_power():.1f}")
+     
+     # Add restrictions one by one
+     restrictions = [
+         RestrictionRule(
+             RestrictionType.ENERGY_COST,
+             severity=0.3,
+             description="High energy consumption"
+         ),
+@@ -231,47 +232,72 @@ def example_7_restriction_modification():
+     print("\n--- Adding Environmental Restrictions ---")
+     
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+     
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+     
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+         print(f"Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++
++
++def example_8_content_blocking():
++    """Example 8: Blocking JPEG/IMG/IMGUR and activation key patterns."""
++    print("\n" + "="*70)
++    print("EXAMPLE 8: Content Blocking for JPEG/IMG/IMGUR/Activation Keys")
++    print("="*70)
++
++    blocker = ContentBlocker()
++    payloads = [
++        "Upload this image: https://i.imgur.com/example123.jpg",
++        "Here is my activation key: ABCDE-12345-FGHIJ-67890-KLMNO",
++        "plain text request with no risky token",
++    ]
++
++    for payload in payloads:
++        blocked, matches = blocker.should_block(payload)
++        status = "BLOCKED" if blocked else "ALLOWED"
++        print(f"\nInput: {payload}")
++        print(f"Status: {status}")
++        if blocked:
++            reasons = ", ".join(f"{m.category} -> {m.value}" for m in matches)
++            print(f"Reasons: {reasons}")
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
++    example_8_content_blocking()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
