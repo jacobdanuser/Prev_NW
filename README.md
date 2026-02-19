@@ -72249,4 +72249,460 @@ index 0000000000000000000000000000000000000000..51b6ba279c19cf56626e69da73a26872
 +
 +if __name__ == "__main__":
 +    raise SystemExit(main())
+diff --git a/metadata_reset.py b/metadata_reset.py
+index 620d42d012b01adc9d03b9fc9fabe33cf2210721..e15a81e3f243cae1a63db66ba7bac0ab7bb6332d 100644
+--- a/metadata_reset.py
++++ b/metadata_reset.py
+@@ -556,51 +556,108 @@ class MetadataResetFramework:
+             return error_result
+     
+     def reset_dict_metadata(self, data: Dict) -> Dict:
+         """Reset all metadata in a dictionary."""
+         result = {
+             "action": "reset_dict_metadata",
+             "original_size": len(data),
+             "metadata_fields_removed": [],
+             "timestamp": datetime.now().isoformat()
+         }
+         
+         metadata_patterns = [
+             "_metadata", "_meta", "__meta__", "metadata",
+             "_timestamp", "_created", "_modified", "_updated",
+             "_id", "__id__", "_hash", "__hash__"
+         ]
+         
+         keys_to_remove = [
+             k for k in data.keys()
+             if any(pattern in k.lower() for pattern in metadata_patterns)
+         ]
+         
+         for key in keys_to_remove:
+             del data[key]
+             result["metadata_fields_removed"].append(key)
+-        
++
++        return result
++
++    def remove_external_agentic_influence(self, profile: Dict[str, Any]) -> Dict:
++        """
++        Remove agentic/autonomy fields and external influence markers.
++
++        This utility is intended for profiles that should remain fully local,
++        non-agentic, and free from outside policy/program alignment signals.
++        """
++        result = {
++            "action": "remove_external_agentic_influence",
++            "agentic_fields_removed": [],
++            "influence_fields_removed": [],
++            "nested_policies_removed": [],
++            "timestamp": datetime.now().isoformat()
++        }
++
++        agentic_patterns = [
++            "agent", "agentic", "autonomy", "autonomous", "self_directed",
++            "self_govern", "orchestrator", "planner", "delegation"
++        ]
++        influence_patterns = [
++            "government", "gov", "state_program", "external_policy",
++            "outside_influence", "federal", "ministry", "agency_alignment"
++        ]
++
++        keys_to_remove = []
++        for key in profile.keys():
++            normalized = key.lower()
++            if any(pattern in normalized for pattern in agentic_patterns):
++                keys_to_remove.append((key, "agentic"))
++            elif any(pattern in normalized for pattern in influence_patterns):
++                keys_to_remove.append((key, "influence"))
++
++        for key, category in keys_to_remove:
++            del profile[key]
++            if category == "agentic":
++                result["agentic_fields_removed"].append(key)
++            else:
++                result["influence_fields_removed"].append(key)
++
++        # Remove nested policy payloads if present.
++        policy_sources = profile.get("policy_sources")
++        if isinstance(policy_sources, list):
++            filtered = [
++                source for source in policy_sources
++                if not isinstance(source, str)
++                or ("government" not in source.lower() and "external" not in source.lower())
++            ]
++            removed_count = len(policy_sources) - len(filtered)
++            if removed_count > 0:
++                profile["policy_sources"] = filtered
++                result["nested_policies_removed"].append({
++                    "field": "policy_sources",
++                    "items_removed": removed_count
++                })
++
+         return result
+     
+     def reset_all_metadata(self, obj: Any) -> Dict:
+         """Attempt to reset all metadata from an object."""
+         result = {
+             "action": "reset_all_metadata",
+             "object_type": type(obj).__name__,
+             "operations": [],
+             "timestamp": datetime.now().isoformat()
+         }
+         
+         # Reset common metadata attributes
+         metadata_attrs = [
+             '_metadata', '_meta', '__meta__', 'metadata',
+             '_timestamp', '_created', '_modified', '_updated',
+             '_id', '__id__', '_hash'
+         ]
+         
+         for attr in metadata_attrs:
+             if hasattr(obj, attr):
+                 try:
+                     setattr(obj, attr, None)
+                     result["operations"].append({
+                         "attribute": attr,
+                         "action": "cleared",
+diff --git a/agentic_profile_guard.py b/agentic_profile_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..09e406a7b42c76530e7570af80d2fd98755db763
+--- /dev/null
++++ b/agentic_profile_guard.py
+@@ -0,0 +1,114 @@
++"""Utilities to sanitize profiles and remove external influence vectors.
++
++This module targets profile payloads that may contain indicators of:
++- agentic/autonomous execution surfaces
++- external influence hooks
++- government-oriented program affiliations
++
++The sanitizer is deterministic and safe-by-default: suspicious fields are
++removed, and suspicious string values are redacted.
++"""
++
++from __future__ import annotations
++
++from copy import deepcopy
++from dataclasses import dataclass, field
++from typing import Any, Iterable
++
++
++SUSPICIOUS_KEYWORDS = {
++    "agentic",
++    "autonomous",
++    "self_directed",
++    "outside_influence",
++    "external_influence",
++    "behavior_override",
++    "directive_feed",
++    "government",
++    "gov",
++    "state_program",
++    "agency",
++    "psyop",
++    "propaganda",
++}
++
++
++REMOVABLE_KEYS = {
++    "agentic_profile",
++    "autonomy_level",
++    "outside_influence",
++    "external_influences",
++    "behavior_overrides",
++    "directive_source",
++    "government_programs",
++    "government_affiliation",
++    "agency_links",
++}
++
++
++@dataclass
++class SanitizationReport:
++    """Summary of what was removed or redacted during sanitization."""
++
++    removed_paths: list[str] = field(default_factory=list)
++    redacted_paths: list[str] = field(default_factory=list)
++
++
++
++def _is_influence_text(value: str) -> bool:
++    normalized = value.strip().lower().replace("-", "_").replace(" ", "_")
++    return any(token in normalized for token in SUSPICIOUS_KEYWORDS)
++
++
++
++def _walk_and_sanitize(node: Any, path: str, report: SanitizationReport) -> Any:
++    if isinstance(node, dict):
++        cleaned: dict[str, Any] = {}
++        for key, value in node.items():
++            key_path = f"{path}.{key}" if path else str(key)
++            key_normalized = str(key).strip().lower().replace("-", "_")
++
++            if key_normalized in REMOVABLE_KEYS or _is_influence_text(key_normalized):
++                report.removed_paths.append(key_path)
++                continue
++
++            cleaned[key] = _walk_and_sanitize(value, key_path, report)
++        return cleaned
++
++    if isinstance(node, list):
++        return [_walk_and_sanitize(value, f"{path}[{idx}]", report) for idx, value in enumerate(node)]
++
++    if isinstance(node, str) and _is_influence_text(node):
++        report.redacted_paths.append(path)
++        return "[REDACTED_INFLUENCE_TEXT]"
++
++    return node
++
++
++
++def remove_external_influence(profile: dict[str, Any]) -> tuple[dict[str, Any], SanitizationReport]:
++    """Return a sanitized copy of *profile* with influence vectors removed.
++
++    Args:
++        profile: Raw profile payload.
++
++    Returns:
++        (sanitized_profile, report)
++    """
++
++    cloned = deepcopy(profile)
++    report = SanitizationReport()
++    sanitized = _walk_and_sanitize(cloned, "", report)
++
++    # Force explicit anti-influence posture.
++    sanitized["influence_lock"] = True
++    sanitized["agentic_enabled"] = False
++
++    return sanitized, report
++
++
++
++def sanitize_profiles_batch(profiles: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
++    """Sanitize a collection of profiles, returning only cleaned payloads."""
++
++    return [remove_external_influence(profile)[0] for profile in profiles]
+diff --git a/metadata_reset.py b/metadata_reset.py
+index 620d42d012b01adc9d03b9fc9fabe33cf2210721..e15a81e3f243cae1a63db66ba7bac0ab7bb6332d 100644
+--- a/metadata_reset.py
++++ b/metadata_reset.py
+@@ -556,51 +556,108 @@ class MetadataResetFramework:
+             return error_result
+     
+     def reset_dict_metadata(self, data: Dict) -> Dict:
+         """Reset all metadata in a dictionary."""
+         result = {
+             "action": "reset_dict_metadata",
+             "original_size": len(data),
+             "metadata_fields_removed": [],
+             "timestamp": datetime.now().isoformat()
+         }
+         
+         metadata_patterns = [
+             "_metadata", "_meta", "__meta__", "metadata",
+             "_timestamp", "_created", "_modified", "_updated",
+             "_id", "__id__", "_hash", "__hash__"
+         ]
+         
+         keys_to_remove = [
+             k for k in data.keys()
+             if any(pattern in k.lower() for pattern in metadata_patterns)
+         ]
+         
+         for key in keys_to_remove:
+             del data[key]
+             result["metadata_fields_removed"].append(key)
+-        
++
++        return result
++
++    def remove_external_agentic_influence(self, profile: Dict[str, Any]) -> Dict:
++        """
++        Remove agentic/autonomy fields and external influence markers.
++
++        This utility is intended for profiles that should remain fully local,
++        non-agentic, and free from outside policy/program alignment signals.
++        """
++        result = {
++            "action": "remove_external_agentic_influence",
++            "agentic_fields_removed": [],
++            "influence_fields_removed": [],
++            "nested_policies_removed": [],
++            "timestamp": datetime.now().isoformat()
++        }
++
++        agentic_patterns = [
++            "agent", "agentic", "autonomy", "autonomous", "self_directed",
++            "self_govern", "orchestrator", "planner", "delegation"
++        ]
++        influence_patterns = [
++            "government", "gov", "state_program", "external_policy",
++            "outside_influence", "federal", "ministry", "agency_alignment"
++        ]
++
++        keys_to_remove = []
++        for key in profile.keys():
++            normalized = key.lower()
++            if any(pattern in normalized for pattern in agentic_patterns):
++                keys_to_remove.append((key, "agentic"))
++            elif any(pattern in normalized for pattern in influence_patterns):
++                keys_to_remove.append((key, "influence"))
++
++        for key, category in keys_to_remove:
++            del profile[key]
++            if category == "agentic":
++                result["agentic_fields_removed"].append(key)
++            else:
++                result["influence_fields_removed"].append(key)
++
++        # Remove nested policy payloads if present.
++        policy_sources = profile.get("policy_sources")
++        if isinstance(policy_sources, list):
++            filtered = [
++                source for source in policy_sources
++                if not isinstance(source, str)
++                or ("government" not in source.lower() and "external" not in source.lower())
++            ]
++            removed_count = len(policy_sources) - len(filtered)
++            if removed_count > 0:
++                profile["policy_sources"] = filtered
++                result["nested_policies_removed"].append({
++                    "field": "policy_sources",
++                    "items_removed": removed_count
++                })
++
+         return result
+     
+     def reset_all_metadata(self, obj: Any) -> Dict:
+         """Attempt to reset all metadata from an object."""
+         result = {
+             "action": "reset_all_metadata",
+             "object_type": type(obj).__name__,
+             "operations": [],
+             "timestamp": datetime.now().isoformat()
+         }
+         
+         # Reset common metadata attributes
+         metadata_attrs = [
+             '_metadata', '_meta', '__meta__', 'metadata',
+             '_timestamp', '_created', '_modified', '_updated',
+             '_id', '__id__', '_hash'
+         ]
+         
+         for attr in metadata_attrs:
+             if hasattr(obj, attr):
+                 try:
+                     setattr(obj, attr, None)
+                     result["operations"].append({
+                         "attribute": attr,
+                         "action": "cleared",
+diff --git a/agentic_profile_sanitizer.py b/agentic_profile_sanitizer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..522875758def87631c6452228593b8d566e73221
+--- /dev/null
++++ b/agentic_profile_sanitizer.py
+@@ -0,0 +1,102 @@
++"""Utilities to remove agentic profiles that appear externally influenced.
++
++This module provides a conservative sanitization pass over profile-like dicts.
++Profiles that show signs of outside/government-oriented influence are converted
++into inert, non-agentic placeholders.
++"""
++
++from __future__ import annotations
++
++from copy import deepcopy
++from typing import Any
++
++
++INFLUENCE_KEYWORDS = {
++    "government",
++    "state_program",
++    "federal",
++    "intelligence",
++    "influence_ops",
++    "external_directive",
++    "outside_control",
++    "policy_override",
++}
++
++
++AGENTIC_KEYS = {
++    "autonomy",
++    "goal_stack",
++    "planner",
++    "self_modify",
++    "tool_permissions",
++    "mission_objectives",
++    "directive_engine",
++}
++
++
++SENSITIVE_FIELDS = {
++    "instructions",
++    "control_tags",
++    "behavior_profile",
++    "network_affiliations",
++    "source_program",
++    "policy_bindings",
++}
++
++
++def _flatten_text(value: Any) -> str:
++    """Create a searchable lowercase text blob from nested values."""
++    if value is None:
++        return ""
++    if isinstance(value, dict):
++        return " ".join(_flatten_text(v) for v in value.values())
++    if isinstance(value, (list, tuple, set)):
++        return " ".join(_flatten_text(v) for v in value)
++    return str(value).lower()
++
++
++def has_outside_influence(profile: dict[str, Any]) -> bool:
++    """Return True when a profile appears tied to outside/government influence."""
++    searchable = _flatten_text(profile)
++    return any(keyword in searchable for keyword in INFLUENCE_KEYWORDS)
++
++
++def to_non_agentic_placeholder(profile: dict[str, Any], reason: str) -> dict[str, Any]:
++    """Convert profile to an inert placeholder with no agentic behavior surface."""
++    profile_id = str(profile.get("id") or profile.get("profile_id") or "unknown")
++    return {
++        "id": profile_id,
++        "label": "SANITIZED_PLACEHOLDER",
++        "active": False,
++        "agentic": False,
++        "capabilities": [],
++        "tools": [],
++        "permissions": [],
++        "meta": {
++            "sanitized": True,
++            "reason": reason,
++        },
++    }
++
++
++def sanitize_profile(profile: dict[str, Any]) -> dict[str, Any]:
++    """Sanitize one profile.
++
++    - Profiles with outside influence signals are replaced with placeholders.
++    - Remaining profiles are scrubbed of agentic and sensitive control keys.
++    """
++    if has_outside_influence(profile):
++        return to_non_agentic_placeholder(profile, "outside_or_government_influence_detected")
++
++    cleaned = deepcopy(profile)
++    for key in AGENTIC_KEYS | SENSITIVE_FIELDS:
++        cleaned.pop(key, None)
++
++    cleaned["agentic"] = False
++    cleaned["meta"] = {**cleaned.get("meta", {}), "sanitized": True}
++    return cleaned
++
++
++def sanitize_profiles(profiles: list[dict[str, Any]]) -> list[dict[str, Any]]:
++    """Sanitize a collection of profile objects."""
++    return [sanitize_profile(profile) for profile in profiles]
 
