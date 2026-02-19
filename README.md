@@ -33285,3 +33285,72 @@ if __name__ == "__main__":
         firewall.authorize_or_raise(blocked_action)
     except PermissionError as exc:
         print(exc)
+        import unittest
+
+from humanity_protection import (
+    HumanityProtectionFirewall,
+    HumanityProtectionPolicy,
+    ImpactDomain,
+    ProgramAction,
+    Target,
+)
+
+
+class HumanityProtectionTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.policy = HumanityProtectionPolicy()
+        self.firewall = HumanityProtectionFirewall(self.policy)
+
+    def test_blocks_any_human_target(self):
+        action = ProgramAction(
+            action_id="human-impact",
+            description="Deliver adaptive persuasive messaging",
+            targets=(Target("person-1", is_human=True),),
+            impact_domains=(ImpactDomain.PSYCHOLOGICAL,),
+            runs_in_isolated_sandbox=True,
+        )
+
+        result = self.policy.evaluate(action)
+        self.assertFalse(result.allowed)
+        self.assertTrue(any("zero-trust" in reason for reason in result.reasons))
+
+    def test_blocks_non_human_when_not_isolated(self):
+        action = ProgramAction(
+            action_id="unsafe-runtime",
+            description="Operate warehouse sorting simulation",
+            targets=(Target("robot-1", is_human=False),),
+            impact_domains=(ImpactDomain.DIGITAL,),
+            runs_in_isolated_sandbox=False,
+        )
+
+        result = self.policy.evaluate(action)
+        self.assertFalse(result.allowed)
+        self.assertTrue(any("isolated sandbox" in reason for reason in result.reasons))
+
+    def test_allows_non_human_isolated_and_described_action(self):
+        action = ProgramAction(
+            action_id="safe-sim",
+            description="Run synthetic benchmark in air-gapped test environment",
+            targets=(Target("synthetic-agent-1", is_human=False),),
+            impact_domains=(ImpactDomain.DIGITAL,),
+            runs_in_isolated_sandbox=True,
+        )
+
+        result = self.policy.evaluate(action)
+        self.assertTrue(result.allowed)
+
+    def test_firewall_raises_for_denied_action(self):
+        action = ProgramAction(
+            action_id="deny",
+            description="Modify human-facing content ranking",
+            targets=(Target("person-2", is_human=True),),
+            impact_domains=(ImpactDomain.INFORMATIONAL,),
+            runs_in_isolated_sandbox=True,
+        )
+
+        with self.assertRaises(PermissionError):
+            self.firewall.authorize_or_raise(action)
+
+
+if __name__ == "__main__":
+    unittest.main()
