@@ -105313,3 +105313,36 @@ index 0000000000000000000000000000000000000000..9673712e2c00c5a357d2c95d181bc269
 +    if not result.allowed:
 +        raise ValueError(result.reason)
 +    return "simulation started"
+wordlists/
+nouns.txt
+adjectives.txt
+verbs.txt
+ruby word_soup_generator.rb synthetic.txt 104857600
+# word_soup_generator.rb
+# Generates a large synthetic text file from local wordlists (no hidden messages).
+
+OUT_PATH = ARGV[0] || "synthetic_word_soup.txt"
+TARGET_BYTES = (ARGV[1] || (50 * 1024 * 1024)).to_i # default 50MB
+
+# Provide your own wordlists (one word/line). Put them in ./wordlists/
+WORDLISTS = Dir["wordlists/*.txt"]
+
+abort("No wordlists found in ./wordlists/*.txt") if WORDLISTS.empty?
+
+words = WORDLISTS.flat_map { |p| File.readlines(p, chomp: true) }
+words = words.map(&:strip).reject(&:empty?).uniq
+abort("Wordlists are empty") if words.empty?
+
+rng = Random.new(12345)
+
+File.open(OUT_PATH, "wb") do |f|
+  written = 0
+  while written < TARGET_BYTES
+    # Build a short line of random words
+    line = Array.new(40) { words[rng.rand(words.length)] }.join(" ") + "\n"
+    f.write(line)
+    written += line.bytesize
+  end
+end
+
+puts "Wrote ~#{TARGET_BYTES} bytes to #{OUT_PATH}"
