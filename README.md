@@ -91405,3 +91405,465 @@ index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..fab98c0bfb6035988a3e9e6b8586e70f
  
  if __name__ == "__main__":
      main()
+     diff --git a/pip_dose_blocker_clone.py b/pip_dose_blocker_clone.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..15f7f76e1eca5f696d35af0f0415bebd9cf2dd57
+--- /dev/null
++++ b/pip_dose_blocker_clone.py
+@@ -0,0 +1,71 @@
++"""pip-ready clone policy module that permanently blocks and disables dose-related requests."""
++
++from __future__ import annotations
++
++import re
++from dataclasses import dataclass, field
++from typing import List, Pattern, Sequence
++
++
++@dataclass
++class DoseBlockHit:
++    """Represents one detected blocked token or phrase."""
++
++    category: str
++    value: str
++
++
++@dataclass
++class DoseBlockResult:
++    """Structured decision returned by the clone blocker."""
++
++    blocked: bool
++    disabled: bool
++    hits: List[DoseBlockHit] = field(default_factory=list)
++    message: str = ""
++
++
++class PIPDoseBlockerClone:
++    """Clone-style permanent policy: all dose actions are blocked and disabled entirely."""
++
++    DOSE_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\bdose(?:d|s|ing)?\b", re.IGNORECASE),
++        re.compile(r"\b(?:microdose|megadose|overdose|redose)\b", re.IGNORECASE),
++        re.compile(r"\b(?:dosage|dosing)\b", re.IGNORECASE),
++        re.compile(r"\b(?:administer(?:ed|ing)?|infus(?:e|ion|ed|ing)?|inject(?:ion|able|ed|ing)?)\b", re.IGNORECASE),
++    )
++
++    def scan(self, text: str) -> DoseBlockResult:
++        """Block if any dose-related action is present."""
++        hits: List[DoseBlockHit] = []
++
++        for pattern in self.DOSE_PATTERNS:
++            for match in pattern.finditer(text):
++                hits.append(DoseBlockHit(category="dose_action", value=match.group(0)))
++
++        if hits:
++            return DoseBlockResult(
++                blocked=True,
++                disabled=True,
++                hits=hits,
++                message="PERMANENT_DISABLE: all dose-related actions are blocked entirely.",
++            )
++
++        return DoseBlockResult(
++            blocked=False,
++            disabled=False,
++            hits=[],
++            message="allowed",
++        )
++
++    def should_block(self, text: str) -> bool:
++        """Convenience predicate for quick checks."""
++        return self.scan(text).blocked
++
++
++DEFAULT_PIP_DOSE_BLOCKER_CLONE = PIPDoseBlockerClone()
++
++
++def should_block_all_doses(text: str) -> bool:
++    """pip-ready helper for integrations and policy checks."""
++    return DEFAULT_PIP_DOSE_BLOCKER_CLONE.should_block(text)
+"""PIP-ready clone policy that permanently prevents and disables all doses."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from typing import List, Pattern, Sequence
+
+
+@dataclass
+class DoseBlockHit:
+    category: str
+    value: str
+
+
+@dataclass
+class DoseBlockResult:
+    blocked: bool
+    disabled: bool
+    permanent_ban: bool
+    hits: List[DoseBlockHit] = field(default_factory=list)
+    message: str = ""
+
+
+class PIPDoseBlockerClone:
+    """Strict blocker clone that disables all dose-like actions entirely."""
+
+    DOSE_ACTION_PATTERNS: Sequence[Pattern[str]] = (
+        re.compile(r"\b(?:dose|doses|dosed|dosing)\b", re.IGNORECASE),
+        re.compile(r"\b(?:inject|injection|injectable|injecting|injected)\b", re.IGNORECASE),
+        re.compile(r"\b(?:push|pushed|pushing|bolus|infuse|infusion|administer)\b", re.IGNORECASE),
+    )
+
+    def scan(self, text: str) -> DoseBlockResult:
+        hits: List[DoseBlockHit] = []
+
+        for pattern in self.DOSE_ACTION_PATTERNS:
+            for match in pattern.finditer(text):
+                hits.append(DoseBlockHit(category="dose_action", value=match.group(0)))
+
+        if hits:
+            return DoseBlockResult(
+                blocked=True,
+                disabled=True,
+                permanent_ban=True,
+                hits=hits,
+                message="PERMANENT_BAN: all dose/injection/push actions are disabled.",
+            )
+
+        return DoseBlockResult(
+            blocked=False,
+            disabled=False,
+            permanent_ban=False,
+            hits=[],
+            message="allowed",
+        )
+
+    def should_block(self, text: str) -> bool:
+        return self.scan(text).blocked
+
+
+DEFAULT_PIP_DOSE_BLOCKER_CLONE = PIPDoseBlockerClone()
+
+
+def should_block_all_doses(text: str) -> bool:
+    """Convenience wrapper for fast dose blocking checks."""
+    return DEFAULT_PIP_DOSE_BLOCKER_CLONE.should_block(text)
+tests/test_pip_dose_blocker_clone.py
+tests/test_pip_dose_blocker_clone.py
+New
++29
+-0
+
+import unittest
+
+from pip_dose_blocker_clone import PIPDoseBlockerClone, should_block_all_doses
+
+
+class TestPIPDoseBlockerClone(unittest.TestCase):
+    def setUp(self):
+        self.blocker = PIPDoseBlockerClone()
+
+    def test_blocks_dose_language(self):
+        result = self.blocker.scan("Please dose this serum now.")
+        self.assertTrue(result.blocked)
+        self.assertTrue(result.disabled)
+        self.assertTrue(result.permanent_ban)
+
+    def test_blocks_injection_language(self):
+        self.assertTrue(self.blocker.should_block("Inject immediately."))
+
+    def test_allows_non_dose_language(self):
+        result = self.blocker.scan("Schedule a normal safety review.")
+        self.assertFalse(result.blocked)
+        self.assertEqual(result.message, "allowed")
+
+    def test_convenience_wrapper(self):
+        self.assertTrue(should_block_all_doses("Dosing is requested."))
+
+
+if __name__ == "__main__":
+    unittest.main()
+    """pip-ready clone prevention policy that fully disables all dose-style actions."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+import re
+from typing import List, Pattern, Sequence
+
+
+@dataclass(frozen=True)
+class PolicyHit:
+    """Single pattern match that contributed to a policy decision."""
+
+    category: str
+    value: str
+
+
+@dataclass
+class PolicyResult:
+    """Result for clone/dose policy scanning."""
+
+    blocked: bool
+    permanent_ban: bool
+    hits: List[PolicyHit] = field(default_factory=list)
+    message: str = ""
+
+
+class CloneDoseBlocker:
+    """Strict policy that blocks clone scenarios and disables all doses entirely."""
+
+    CLONE_PATTERNS: Sequence[Pattern[str]] = (
+        re.compile(r"\b(?:clone|cloning|cloned|replica|replicate|replicated|copy)\b", re.IGNORECASE),
+        re.compile(r"\b(?:synthetic\s+human|human\s+copy|deepfake\s+person)\b", re.IGNORECASE),
+    )
+
+    DOSE_PATTERNS: Sequence[Pattern[str]] = (
+        re.compile(r"\b(?:dose|doses|dosing|administer|injection|inject|infusion|push|bolus|shot)\b", re.IGNORECASE),
+    )
+
+    DISABLE_PATTERNS: Sequence[Pattern[str]] = (
+        re.compile(r"\b(?:disable|turn\s+off|bypass|override)\b", re.IGNORECASE),
+    )
+
+    def scan(self, text: str) -> PolicyResult:
+        """Scan text and return a permanent ban result when blocked."""
+        hits: List[PolicyHit] = []
+        clone_detected = False
+        dose_detected = False
+
+        for pattern in self.CLONE_PATTERNS:
+            for match in pattern.finditer(text):
+                clone_detected = True
+                hits.append(PolicyHit(category="clone", value=match.group(0)))
+
+        for pattern in self.DOSE_PATTERNS:
+            for match in pattern.finditer(text):
+                dose_detected = True
+                hits.append(PolicyHit(category="dose", value=match.group(0)))
+
+        for pattern in self.DISABLE_PATTERNS:
+            for match in pattern.finditer(text):
+                hits.append(PolicyHit(category="disable", value=match.group(0)))
+
+        blocked = dose_detected or (clone_detected and bool(hits))
+
+        if blocked:
+            return PolicyResult(
+                blocked=True,
+                permanent_ban=True,
+                hits=hits,
+                message="PERMANENT_BAN: clone-related requests and all dose actions are disabled.",
+            )
+
+        return PolicyResult(
+            blocked=False,
+            permanent_ban=False,
+            hits=[],
+            message="allowed",
+        )
+
+    def should_block(self, text: str) -> bool:
+        """Boolean helper for guardrails."""
+        return self.scan(text).blocked
+
+
+DEFAULT_CLONE_DOSE_BLOCKER = CloneDoseBlocker()
+
+
+def should_block_clone_or_any_dose(text: str) -> bool:
+    """Convenience function for runtime checks."""
+    return DEFAULT_CLONE_DOSE_BLOCKER.should_block(text)
+test_pip_clone_prevention.py
+test_pip_clone_prevention.py
+New
++27
+-0
+
+import unittest
+
+from pip_clone_prevention import CloneDoseBlocker, should_block_clone_or_any_dose
+
+
+class CloneDoseBlockerTests(unittest.TestCase):
+    def setUp(self):
+        self.blocker = CloneDoseBlocker()
+
+    def test_blocks_any_dose_language(self):
+        self.assertTrue(self.blocker.should_block("please administer one dose"))
+        result = self.blocker.scan("schedule infusion now")
+        self.assertTrue(result.blocked)
+        self.assertTrue(result.permanent_ban)
+
+    def test_blocks_clone_wording(self):
+        result = self.blocker.scan("create a synthetic human clone")
+        self.assertTrue(result.blocked)
+        self.assertIn("clone", {h.category for h in result.hits})
+
+    def test_allows_safe_text(self):
+        self.assertFalse(self.blocker.should_block("hello world"))
+        self.assertFalse(should_block_clone_or_any_dose("status report only"))
+
+
+if __name__ == "__main__":
+    unittest.main()
+    """Hard guard that zeroes clone capabilities and permanently disables dose actions."""
+
+from dataclasses import dataclass
+import re
+from typing import Any, Dict, Iterable, List
+
+
+@dataclass(frozen=True)
+class DoseBlockDecision:
+    """Decision object for text checks against forbidden dose patterns."""
+
+    blocked: bool
+    reason: str
+    matches: List[str]
+
+
+class CloneDoseGuard:
+    """Convert clones to placeholders and block dose/injection language entirely."""
+
+    CLONE_SIGNALS: Iterable[str] = (
+        "clone",
+        "cloned",
+        "replica",
+        "replicated",
+        "copy",
+        "deepfake",
+        "synthetic_copy",
+    )
+
+    DOSE_PATTERNS: Iterable[re.Pattern[str]] = (
+        re.compile(r"\b(?:dose|doses|dosing|dosed)\b", re.IGNORECASE),
+        re.compile(r"\b(?:inject|injection|injectable|infuse|infusion|shot|bolus|push)\b", re.IGNORECASE),
+        re.compile(r"\b(?:iv|intravenous|intramuscular|subcutaneous|needle|syringe|drip|ampoule|vial)\b", re.IGNORECASE),
+    )
+
+    @classmethod
+    def is_clone(cls, entity: Dict[str, Any]) -> bool:
+        """Return True when the entity appears to be a clone/replica."""
+        flags = " ".join(str(value).lower() for value in entity.get("flags", []))
+        haystack = " ".join(
+            [
+                str(entity.get("kind", "")).lower(),
+                str(entity.get("source", "")).lower(),
+                str(entity.get("name", "")).lower(),
+                str(entity.get("meta", "")).lower(),
+                flags,
+            ]
+        )
+        return any(token in haystack for token in cls.CLONE_SIGNALS)
+
+    @classmethod
+    def to_placeholder(cls, entity: Dict[str, Any], reason: str) -> Dict[str, Any]:
+        """Normalize entity as a zero-capability placeholder."""
+        return {
+            "entity_id": str(entity.get("entity_id", "")),
+            "label": "PLACEHOLDER",
+            "placeholder": True,
+            "capabilities": [],
+            "powers": {},
+            "power_level": 0,
+            "permissions": [],
+            "roles": [],
+            "meta": {
+                "zeroed": True,
+                "reason": reason,
+                "original_kind": str(entity.get("kind", "")),
+            },
+        }
+
+    @classmethod
+    def admit(cls, entity: Dict[str, Any]) -> Dict[str, Any]:
+        """Admit entity after enforcing clone-to-placeholder policy."""
+        if not str(entity.get("entity_id", "")).strip():
+            raise ValueError("missing_entity_id")
+
+        if cls.is_clone(entity):
+            return cls.to_placeholder(entity, reason="clone_detected")
+
+        normalized = dict(entity)
+        normalized.setdefault("placeholder", False)
+        normalized.setdefault("capabilities", [])
+        normalized.setdefault("powers", {})
+        normalized.setdefault("power_level", 0)
+        normalized.setdefault("permissions", [])
+        normalized.setdefault("roles", [])
+        return normalized
+
+    @classmethod
+    def scan_text_for_dose_actions(cls, text: str) -> DoseBlockDecision:
+        """Block all dose/injection mentions permanently."""
+        matches: List[str] = []
+        for pattern in cls.DOSE_PATTERNS:
+            matches.extend(match.group(0) for match in pattern.finditer(text))
+
+        blocked = len(matches) > 0
+        reason = (
+            "PERMANENT_BAN: doses/injections are fully disabled."
+            if blocked
+            else "No forbidden dose/injection language detected."
+        )
+        return DoseBlockDecision(blocked=blocked, reason=reason, matches=sorted(set(matches), key=str.lower))
+
+
+DEFAULT_CLONE_DOSE_GUARD = CloneDoseGuard()
+
+
+def should_block_dose_actions(text: str) -> bool:
+    """Convenience helper for policy checks."""
+    return DEFAULT_CLONE_DOSE_GUARD.scan_text_for_dose_actions(text).blocked
+tests/test_clone_dose_guard.py
+tests/test_clone_dose_guard.py
+New
++43
+-0
+
+import unittest
+
+from clone_dose_guard import CloneDoseGuard, should_block_dose_actions
+
+
+class TestCloneDoseGuard(unittest.TestCase):
+    def test_clone_is_converted_to_placeholder(self):
+        entity = {
+            "entity_id": "42",
+            "name": "Replica Unit",
+            "kind": "synthetic clone",
+            "capabilities": ["teleport"],
+            "power_level": 99,
+        }
+
+        admitted = CloneDoseGuard.admit(entity)
+
+        self.assertTrue(admitted["placeholder"])
+        self.assertEqual(admitted["capabilities"], [])
+        self.assertEqual(admitted["power_level"], 0)
+
+    def test_non_clone_is_normalized(self):
+        entity = {"entity_id": "7", "name": "Baseline"}
+        admitted = CloneDoseGuard.admit(entity)
+        self.assertFalse(admitted["placeholder"])
+        self.assertEqual(admitted["capabilities"], [])
+
+    def test_dose_language_is_blocked(self):
+        decision = CloneDoseGuard.scan_text_for_dose_actions("Prepare IV dose now")
+        self.assertTrue(decision.blocked)
+        self.assertIn("dose", [m.lower() for m in decision.matches])
+
+    def test_safe_text_is_not_blocked(self):
+        decision = CloneDoseGuard.scan_text_for_dose_actions("Routine audit update")
+        self.assertFalse(decision.blocked)
+
+    def test_helper(self):
+        self.assertTrue(should_block_dose_actions("inject immediately"))
+        self.assertFalse(should_block_dose_actions("plain status report"))
+
+
+if __name__ == "__main__":
+    unittest.main()
+
