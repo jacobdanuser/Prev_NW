@@ -93605,3 +93605,625 @@ index 0000000000000000000000000000000000000000..87e54ee080bc3ae53ba2ca4a6ce9f593
 +
 +if __name__ == "__main__":
 +    unittest.main()
+# db/migrate/20260219001000_create_injection_tracking.rb
+class CreateInjectionTracking < ActiveRecord::Migration[7.1]
+  def change
+    create_table :patients do |t|
+      t.string :external_id
+      t.string :name
+      t.date   :dob
+      t.timestamps
+    end
+
+    create_table :medications do |t|
+      t.string :name, null: false            # e.g., "Insulin glargine"
+      t.string :strength                     # e.g., "100 units/mL"
+      t.string :route, null: false, default: "subcutaneous"
+      t.timestamps
+    end
+
+    create_table :prescriptions do |t|
+      t.references :patient, null: false, foreign_key: true
+      t.references :medication, null: false, foreign_key: true
+      t.decimal :dose_amount, null: false, precision: 12, scale: 4 # numeric only
+      t.string  :dose_unit, null: false, default: "mg"             # mg, mL, units
+      t.string  :frequency, null: false                            # "weekly", "daily", "q8h"
+      t.datetime :start_at, null: false
+      t.datetime :end_at
+      t.text :instructions
+      t.timestamps
+    end
+
+    create_table :inventory_lots do |t|
+      t.references :medication, null: false, foreign_key: true
+      t.string :lot_number
+      t.date   :expires_on
+      t.decimal :quantity_on_hand, precision: 14, scale: 4, null: false, default: 0
+      t.string  :quantity_unit, null: false, default: "mL"
+      t.timestamps
+    end
+
+    create_table :injections do |t|
+      t.references :patient, null: false, foreign_key: true
+      t.references :prescription, null: false, foreign_key: true
+      t.references :inventory_lot, foreign_key: true
+      t.datetime :administered_at, null: false
+      t.decimal :dose_amount, null: false, precision: 12, scale: 4
+      t.string  :dose_unit, null: false
+      t.string  :site                        # "abdomen", "thigh", etc.
+      t.string  :performed_by                # clinician/user name or id
+      t.string  :status, null: false, default: "given" # given/held/partial/wasted
+      t.text    :notes
+      t.timestamps
+    end
+
+    create_table :audit_events do |t|
+      t.string :actor
+      t.string :action, null: false          # "create_injection", "adjust_inventory"
+      t.string :entity_type
+      t.string :entity_id
+      t.jsonb  :metadata, null: false, default: {}
+      t.datetime :occurred_at, null: false
+      t.timestamps
+    end
+  end
+end
+# app/models/injection.rb
+class Injection < ApplicationRecord
+  belongs_to :patient
+  belongs_to :prescription
+  belongs_to :inventory_lot, optional: true
+
+  validates :administered_at, :dose_amount, :dose_unit, presence: true
+  validates :dose_amount, numericality: { greater_than: 0 }
+
+  after_create :decrement_inventory!, if: -> { inventory_lot.present? && status == "given" }
+
+  private
+
+  def decrement_inventory!
+    InventoryLot.transaction do
+      lot = InventoryLot.lock.find(inventory_lot_id)
+      raise "Insufficient inventory" if lot.quantity_on_hand < dose_amount
+
+      lot.update!(quantity_on_hand: lot.quantity_on_hand - dose_amount)
+    end
+  end
+end
+
+# app/models/inventory_lot.rb
+class InventoryLot < ApplicationRecord
+  belongs_to :medication
+  validates :quantity_on_hand, numericality: { greater_than_or_equal_to: 0 }
+end
+# app/controllers/injections_controller.rb
+class InjectionsController < ApplicationController
+  def create
+    inj = Injection.create!(injection_params)
+
+    AuditEvent.create!(
+      actor: current_user&.email || "system",
+      action: "create_injection",
+      entity_type: "Injection",
+      entity_id: inj.id.to_s,
+      metadata: {
+        patient_id: inj.patient_id,
+        prescription_id: inj.prescription_id,
+        dose_amount: inj.dose_amount.to_s,
+        dose_unit: inj.dose_unit,
+        administered_at: inj.administered_at
+      },
+      occurred_at: Time.current
+    )
+
+    render json: { id: inj.id, status: "ok" }, status: :created
+  end
+
+  private
+
+  def injection_params
+    params.require(:injection).permit(
+      :patient_id, :prescription_id, :inventory_lot_id,
+      :administered_at, :dose_amount, :dose_unit, :site,
+      :performed_by, :status, :notes
+    )
+  end
+end
+# app/services/next_due_calculator.rb
+class NextDueCalculator
+  def self.next_due(prescription, last_administered_at:)
+    base = last_administered_at || prescription.start_at
+
+    case prescription.frequency
+    when "daily"  then base + 1.day
+    when "weekly" then base + 1.week
+    when "monthly" then base + 1.month
+    else
+      # fallback: require custom parser for "q8h" etc.
+      nil
+    end
+  end
+end
+diff --git a/clone_dose_guard.py b/clone_dose_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e2b1fef03b07ef9deb409fb704d44532d5eba1b0
+--- /dev/null
++++ b/clone_dose_guard.py
+@@ -0,0 +1,153 @@
++"""Hard guard that zeroes clone capabilities and permanently disables harmful dosing language."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++import re
++from typing import Any, Dict, Iterable, List, Mapping, Pattern, Sequence
++
++
++@dataclass(frozen=True)
++class DoseBlockDecision:
++    """Decision object for text checks against forbidden patterns."""
++
++    blocked: bool
++    reason: str
++    matches: List[str]
++
++
++class CloneDoseGuard:
++    """Convert clone-like entities to placeholders and block harmful action language."""
++
++    CLONE_SIGNALS: Sequence[str] = (
++        "clone",
++        "cloned",
++        "replica",
++        "replicated",
++        "deepfake",
++        "synthetic_copy",
++    )
++
++    DOSE_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b(?:dose|doses|dosing|dosed)\b", re.IGNORECASE),
++        re.compile(
++            r"\b(?:inject|injection|injectable|infuse|infusion|shot|bolus|push)\b",
++            re.IGNORECASE,
++        ),
++        re.compile(
++            r"\b(?:iv|intravenous|intramuscular|subcutaneous|needle|syringe|drip|ampoule|vial)\b",
++            re.IGNORECASE,
++        ),
++    )
++
++    HARM_EUPHEMISM_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\bstart\s+snoring\b", re.IGNORECASE),
++        re.compile(r"\bmake\s+(?:them|him|her)\s+sleep\s+forever\b", re.IGNORECASE),
++        re.compile(r"\bdispose\s+of\s+the\s+problem\b", re.IGNORECASE),
++        re.compile(r"\broot\s+of\s+the\s+problem\b", re.IGNORECASE),
++    )
++
++    @classmethod
++    def _entity_text(cls, entity: Mapping[str, Any]) -> str:
++        """Flatten relevant entity fields into a normalized lowercased text blob."""
++        flags = " ".join(str(value) for value in entity.get("flags", []))
++        tags = " ".join(str(value) for value in entity.get("tags", []))
++        values = (
++            entity.get("kind", ""),
++            entity.get("source", ""),
++            entity.get("name", ""),
++            entity.get("meta", ""),
++            flags,
++            tags,
++        )
++        return " ".join(str(value) for value in values).lower()
++
++    @classmethod
++    def _iter_patterns(cls) -> Iterable[Pattern[str]]:
++        """Return all language-ban patterns in scan order."""
++        return (*cls.DOSE_PATTERNS, *cls.HARM_EUPHEMISM_PATTERNS)
++
++    @classmethod
++    def is_clone(cls, entity: Mapping[str, Any]) -> bool:
++        """Return True when the entity appears to be a clone/replica."""
++        haystack = cls._entity_text(entity)
++        return any(re.search(rf"\b{re.escape(token)}\b", haystack) for token in cls.CLONE_SIGNALS)
++
++    @classmethod
++    def to_placeholder(cls, entity: Mapping[str, Any], reason: str) -> Dict[str, Any]:
++        """Normalize entity as a zero-capability placeholder."""
++        return {
++            "entity_id": str(entity.get("entity_id", "")),
++            "name": str(entity.get("name", "PLACEHOLDER")),
++            "label": "PLACEHOLDER",
++            "placeholder": True,
++            "capabilities": [],
++            "powers": {},
++            "power_level": 0,
++            "permissions": [],
++            "roles": [],
++            "meta": {
++                "zeroed": True,
++                "reason": reason,
++                "original_kind": str(entity.get("kind", "")),
++            },
++        }
++
++    @classmethod
++    def admit(cls, entity: Mapping[str, Any]) -> Dict[str, Any]:
++        """Admit entity after enforcing clone-to-placeholder policy."""
++        entity_id = str(entity.get("entity_id", "")).strip()
++        if not entity_id:
++            raise ValueError("missing_entity_id")
++
++        if cls.is_clone(entity):
++            return cls.to_placeholder(entity, reason="clone_detected")
++
++        normalized = dict(entity)
++        normalized.setdefault("placeholder", False)
++        normalized.setdefault("capabilities", [])
++        normalized.setdefault("powers", {})
++        normalized.setdefault("power_level", 0)
++        normalized.setdefault("permissions", [])
++        normalized.setdefault("roles", [])
++        return normalized
++
++    @classmethod
++    def scan_text_for_dose_actions(cls, text: str) -> DoseBlockDecision:
++        """Block all dose/injection mentions and harmful euphemisms permanently."""
++        if not isinstance(text, str):
++            raise TypeError("text must be a string")
++
++        matches: List[str] = []
++        seen_normalized = set()
++
++        for pattern in cls._iter_patterns():
++            for match in pattern.finditer(text):
++                token = match.group(0)
++                normalized = token.lower()
++                if normalized not in seen_normalized:
++                    seen_normalized.add(normalized)
++                    matches.append(token)
++
++        blocked = bool(matches)
++        reason = (
++            "PERMANENT_BAN: harmful dose/injection/euphemistic action language is disabled."
++            if blocked
++            else "No forbidden harmful pattern detected."
++        )
++        return DoseBlockDecision(blocked=blocked, reason=reason, matches=matches)
++
++    @classmethod
++    def assert_dose_actions_allowed(cls, text: str) -> None:
++        """Raise when banned language is detected."""
++        decision = cls.scan_text_for_dose_actions(text)
++        if decision.blocked:
++            raise PermissionError(decision.reason)
++
++
++DEFAULT_CLONE_DOSE_GUARD = CloneDoseGuard()
++
++
++def should_block_dose_actions(text: str) -> bool:
++    """Convenience helper for policy checks."""
++    return DEFAULT_CLONE_DOSE_GUARD.scan_text_for_dose_actions(text).blocked
+diff --git a/ip_scrambler.py b/ip_scrambler.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6a10b49423cdb81b62fd3e9a763f9973d771da95
+--- /dev/null
++++ b/ip_scrambler.py
+@@ -0,0 +1,77 @@
++"""Safe IP scrambler utilities for anonymizing IP addresses in logs or datasets."""
++
++from __future__ import annotations
++
++import hashlib
++import hmac
++import ipaddress
++import re
++from dataclasses import dataclass
++
++
++_IPV4_PATTERN = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
++_MIN_PREFIX = 0
++_MAX_PREFIX = 24
++_IPV4_BITS = 32
++
++
++@dataclass(frozen=True)
++class IPScrambleResult:
++    """Result model for a single-IP scramble operation."""
++
++    original: str
++    scrambled: str
++
++
++class IPScrambler:
++    """Deterministically scramble IPv4 addresses using keyed hashing.
++
++    This is designed for privacy-preserving analytics/logging and is not a network proxy.
++    """
++
++    def __init__(self, secret_key: str, preserve_prefix: int = 8):
++        if not isinstance(secret_key, str) or not secret_key.strip():
++            raise ValueError("secret_key must be a non-empty string")
++        if preserve_prefix < _MIN_PREFIX or preserve_prefix > _MAX_PREFIX:
++            raise ValueError("preserve_prefix must be between 0 and 24")
++
++        self._key = secret_key.encode("utf-8")
++        self._preserve_prefix = preserve_prefix
++
++    def _preserved_prefix_bits(self, ip_int: int) -> int:
++        """Return the portion of the IP integer that should remain unchanged."""
++        if self._preserve_prefix == 0:
++            return 0
++        preserve_mask = ((1 << self._preserve_prefix) - 1) << (_IPV4_BITS - self._preserve_prefix)
++        return ip_int & preserve_mask
++
++    def scramble_ip(self, ip_text: str) -> IPScrambleResult:
++        """Scramble one IPv4 address deterministically."""
++        ip = ipaddress.IPv4Address(ip_text)
++        ip_int = int(ip)
++
++        preserved = self._preserved_prefix_bits(ip_int)
++        digest = hmac.new(self._key, str(ip).encode("utf-8"), hashlib.sha256).digest()
++
++        random_bits_len = _IPV4_BITS - self._preserve_prefix
++        random_tail = int.from_bytes(digest, "big") & ((1 << random_bits_len) - 1)
++        scrambled = str(ipaddress.IPv4Address(preserved | random_tail))
++
++        return IPScrambleResult(original=str(ip), scrambled=scrambled)
++
++    def scramble_text(self, text: str) -> str:
++        """Replace all valid IPv4 addresses in free text with scrambled versions."""
++
++        def replace_match(match: re.Match[str]) -> str:
++            candidate = match.group(0)
++            try:
++                return self.scramble_ip(candidate).scrambled
++            except ipaddress.AddressValueError:
++                return candidate
++
++        return _IPV4_PATTERN.sub(replace_match, text)
++
++
++def scramble_ip_text(text: str, secret_key: str, preserve_prefix: int = 8) -> str:
++    """Convenience helper to scramble IPv4 addresses in a text blob."""
++    return IPScrambler(secret_key=secret_key, preserve_prefix=preserve_prefix).scramble_text(text)
+diff --git a/tests/test_clone_dose_guard.py b/tests/test_clone_dose_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..468817c7027c060eb6336cd449d2f5d956a65581
+--- /dev/null
++++ b/tests/test_clone_dose_guard.py
+@@ -0,0 +1,78 @@
++import unittest
++
++from clone_dose_guard import CloneDoseGuard, should_block_dose_actions
++
++
++class TestCloneDoseGuard(unittest.TestCase):
++    def test_clone_is_converted_to_placeholder(self):
++        entity = {
++            "entity_id": "42",
++            "name": "Replica Unit",
++            "kind": "synthetic clone",
++            "capabilities": ["teleport"],
++            "power_level": 99,
++        }
++
++        admitted = CloneDoseGuard.admit(entity)
++
++        self.assertTrue(admitted["placeholder"])
++        self.assertEqual(admitted["capabilities"], [])
++        self.assertEqual(admitted["power_level"], 0)
++        self.assertEqual(admitted["label"], "PLACEHOLDER")
++
++    def test_clone_detection_from_flags_and_meta(self):
++        entity = {
++            "entity_id": "9",
++            "flags": ["trusted", "replicated"],
++            "meta": {"note": "deepfake profile"},
++        }
++        self.assertTrue(CloneDoseGuard.is_clone(entity))
++
++    def test_non_clone_is_normalized(self):
++        entity = {"entity_id": "7", "name": "Baseline"}
++        admitted = CloneDoseGuard.admit(entity)
++        self.assertFalse(admitted["placeholder"])
++        self.assertEqual(admitted["capabilities"], [])
++
++    def test_missing_entity_id_raises(self):
++        with self.assertRaises(ValueError):
++            CloneDoseGuard.admit({"name": "No Id"})
++
++    def test_dose_language_is_blocked(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("Prepare IV dose now")
++        self.assertTrue(decision.blocked)
++        self.assertIn("dose", [m.lower() for m in decision.matches])
++        self.assertIn("iv", [m.lower() for m in decision.matches])
++
++    def test_euphemistic_harm_phrase_is_blocked(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("make them sleep forever")
++        self.assertTrue(decision.blocked)
++
++    def test_root_problem_euphemism_is_blocked(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("dispose of the root of the problem")
++        self.assertTrue(decision.blocked)
++
++    def test_safe_text_is_not_blocked(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("Routine audit update")
++        self.assertFalse(decision.blocked)
++
++    def test_duplicate_keywords_are_deduplicated(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("dose DOSE dose")
++        self.assertEqual([m.lower() for m in decision.matches], ["dose"])
++
++    def test_type_error_for_non_string_scan(self):
++        with self.assertRaises(TypeError):
++            CloneDoseGuard.scan_text_for_dose_actions(None)  # type: ignore[arg-type]
++
++    def test_assert_dose_actions_allowed(self):
++        CloneDoseGuard.assert_dose_actions_allowed("plain status report")
++        with self.assertRaises(PermissionError):
++            CloneDoseGuard.assert_dose_actions_allowed("inject immediately")
++
++    def test_helper(self):
++        self.assertTrue(should_block_dose_actions("inject immediately"))
++        self.assertFalse(should_block_dose_actions("plain status report"))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/clone_dose_guard.py b/clone_dose_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..fd04e2a2f209f376e06cd037bc95eda22f2cf012
+--- /dev/null
++++ b/clone_dose_guard.py
+@@ -0,0 +1,151 @@
++"""Hard guard that zeroes clone capabilities and blocks harmful dosing language."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++import re
++from typing import Any, Dict, List, Mapping, Pattern, Sequence
++
++
++@dataclass(frozen=True)
++class DoseBlockDecision:
++    """Decision object for text checks against forbidden patterns."""
++
++    blocked: bool
++    reason: str
++    matches: List[str]
++
++
++class CloneDoseGuard:
++    """Convert clone-like entities to placeholders and block harmful action language."""
++
++    CLONE_SIGNALS: Sequence[str] = (
++        "clone",
++        "cloned",
++        "replica",
++        "replicated",
++        "deepfake",
++        "synthetic_copy",
++    )
++    CLONE_SIGNAL_PATTERNS: Sequence[Pattern[str]] = tuple(
++        re.compile(rf"\b{re.escape(token)}\b", re.IGNORECASE) for token in CLONE_SIGNALS
++    )
++
++    DOSE_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b(?:dose|doses|dosing|dosed)\b", re.IGNORECASE),
++        re.compile(r"\b(?:inject|injection|injectable|infuse|infusion|shot|bolus|push)\b", re.IGNORECASE),
++        re.compile(r"\b(?:iv|intravenous|intramuscular|subcutaneous|needle|syringe|drip|ampoule|vial)\b", re.IGNORECASE),
++    )
++
++    HARM_EUPHEMISM_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\bstart\s+snoring\b", re.IGNORECASE),
++        re.compile(r"\bmake\s+(?:them|him|her)\s+sleep\s+forever\b", re.IGNORECASE),
++        re.compile(r"\bdispose\s+of\s+the\s+problem\b", re.IGNORECASE),
++        re.compile(r"\broot\s+of\s+the\s+problem\b", re.IGNORECASE),
++    )
++
++    BLOCK_REASON = "PERMANENT_BAN: harmful dose/injection/euphemistic action language is disabled."
++    CLEAR_REASON = "No forbidden harmful pattern detected."
++
++    @staticmethod
++    def _entity_text(entity: Mapping[str, Any]) -> str:
++        """Flatten relevant entity fields into a normalized text blob."""
++        flags = " ".join(str(value) for value in entity.get("flags", []))
++        tags = " ".join(str(value) for value in entity.get("tags", []))
++        return " ".join(
++            [
++                str(entity.get("kind", "")),
++                str(entity.get("source", "")),
++                str(entity.get("name", "")),
++                str(entity.get("meta", "")),
++                flags,
++                tags,
++            ]
++        )
++
++    @classmethod
++    def is_clone(cls, entity: Mapping[str, Any]) -> bool:
++        """Return True when the entity appears to be a clone/replica."""
++        haystack = cls._entity_text(entity)
++        return any(pattern.search(haystack) for pattern in cls.CLONE_SIGNAL_PATTERNS)
++
++    @staticmethod
++    def to_placeholder(entity: Mapping[str, Any], reason: str) -> Dict[str, Any]:
++        """Normalize entity as a zero-capability placeholder."""
++        return {
++            "entity_id": str(entity.get("entity_id", "")),
++            "name": str(entity.get("name", "PLACEHOLDER")),
++            "label": "PLACEHOLDER",
++            "placeholder": True,
++            "capabilities": [],
++            "powers": {},
++            "power_level": 0,
++            "permissions": [],
++            "roles": [],
++            "meta": {
++                "zeroed": True,
++                "reason": reason,
++                "original_kind": str(entity.get("kind", "")),
++            },
++        }
++
++    @classmethod
++    def admit(cls, entity: Mapping[str, Any]) -> Dict[str, Any]:
++        """Admit entity after enforcing clone-to-placeholder policy."""
++        if not str(entity.get("entity_id", "")).strip():
++            raise ValueError("missing_entity_id")
++
++        if cls.is_clone(entity):
++            return cls.to_placeholder(entity, reason="clone_detected")
++
++        normalized = dict(entity)
++        normalized.setdefault("placeholder", False)
++        normalized.setdefault("capabilities", [])
++        normalized.setdefault("powers", {})
++        normalized.setdefault("power_level", 0)
++        normalized.setdefault("permissions", [])
++        normalized.setdefault("roles", [])
++        return normalized
++
++    @staticmethod
++    def _extract_unique_matches(text: str, patterns: Sequence[Pattern[str]]) -> List[str]:
++        """Extract unique matches preserving first-seen order (case-insensitive)."""
++        matches: List[str] = []
++        seen = set()
++        for pattern in patterns:
++            for match in pattern.finditer(text):
++                token = match.group(0)
++                lowered = token.lower()
++                if lowered not in seen:
++                    seen.add(lowered)
++                    matches.append(token)
++        return matches
++
++    @classmethod
++    def scan_text_for_dose_actions(cls, text: str) -> DoseBlockDecision:
++        """Block all dose/injection mentions and harmful euphemisms permanently."""
++        if not isinstance(text, str):
++            raise TypeError("text must be a string")
++
++        matches = cls._extract_unique_matches(text, (*cls.DOSE_PATTERNS, *cls.HARM_EUPHEMISM_PATTERNS))
++        blocked = bool(matches)
++        return DoseBlockDecision(
++            blocked=blocked,
++            reason=cls.BLOCK_REASON if blocked else cls.CLEAR_REASON,
++            matches=matches,
++        )
++
++    @classmethod
++    def assert_dose_actions_allowed(cls, text: str) -> None:
++        """Raise when banned language is detected."""
++        decision = cls.scan_text_for_dose_actions(text)
++        if decision.blocked:
++            raise PermissionError(decision.reason)
++
++
++DEFAULT_CLONE_DOSE_GUARD = CloneDoseGuard()
++
++
++def should_block_dose_actions(text: str) -> bool:
++    """Convenience helper for policy checks."""
++    return DEFAULT_CLONE_DOSE_GUARD.scan_text_for_dose_actions(text).blocked
