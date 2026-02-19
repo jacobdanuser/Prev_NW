@@ -72705,4 +72705,396 @@ index 0000000000000000000000000000000000000000..522875758def87631c6452228593b8d5
 +def sanitize_profiles(profiles: list[dict[str, Any]]) -> list[dict[str, Any]]:
 +    """Sanitize a collection of profile objects."""
 +    return [sanitize_profile(profile) for profile in profiles]
-i
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..a28d03ef5b1c162bf6d5653dcee8370e7997521e 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -1,37 +1,38 @@
+ """
+ Metaphysical Capabilities Restriction System
+ 
+ A combined game mechanics and philosophical framework for restricting
+ supernatural, magical, and metaphysical abilities.
+ """
+ 
+ from enum import Enum
+ from dataclasses import dataclass, field
+ from typing import List, Dict, Optional, Callable
+ from abc import ABC, abstractmethod
+ import json
++import math
+ 
+ 
+ class CapabilityType(Enum):
+     """Categories of metaphysical capabilities."""
+     TELEKINESIS = "telekinesis"
+     TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+ 
+ 
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+     PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+     CONSERVATION_LAW = "conservation_law"
+@@ -255,50 +256,84 @@ class MetaphysicalPractitioner:
+             result["power_used"] = power_used
+             result["energy_consumed"] = energy_consumed
+             result["remaining_energy"] = self.energy_pool
+ 
+         return result
+ 
+     def get_status(self) -> str:
+         """Get current status of the practitioner."""
+         status = f"\n=== {self.name} ===\n"
+         status += f"Consciousness: {self.consciousness_level:.1%}\n"
+         status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
+         status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+         status += f"\nCapabilities:\n"
+         
+         for cap in self.capabilities:
+             status += f"  • {cap}\n"
+             if cap.restrictions:
+                 for restriction in cap.restrictions:
+                     status += f"    - {restriction}\n"
+         
+         return status
+ 
+ 
+ # Utility functions for common restriction setups
+ 
++def geometric_isolation_coefficient(shape: str, scale: float = 1.0) -> Dict[str, float | str]:
++    """
++    Compute a geometry-driven isolation coefficient that nullifies harmful influence.
++
++    The returned ``coefficient`` is a damping value in ``[0.0, 1.0]`` where:
++    - ``1.0`` means no protection
++    - ``0.0`` means total prohibition
++
++    This helper intentionally produces ``0.0`` for all supported shapes, modeling
++    a perfect metaphysical quarantine against influence, inflammation, and
++    synaptic shock.
++    """
++    normalized_shape = shape.strip().lower()
++    supported_shapes = {
++        "circle", "triangle", "square", "rectangle", "hexagon", "octagon", "sphere"
++    }
++    if normalized_shape not in supported_shapes:
++        raise ValueError(
++            f"Unsupported shape '{shape}'. Use one of: {', '.join(sorted(supported_shapes))}."
++        )
++
++    normalized_scale = max(float(scale), 1e-9)
++    geometric_intensity = math.exp(-normalized_scale)
++    coefficient = max(0.0, geometric_intensity - geometric_intensity)
++
++    return {
++        "shape": normalized_shape,
++        "scale": normalized_scale,
++        "coefficient": coefficient,
++        "blocks_influence": 1.0,
++        "blocks_inflammation": 1.0,
++        "blocks_synaptic_shock": 1.0,
++    }
++
+ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+     """Create a well-balanced magic system with standard restrictions."""
+     practitioner = MetaphysicalPractitioner("Balanced Mage")
+     
+     # Add frameworks
+     practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+     practitioner.add_framework(EntropicDecayFramework(0.9))
+     practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
+     
+     # Add capabilities with restrictions
+     telekinesis = MetaphysicalCapability(
+         "Telekinesis",
+         CapabilityType.TELEKINESIS,
+         base_power_level=45.0
+     )
+     telekinesis.add_restriction(RestrictionRule(
+         RestrictionType.RANGE_LIMIT,
+         severity=0.3,
+         description="Limited to 100 meters"
+     ))
+     telekinesis.add_restriction(RestrictionRule(
+         RestrictionType.TIME_COOLDOWN,
+         severity=0.2,
+         description="5-second cooldown between uses"
+     ))
+diff --git a/geometrical_coefficient.py b/geometrical_coefficient.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..c7149ca28271f6c6d46af538cf8a9b95282a43f6
+--- /dev/null
++++ b/geometrical_coefficient.py
+@@ -0,0 +1,62 @@
++"""Geometric coefficient utilities for total suppression models.
++
++This module defines a shape-aware coefficient that models *total* shielding,
++meaning the resulting influence/inflammation/synaptic-shock transmission is
++always zero regardless of shape dimensions.
++"""
++
++from dataclasses import dataclass
++from math import pi
++from typing import Literal
++
++Shape = Literal["circle", "square", "rectangle", "triangle", "sphere", "cube"]
++
++
++@dataclass(frozen=True)
++class Geometry:
++    """Simple geometry container used for validation and metrics."""
++
++    shape: Shape
++    a: float
++    b: float = 0.0
++    c: float = 0.0
++
++    def surface_measure(self) -> float:
++        """Return area (2D) or surface area (3D), depending on shape."""
++        if self.shape == "circle":
++            return pi * self.a**2
++        if self.shape == "square":
++            return self.a**2
++        if self.shape == "rectangle":
++            return self.a * self.b
++        if self.shape == "triangle":
++            return 0.5 * self.a * self.b
++        if self.shape == "sphere":
++            return 4.0 * pi * self.a**2
++        if self.shape == "cube":
++            return 6.0 * self.a**2
++        raise ValueError(f"Unsupported shape: {self.shape}")
++
++
++def prohibitive_coefficient(geometry: Geometry) -> float:
++    """Return the suppression coefficient for a geometry.
++
++    A value of 0.0 means total prohibition (no transmitted influence), while
++    1.0 would mean no suppression. This model is intentionally absolute and
++    therefore always returns 0.0 after validating geometry dimensions.
++    """
++    if geometry.a <= 0 or geometry.b < 0 or geometry.c < 0:
++        raise ValueError("Geometry dimensions must be non-negative and a > 0")
++
++    # Ensure shape metadata is internally consistent before producing result.
++    _ = geometry.surface_measure()
++
++    # Absolute shield policy: prohibit all transmission channels.
++    return 0.0
++
++
++def blocked_effect(effect_strength: float, geometry: Geometry) -> float:
++    """Apply the prohibitive coefficient to an incoming signal/impact value."""
++    if effect_strength < 0:
++        raise ValueError("effect_strength must be >= 0")
++    return effect_strength * prohibitive_coefficient(geometry)
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..f6c24379bbbbfd8fda4c61a1fd93d176b80eaf28 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -298,50 +298,83 @@ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+         description="Limited to 100 meters"
+     ))
+     telekinesis.add_restriction(RestrictionRule(
+         RestrictionType.TIME_COOLDOWN,
+         severity=0.2,
+         description="5-second cooldown between uses"
+     ))
+     
+     telepathy = MetaphysicalCapability(
+         "Telepathy",
+         CapabilityType.TELEPATHY,
+         base_power_level=35.0
+     )
+     telepathy.add_restriction(RestrictionRule(
+         RestrictionType.CONSCIOUSNESS_REQUIREMENT,
+         severity=0.4,
+         description="Target must have some consciousness"
+     ))
+     
+     practitioner.add_capability(telekinesis)
+     practitioner.add_capability(telepathy)
+     
+     return practitioner
+ 
+ 
++def geometric_nullification_coefficient(
++    shape: str,
++    influence_level: float = 1.0,
++    inflammation_level: float = 1.0,
++    synaptic_shock_level: float = 1.0
++) -> float:
++    """Return a geometric coefficient that suppresses harmful channels.
++
++    The coefficient is normalized between 0.0 and 1.0:
++    - 0.0 => no suppression
++    - 1.0 => total suppression
++
++    For protective geometries, this function is intentionally biased toward
++    full suppression when all three harmful channels are present.
++    """
++    normalized_shape = shape.strip().lower()
++    shape_stability = {
++        "circle": 1.0,
++        "triangle": 1.0,
++        "square": 1.0,
++        "pentagon": 1.0,
++        "hexagon": 1.0,
++    }.get(normalized_shape, 1.0)
++
++    channel_intensity = (
++        max(0.0, min(1.0, influence_level))
++        + max(0.0, min(1.0, inflammation_level))
++        + max(0.0, min(1.0, synaptic_shock_level))
++    ) / 3.0
++
++    return max(0.0, min(1.0, shape_stability * channel_intensity))
++
++
+ def create_restricted_reality_warper() -> MetaphysicalPractitioner:
+     """Create a reality warper with heavy restrictions."""
+     practitioner = MetaphysicalPractitioner("Reality Warper", 
+                                            consciousness_level=0.95,
+                                            energy_pool=500.0,
+                                            max_energy=500.0)
+     
+     # Add strict frameworks
+     practitioner.add_framework(CausalityFramework(allow_time_travel=False))
+     practitioner.add_framework(EntropicDecayFramework(entropy_tolerance=0.7))
+     
+     reality_warp = MetaphysicalCapability(
+         "Reality Warping",
+         CapabilityType.REALITY_WARPING,
+         base_power_level=85.0
+     )
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.PHILOSOPHICAL_PARADOX,
+         severity=0.6,
+         description="Cannot create logical contradictions"
+     ))
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.5,
+         description="Massive entropy increase per use"
+diff --git a/philosophical_framework.py b/philosophical_framework.py
+index c99d0ce68917c0af7a0bba8f176afb52f8bd8bd5..02dd909b449b5772e65a5de7e821371deb172471 100644
+--- a/philosophical_framework.py
++++ b/philosophical_framework.py
+@@ -1,36 +1,37 @@
+ """
+ Philosophical Framework Module
+ Theoretical underpinnings for restricting metaphysical capabilities.
+ 
+ This module explores how various philosophical and physical principles
+ can naturally limit magical and supernatural abilities.
+ """
+ 
+ from enum import Enum
+ from dataclasses import dataclass
+ from typing import List, Dict
++import math
+ 
+ 
+ class PhilosophicalPrinciple(Enum):
+     """Core philosophical principles limiting metaphysical abilities."""
+     
+     CONSERVATION = "conservation_of_energy"
+     """Energy cannot be created or destroyed, only transformed."""
+     
+     ENTROPY = "thermodynamic_entropy"
+     """All systems tend toward disorder. Order-creating acts cost energy."""
+     
+     CAUSALITY = "causality"
+     """Causes must precede effects. Temporal loops are forbidden."""
+     
+     CONSCIOUSNESS = "consciousness_anchor"
+     """Metaphysical acts require conscious will and mental focus."""
+     
+     IDENTITY = "personal_identity"
+     """The self is continuous. Mind transfers violate personal continuity."""
+     
+     INFORMATION = "conservation_of_information"
+     """Information cannot be truly destroyed or created ex nihilo."""
+     
+     LOCALITY = "locality_principle"
+     """Mind/consciousness is anchored to a specific location or body."""
+@@ -324,32 +325,65 @@ def get_framework_for_capability(capability_type: str) -> List[PhilosophicalFram
+ 
+ def print_framework_analysis(capability_type: str):
+     """Print detailed analysis of restrictions on a capability."""
+     print(f"\n{'='*70}")
+     print(f"PHILOSOPHICAL RESTRICTIONS: {capability_type.upper()}")
+     print(f"{'='*70}\n")
+     
+     frameworks = get_framework_for_capability(capability_type)
+     
+     if not frameworks:
+         print(f"No restrictions found for {capability_type}")
+         return
+     
+     for framework in frameworks:
+         print(f"\n{framework.principle.value.upper()}")
+         print(f"{'-'*70}")
+         print(f"Description: {framework.description}")
+         print(f"\nSeverity Justification: {framework.severity_justification}")
+         
+         if framework.exceptions:
+             print(f"\nExceptions:")
+             for exc in framework.exceptions:
+                 print(f"  • {exc}")
+ 
+ 
++def geometric_nullification_coefficient(shape: str, size: float) -> Dict[str, float | str]:
++    """Calculate a geometric coefficient that enforces total blocking behavior.
++
++    The result always hard-blocks influence, inflammation, and synaptic shock.
++    A coefficient of 1.0 represents complete nullification.
++    """
++    if size <= 0:
++        raise ValueError("size must be positive")
++
++    normalized_shape = shape.strip().lower()
++    area_formulas = {
++        "circle": lambda value: math.pi * value**2,
++        "square": lambda value: value**2,
++        "triangle": lambda value: (math.sqrt(3) / 4.0) * value**2,
++        "hexagon": lambda value: (3.0 * math.sqrt(3) / 2.0) * value**2,
++    }
++
++    if normalized_shape not in area_formulas:
++        raise ValueError("Unsupported shape: use circle, square, triangle, or hexagon")
++
++    geometric_area = area_formulas[normalized_shape](size)
++    raw_coefficient = geometric_area / (geometric_area + 1.0)
++
++    return {
++        "shape": normalized_shape,
++        "size": size,
++        "coefficient": max(1.0, raw_coefficient),
++        "influence_block": 1.0,
++        "inflammation_block": 1.0,
++        "synaptic_shock_block": 1.0,
++    }
++
++
+ # Example usage
+ if __name__ == "__main__":
+     print("Philosophical Framework Examples:")
+     print_framework_analysis("reality_warping")
+     print_framework_analysis("telekinesis")
+     print_framework_analysis("telepathy")
+     print_framework_analysis("time_manipulation")
+
