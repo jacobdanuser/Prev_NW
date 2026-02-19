@@ -15065,3 +15065,175 @@ def verify_tools_or_fail():
 
     sig = RegistrySignature(algo="HMAC-SHA256", digest_hex=expected_sig_hex)
     verify_registry(registry, sig, secret.encode("utf-8"))
+from lady_justicia import *
+
+# Create a judge
+judge = LadyJusticia(name="Judge Smith", realm="District Court")
+
+# Create parties
+plaintiff = Party(id="p1", name="State", role="plaintiff")
+defendant = Party(id="d1", name="Defendant", role="defendant")
+
+# Add evidence
+plaintiff.add_evidence(Evidence(
+    id="e1",
+    description="Forensic evidence",
+    weight=0.9,
+    source="Lab Analysis",
+    submitted_date=datetime.now(),
+    verified=True
+))
+
+# Add witnesses
+plaintiff.add_witness(Witness(
+    id="w1",
+    name="Officer Johnson",
+    credibility_score=0.95,
+    testimony="I witnessed the crime",
+    submitted_date=datetime.now()
+))
+
+# Create and hear case
+case = Case(
+    id="case_001",
+    title="State v. Defendant",
+    description="Criminal matter",
+    created_date=datetime.now(),
+    plaintiff=plaintiff,
+    defendant=defendant,
+    case_type="criminal",
+    jurisdiction="District Court"
+)
+
+judge.hear_case(case)
+
+# Examine evidence
+evidence_report = judge.examine_evidence("case_001", verbose=True)
+
+# Render verdict
+verdict = judge.render_verdict("case_001")
+print(f"Verdict: {verdict['verdict']}")
+print(f"Reasoning: {verdict['reasoning']}")
+# Different cases, different approaches
+judge.set_judgment_strategy(BalancedScalesStrategy())   # Evidence-based
+judge.render_verdict("case_001")
+
+judge.set_judgment_strategy(MercifulStrategy())         # Emphasizes restoration
+judge.render_verdict("case_002")
+
+judge.set_judgment_strategy(RigorousStrategy())         # Strict standards
+judge.render_verdict("case_003")
+from lady_justicia_extended import *
+
+# Create integrated justice system
+archive = JusticeArchive()
+archive.initialize_courts()
+
+# Use main court
+archive.justicia.hear_case(case)
+verdict = archive.justicia.render_verdict("case_id")
+archive.register_judgment(verdict)
+
+# Use appeal court
+appeal = archive.appeal_court.file_appeal(
+    appeal_id="APPEAL_001",
+    original_case_id="case_id",
+    appealing_party="Defendant",
+    grounds="New evidence discovered"
+)
+
+# Get metrics
+report = archive.get_system_status()
+Balance = Plaintiff Strength - Defendant Strength
+
+Evidence Weight:
+  Verified Evidence:    100% weight
+  Unverified Evidence:   50% weight
+
+Witness Impact:
+  Impact = Credibility - (Inconsistencies × 0.1)
+
+Case Strength:
+  = (Evidence Avg × 0.5) + (Witness Impact Avg × 0.4) + (Arguments × 0.1)
+  LadyJusticia (Main Entity)
+├── Attributes
+│   ├── wisdom_level (0-100)
+│   ├── sword_sharpness (0.0-1.0)
+│   ├── blindfold_active (true/false)
+│   └── justice_alignment
+│
+├── Cases Management
+│   ├── hear_case(case)
+│   ├── examine_evidence(case_id)
+│   ├── test_witnesses(case_id)
+│   └── render_verdict(case_id)
+│
+├── Judgment Strategies
+│   ├── BalancedScalesStrategy
+│   ├── MercifulStrategy
+│   └── RigorousStrategy
+│
+└── Records
+    ├── judgment_history[]
+    └── completed_judgments[]
+
+Case
+├── Plaintiff (Party)
+│   ├── evidence[]
+│   ├── witnesses[]
+│   └── arguments[]
+│
+├── Defendant (Party)
+│   ├── evidence[]
+│   ├── witnesses[]
+│   └── arguments[]
+│
+└── Calculations
+    ├── calculate_balance()
+    └── get_case_summary()
+
+Extended System (AppealCourt)
+├── Appeal Management
+├── Precedent Library
+├── Sentencing Guidelines
+└── Justice Metrics & Analytics
+RealWorldScenarios.scenario_1_clear_guilt()
+# Output: Guilt verdict based on overwhelming evidence
+RealWorldScenarios.scenario_2_reasonable_doubt()
+# Output: Innocent verdict due to insufficient evidence
+RealWorldScenarios.scenario_3_mitigating_circumstances()
+# Output: Mitigated verdict considering circumstances
+ComprehensiveTestSuite.run_all_tests()
+# Validates evidence calculation, case strength, verdict rendering, etc.
+from lady_justicia import JudgmentStrategy, VerdictEnum
+
+class CustomStrategy(JudgmentStrategy):
+    def render_judgment(self, case):
+        # Your custom logic here
+        strength = case.plaintiff.calculate_case_strength()
+        
+        if strength > 0.8:
+            return VerdictEnum.GUILTY, "Strong evidence of guilt"
+        elif strength < 0.3:
+            return VerdictEnum.INNOCENT, "Insufficient evidence"
+        else:
+            return VerdictEnum.MITIGATED, "Mixed evidence"
+
+judge.set_judgment_strategy(CustomStrategy())
+class SpecializedCourt(LadyJusticia):
+    def __init__(self, name, realm, specialization):
+        super().__init__(name, realm)
+        self.specialization = specialization
+    
+    def hear_case(self, case):
+        if case.case_type != self.specialization:
+            print(f"Warning: This court specializes in {self.specialization}")
+        super().hear_case(case)
+      # Run core demonstration
+python lady_justicia.py
+
+# Run extended features
+python lady_justicia_extended.py
+
+# Run examples and tests
+python lady_justicia_examples.py  
