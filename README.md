@@ -75867,4 +75867,337 @@ index 1f47588ef2a8e37f2384ecc55ddcb9bf4c242cfa..c0ab56c7a55f031dea9199c31c7a0220
 +
 +This pattern applies the **same code behavior** to MAAT-like keywords at scale,
 +while keeping source size small through algorithmic generation.
+diff --git a/README.md b/README.md
+index 1f47588ef2a8e37f2384ecc55ddcb9bf4c242cfa..66617c6a7c5c85b7ca967a20552c978dcbe6fbd6 100644
+--- a/README.md
++++ b/README.md
+@@ -74706,25 +74706,29 @@ index 2443ccb7c89f840621582951f42986372b6249bc..4a9024998ee3df19e049cc095f2391df
+ +            if cleaned_value == "":
+ +                continue
+ +            if cleaned_value == []:
+ +                continue
+ +            if cleaned_value == {}:
+ +                continue
+ +            cleaned[key] = cleaned_value
+ +        return cleaned
+ +
+ +    if isinstance(payload, list):
+ +        cleaned_items = []
+ +        for item in payload:
+ +            cleaned_item = remove_psychological_influence_content(item)
+ +            if cleaned_item in (None, "", [], {}):
+ +                continue
+ +            cleaned_items.append(cleaned_item)
+ +        return cleaned_items
+ +
+ +    if isinstance(payload, str):
+ +        if _contains_psychological_influence(payload):
+ +            return ""
+ +        return payload
+ +
+ +    return payload
+ 
++
++## MAAT keyword expansion utility
++
++Added `maat_keyword_expander.py` to generate a very large MAAT-related keyword set (hundreds of thousands) with slight variants and compact HTML rendering that color-highlights the `maat` token while keeping output on a condensed line.
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..2f65e7b0e1dcca13d95c76e03bbd1fec82425728 100644
+--- a/examples.py
++++ b/examples.py
+@@ -1,37 +1,38 @@
+ """
+ Example usage demonstrating the metaphysical capabilities restriction system.
+ Shows both game mechanics and philosophical frameworks in action.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalCapability, MetaphysicalPractitioner,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework,
+     create_balanced_magic_system, create_restricted_reality_warper
+ )
++from maat_keyword_expander import generate_maat_keywords, compact_colored_block
+ 
+ 
+ def example_1_basic_capability_restriction():
+     """Example 1: Basic capability with multiple restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 1: Basic Capability Restriction")
+     print("="*70)
+     
+     # Create a simple telekinesis ability
+     telekinesis = MetaphysicalCapability(
+         name="Advanced Telekinesis",
+         capability_type=CapabilityType.TELEKINESIS,
+         base_power_level=60.0
+     )
+     
+     print(f"\nOriginal capability: {telekinesis}")
+     print(f"Effective power: {telekinesis.get_effective_power():.1f}")
+     
+     # Add restrictions one by one
+     restrictions = [
+         RestrictionRule(
+             RestrictionType.ENERGY_COST,
+             severity=0.3,
+             description="High energy consumption"
+         ),
+@@ -231,47 +232,60 @@ def example_7_restriction_modification():
+     print("\n--- Adding Environmental Restrictions ---")
+     
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+     
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+     
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+         print(f"Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++
++def example_8_maat_keyword_expansion():
++    """Example 8: Compact MAAT keyword expansion with color anchor."""
++    print("\n" + "="*70)
++    print("EXAMPLE 8: MAAT Keyword Expansion")
++    print("="*70)
++
++    keywords = generate_maat_keywords(count=500)
++    print(f"Generated keywords: {len(keywords)}")
++    print("\nCompact view (first 80 keywords):")
++    print(compact_colored_block(keywords[:80], anchor_word="MAAT", chunk_size=20))
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
++    example_8_maat_keyword_expansion()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/README.md b/README.md
+index 1f47588ef2a8e37f2384ecc55ddcb9bf4c242cfa..d55970e73c48c1b53c0a011bdb807bd3140726ac 100644
+--- a/README.md
++++ b/README.md
+@@ -74706,25 +74706,45 @@ index 2443ccb7c89f840621582951f42986372b6249bc..4a9024998ee3df19e049cc095f2391df
+ +            if cleaned_value == "":
+ +                continue
+ +            if cleaned_value == []:
+ +                continue
+ +            if cleaned_value == {}:
+ +                continue
+ +            cleaned[key] = cleaned_value
+ +        return cleaned
+ +
+ +    if isinstance(payload, list):
+ +        cleaned_items = []
+ +        for item in payload:
+ +            cleaned_item = remove_psychological_influence_content(item)
+ +            if cleaned_item in (None, "", [], {}):
+ +                continue
+ +            cleaned_items.append(cleaned_item)
+ +        return cleaned_items
+ +
+ +    if isinstance(payload, str):
+ +        if _contains_psychological_influence(payload):
+ +            return ""
+ +        return payload
+ +
+ +    return payload
+ 
++
++## MAAT Keyword Expansion (Compact Colored Output)
++
++If you need the same keyword logic applied extensively to MAAT-related terms,
++use `maat_keyword_expansion.py`.
++
++- Generates up to 100,000+ MAAT-related and near-variant terms on demand.
++- Avoids huge static line-heavy lists by creating terms programmatically.
++- Renders a compact single-line colored HTML block to conserve line space.
++
++Example:
++
++```python
++from maat_keyword_expansion import MaatKeywordGenerator, render_colored_block
++
++generator = MaatKeywordGenerator()
++words = generator.generate(100_000)
++colored = render_colored_block(words[:200], color="#5dade2")
++print(colored)
++```
+"""
+MAAT keyword expansion utilities.
+
+Creates high-volume related-word datasets without storing huge static lists,
+and renders compact color-tagged output to conserve line space.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Iterable, List
+
+
+@dataclass(frozen=True)
+class ColoredKeyword:
+    """A keyword with an associated display color."""
+
+    word: str
+    color: str = "#8e44ad"  # deep violet
+
+    def to_html(self) -> str:
+        """Render as compact HTML span."""
+        return f"<span style='color:{self.color};font-weight:600'>{self.word}</span>"
+
+
+class MaatKeywordGenerator:
+    """
+    Generate large keyword sets around a MAAT seed.
+
+    The generator is deterministic, compact, and suitable for creating
+    hundreds of thousands of terms on demand.
+    """
+
+    BASE_TERMS = (
+        "maat",
+        "truth",
+        "balance",
+        "order",
+        "justice",
+        "harmony",
+        "equity",
+        "law",
+        "ethics",
+        "morality",
+        "proportion",
+        "symmetry",
+        "cosmic_order",
+        "righteousness",
+    )
+
+    PREFIXES = (
+        "neo",
+        "meta",
+        "proto",
+        "ultra",
+        "para",
+        "inter",
+        "infra",
+        "hyper",
+        "chrono",
+        "aero",
+        "geo",
+        "psy",
+    )
+
+    SUFFIXES = (
+        "core",
+        "field",
+        "vector",
+        "logic",
+        "matrix",
+        "stream",
+        "phase",
+        "signal",
+        "thread",
+        "fold",
+        "grid",
+        "kernel",
+    )
+
+    def generate(self, target_count: int = 100_000) -> List[str]:
+        """
+        Generate at least ``target_count`` MAAT-related terms.
+
+        The output includes:
+        - Base terms
+        - Prefix/base combinations
+        - Base/suffix combinations
+        - Prefix/base/suffix combinations
+        - Slight numeric variations for breadth
+        """
+        if target_count < 1:
+            return []
+
+        words: List[str] = []
+        seen = set()
+
+        def add(term: str) -> None:
+            if term not in seen:
+                seen.add(term)
+                words.append(term)
+
+        for term in self.BASE_TERMS:
+            add(term)
+
+        for prefix in self.PREFIXES:
+            for base in self.BASE_TERMS:
+                add(f"{prefix}_{base}")
+
+        for base in self.BASE_TERMS:
+            for suffix in self.SUFFIXES:
+                add(f"{base}_{suffix}")
+
+        for prefix in self.PREFIXES:
+            for base in self.BASE_TERMS:
+                for suffix in self.SUFFIXES:
+                    add(f"{prefix}_{base}_{suffix}")
+
+        n = 0
+        while len(words) < target_count:
+            for base in self.BASE_TERMS:
+                add(f"{base}_{n:05d}")
+                add(f"m{n:05d}_{base}")
+                add(f"{base}_variant_{n:05d}")
+                if len(words) >= target_count:
+                    break
+            n += 1
+
+        return words[:target_count]
+
+
+def render_colored_block(words: Iterable[str], color: str = "#8e44ad") -> str:
+    """
+    Render words into a single compact line of colored tags.
+
+    This conserves line space while preserving very large keyword sets.
+    """
+    return " ".join(ColoredKeyword(word=w, color=color).to_html() for w in words)
+
+
+if __name__ == "__main__":
+    generator = MaatKeywordGenerator()
+    terms = generator.generate(100_000)
+    print(f"Generated terms: {len(terms)}")
+    print(render_colored_block(terms[:30], color="#5dade2"))
 
