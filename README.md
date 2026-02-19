@@ -72053,4 +72053,200 @@ index 0000000000000000000000000000000000000000..498ba647fa061a538f7dfaa2b1935364
 +
 +if __name__ == "__main__":
 +    raise SystemExit(main(sys.argv[1:]))
+diff --git a/version_profile_deactivator.py b/version_profile_deactivator.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..51b6ba279c19cf56626e69da73a2687274ba1fe3
+--- /dev/null
++++ b/version_profile_deactivator.py
+@@ -0,0 +1,190 @@
++#!/usr/bin/env python3
++"""Safely deactivate outdated software versions and machine profiles.
++
++This utility is intentionally scoped to software/configuration records only.
++It does NOT operate on people, biometric identities, or any real-world person data.
++
++Input format (JSON):
++{
++  "versions": [
++    {"id": "v1.0.0", "created_utc": "2024-01-01T00:00:00Z", "active": true},
++    ...
++  ],
++  "profiles": [
++    {"id": "machine-a", "type": "machine", "last_seen_utc": "2024-03-01T00:00:00Z", "active": true},
++    ...
++  ]
++}
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++from dataclasses import dataclass, asdict
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Any
++
++ISO_FMT_HINT = "ISO-8601 UTC timestamp, e.g. 2024-01-01T00:00:00Z"
++
++
++@dataclass
++class ActionRecord:
++    category: str
++    entity_id: str
++    action: str
++    reason: str
++
++
++def parse_utc(ts: str) -> datetime:
++    ts = ts.strip()
++    if ts.endswith("Z"):
++        ts = ts[:-1] + "+00:00"
++    dt = datetime.fromisoformat(ts)
++    if dt.tzinfo is None:
++        dt = dt.replace(tzinfo=timezone.utc)
++    return dt.astimezone(timezone.utc)
++
++
++def now_utc() -> datetime:
++    return datetime.now(timezone.utc)
++
++
++def load_state(path: Path) -> dict[str, Any]:
++    data = json.loads(path.read_text(encoding="utf-8"))
++    if not isinstance(data, dict):
++        raise ValueError("Top-level JSON must be an object")
++    data.setdefault("versions", [])
++    data.setdefault("profiles", [])
++    if not isinstance(data["versions"], list) or not isinstance(data["profiles"], list):
++        raise ValueError("'versions' and 'profiles' must be arrays")
++    return data
++
++
++def deactivate_versions(
++    versions: list[dict[str, Any]], keep_latest: int, actions: list[ActionRecord]
++) -> None:
++    sortable: list[tuple[datetime, dict[str, Any]]] = []
++    for item in versions:
++        created = parse_utc(str(item.get("created_utc", "1970-01-01T00:00:00Z")))
++        sortable.append((created, item))
++
++    sortable.sort(key=lambda x: x[0], reverse=True)
++    for index, (_, item) in enumerate(sortable):
++        item.setdefault("active", True)
++        item_id = str(item.get("id", f"version-{index}"))
++        if index >= keep_latest and item.get("active") is True:
++            item["active"] = False
++            actions.append(
++                ActionRecord(
++                    category="version",
++                    entity_id=item_id,
++                    action="deactivated",
++                    reason=f"older than latest {keep_latest} versions",
++                )
++            )
++
++
++def deactivate_stale_profiles(
++    profiles: list[dict[str, Any]], stale_days: int, actions: list[ActionRecord]
++) -> None:
++    cutoff = now_utc().timestamp() - (stale_days * 86400)
++    for idx, item in enumerate(profiles):
++        item.setdefault("active", True)
++        item_type = str(item.get("type", "machine")).lower()
++        entity_id = str(item.get("id", f"profile-{idx}"))
++
++        if item_type not in {"machine", "service", "test-profile"}:
++            actions.append(
++                ActionRecord(
++                    category="profile",
++                    entity_id=entity_id,
++                    action="skipped",
++                    reason="unsupported profile type; only machine/service/test-profile allowed",
++                )
++            )
++            continue
++
++        last_seen = parse_utc(str(item.get("last_seen_utc", "1970-01-01T00:00:00Z"))).timestamp()
++        if last_seen < cutoff and item.get("active") is True:
++            item["active"] = False
++            actions.append(
++                ActionRecord(
++                    category="profile",
++                    entity_id=entity_id,
++                    action="deactivated",
++                    reason=f"stale for more than {stale_days} days",
++                )
++            )
++
++
++def write_outputs(
++    output_json: Path, audit_log: Path, state: dict[str, Any], actions: list[ActionRecord], dry_run: bool
++) -> None:
++    payload = {
++        "generated_utc": now_utc().isoformat(),
++        "dry_run": dry_run,
++        "action_count": len(actions),
++        "actions": [asdict(a) for a in actions],
++    }
++    audit_log.write_text(json.dumps(payload, indent=2), encoding="utf-8")
++    if not dry_run:
++        output_json.write_text(json.dumps(state, indent=2), encoding="utf-8")
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(
++        description="Deactivate outdated software versions and stale machine/service profiles"
++    )
++    parser.add_argument("--input", required=True, help="Input state JSON path")
++    parser.add_argument("--output", required=True, help="Output state JSON path")
++    parser.add_argument("--audit-log", default="deactivation_audit.json", help="Audit log output path")
++    parser.add_argument(
++        "--keep-latest-versions",
++        type=int,
++        default=3,
++        help="Number of newest versions to keep active",
++    )
++    parser.add_argument(
++        "--stale-days",
++        type=int,
++        default=90,
++        help=f"Deactivate machine/service/test profiles not seen in this many days ({ISO_FMT_HINT})",
++    )
++    parser.add_argument("--dry-run", action="store_true", help="Do not write modified state")
++    return parser.parse_args()
++
++
++def main() -> int:
++    args = parse_args()
++    if args.keep_latest_versions < 0:
++        raise SystemExit("--keep-latest-versions must be >= 0")
++    if args.stale_days < 1:
++        raise SystemExit("--stale-days must be >= 1")
++
++    input_path = Path(args.input).expanduser().resolve()
++    output_path = Path(args.output).expanduser().resolve()
++    audit_path = Path(args.audit_log).expanduser().resolve()
++
++    state = load_state(input_path)
++    actions: list[ActionRecord] = []
++
++    deactivate_versions(state["versions"], args.keep_latest_versions, actions)
++    deactivate_stale_profiles(state["profiles"], args.stale_days, actions)
++
++    write_outputs(output_path, audit_path, state, actions, dry_run=args.dry_run)
++
++    print(f"Processed versions: {len(state['versions'])}")
++    print(f"Processed profiles: {len(state['profiles'])}")
++    print(f"Actions recorded: {len(actions)}")
++    print(f"Audit log: {audit_path}")
++    if args.dry_run:
++        print("Dry-run mode: no state file written")
++    else:
++        print(f"Updated state written: {output_path}")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
 
