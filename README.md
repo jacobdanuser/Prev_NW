@@ -94227,3 +94227,312 @@ index 0000000000000000000000000000000000000000..fd04e2a2f209f376e06cd037bc95eda2
 +def should_block_dose_actions(text: str) -> bool:
 +    """Convenience helper for policy checks."""
 +    return DEFAULT_CLONE_DOSE_GUARD.scan_text_for_dose_actions(text).blocked
+diff --git a/universal_block_remover.py b/universal_block_remover.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..fa93427f90cb6dc03237912da65c552be319ca57
+--- /dev/null
++++ b/universal_block_remover.py
+@@ -0,0 +1,73 @@
++"""Universal payload sanitizer that removes capability/power building blocks from nested data."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any, Dict, Iterable, List, Mapping
++
++
++REMOVED_BLOCK_KEYS = {
++    "abilities",
++    "ability",
++    "capability",
++    "capabilities",
++    "powers",
++    "power",
++    "power_level",
++    "permissions",
++    "roles",
++    "frameworks",
++    "modules",
++    "actions",
++    "skills",
++}
++
++
++@dataclass(frozen=True)
++class RemovalReport:
++    """Report details from sanitizing an object graph."""
++
++    removed_paths: List[str]
++
++    @property
++    def removed_count(self) -> int:
++        return len(self.removed_paths)
++
++
++class UniversalBlockRemover:
++    """Recursively remove known building-block keys from nested dict/list payloads."""
++
++    def __init__(self, blocked_keys: Iterable[str] | None = None):
++        keys = blocked_keys if blocked_keys is not None else REMOVED_BLOCK_KEYS
++        self.blocked_keys = {str(k).strip().lower() for k in keys if str(k).strip()}
++
++    def sanitize(self, payload: Any) -> tuple[Any, RemovalReport]:
++        """Return a sanitized deep copy of payload and a removal report."""
++        removed_paths: List[str] = []
++        sanitized = self._walk(payload, path="$", removed_paths=removed_paths)
++        return sanitized, RemovalReport(removed_paths=removed_paths)
++
++    def _walk(self, value: Any, path: str, removed_paths: List[str]) -> Any:
++        if isinstance(value, Mapping):
++            return self._walk_mapping(value, path, removed_paths)
++        if isinstance(value, list):
++            return [self._walk(item, f"{path}[{idx}]", removed_paths) for idx, item in enumerate(value)]
++        return value
++
++    def _walk_mapping(self, mapping: Mapping[str, Any], path: str, removed_paths: List[str]) -> Dict[str, Any]:
++        out: Dict[str, Any] = {}
++        for key, raw_value in mapping.items():
++            key_text = str(key)
++            if key_text.lower() in self.blocked_keys:
++                removed_paths.append(f"{path}.{key_text}")
++                continue
++            out[key_text] = self._walk(raw_value, f"{path}.{key_text}", removed_paths)
++        return out
++
++
++DEFAULT_UNIVERSAL_BLOCK_REMOVER = UniversalBlockRemover()
++
++
++def remove_building_blocks(payload: Any) -> tuple[Any, RemovalReport]:
++    """Convenience helper that applies default universal removal policy."""
++    return DEFAULT_UNIVERSAL_BLOCK_REMOVER.sanitize(payload)
+diff --git a/tests/test_universal_block_remover.py b/tests/test_universal_block_remover.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7b2c8a99a553d6221e49387ce749a337aafe21d6
+--- /dev/null
++++ b/tests/test_universal_block_remover.py
+@@ -0,0 +1,55 @@
++import unittest
++
++from universal_block_remover import UniversalBlockRemover, remove_building_blocks
++
++
++class TestUniversalBlockRemover(unittest.TestCase):
++    def test_removes_top_level_block_keys(self):
++        payload = {
++            "entity_id": "1",
++            "capabilities": ["x"],
++            "power_level": 100,
++            "name": "Sample",
++        }
++        cleaned, report = remove_building_blocks(payload)
++        self.assertNotIn("capabilities", cleaned)
++        self.assertNotIn("power_level", cleaned)
++        self.assertEqual(cleaned["name"], "Sample")
++        self.assertGreaterEqual(report.removed_count, 2)
++
++    def test_removes_nested_block_keys(self):
++        payload = {
++            "meta": {
++                "modules": ["unsafe"],
++                "nested": {
++                    "permissions": ["admin"],
++                    "safe": True,
++                },
++            }
++        }
++        cleaned, report = remove_building_blocks(payload)
++        self.assertNotIn("modules", cleaned["meta"])
++        self.assertNotIn("permissions", cleaned["meta"]["nested"])
++        self.assertTrue(cleaned["meta"]["nested"]["safe"])
++        self.assertIn("$.meta.modules", report.removed_paths)
++
++    def test_handles_lists_and_mixed_items(self):
++        payload = [
++            {"powers": {"a": 1}, "ok": 1},
++            {"child": [{"skills": ["s1"]}, {"ok": 2}]},
++        ]
++        cleaned, _report = remove_building_blocks(payload)
++        self.assertEqual(cleaned[0], {"ok": 1})
++        self.assertEqual(cleaned[1]["child"][0], {})
++        self.assertEqual(cleaned[1]["child"][1], {"ok": 2})
++
++    def test_custom_key_set(self):
++        payload = {"alpha": 1, "beta": 2, "gamma": 3}
++        remover = UniversalBlockRemover(blocked_keys=["beta"])
++        cleaned, report = remover.sanitize(payload)
++        self.assertEqual(cleaned, {"alpha": 1, "gamma": 3})
++        self.assertEqual(report.removed_paths, ["$.beta"])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/clone_dose_guard.py b/clone_dose_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..c7a2e45946d7ac6a308a0fa0638ca0e754b6e8c3
+--- /dev/null
++++ b/clone_dose_guard.py
+@@ -0,0 +1,163 @@
++"""Hard guard that zeroes clone capabilities and permanently disables harmful dosing language."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++import re
++from typing import Any, Dict, List, Mapping, Pattern, Sequence
++
++
++__all__ = [
++    "CloneDoseGuard",
++    "DoseBlockDecision",
++    "DEFAULT_CLONE_DOSE_GUARD",
++    "should_block_dose_actions",
++]
++
++
++DEFAULT_ALLOWED_SCALARS: Dict[str, object] = {
++    "placeholder": False,
++    "power_level": 0,
++}
++
++DEFAULT_ALLOWED_COLLECTION_FACTORIES = {
++    "capabilities": list,
++    "powers": dict,
++    "permissions": list,
++    "roles": list,
++}
++
++
++@dataclass(frozen=True)
++class DoseBlockDecision:
++    """Decision object for text checks against forbidden patterns."""
++
++    blocked: bool
++    reason: str
++    matches: List[str]
++
++
++class CloneDoseGuard:
++    """Convert clone-like entities to placeholders and block harmful action language."""
++
++    CLONE_SIGNALS: Sequence[str] = (
++        "clone",
++        "cloned",
++        "replica",
++        "replicated",
++        "deepfake",
++        "synthetic_copy",
++    )
++
++    DOSE_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b(?:dose|doses|dosing|dosed)\b", re.IGNORECASE),
++        re.compile(r"\b(?:inject|injection|injectable|infuse|infusion|shot|bolus|push)\b", re.IGNORECASE),
++        re.compile(r"\b(?:iv|intravenous|intramuscular|subcutaneous|needle|syringe|drip|ampoule|vial)\b", re.IGNORECASE),
++    )
++
++    HARM_EUPHEMISM_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\bstart\s+snoring\b", re.IGNORECASE),
++        re.compile(r"\bmake\s+(?:them|him|her)\s+sleep\s+forever\b", re.IGNORECASE),
++        re.compile(r"\bdispose\s+of\s+the\s+problem\b", re.IGNORECASE),
++        re.compile(r"\broot\s+of\s+the\s+problem\b", re.IGNORECASE),
++    )
++
++    BLOCK_PATTERNS: Sequence[Pattern[str]] = (*DOSE_PATTERNS, *HARM_EUPHEMISM_PATTERNS)
++
++    @classmethod
++    def _entity_text(cls, entity: Mapping[str, Any]) -> str:
++        """Flatten relevant entity fields into a normalized lowercase text blob."""
++        flags = " ".join(str(value) for value in entity.get("flags", []))
++        tags = " ".join(str(value) for value in entity.get("tags", []))
++        return " ".join(
++            [
++                str(entity.get("kind", "")),
++                str(entity.get("source", "")),
++                str(entity.get("name", "")),
++                str(entity.get("meta", "")),
++                flags,
++                tags,
++            ]
++        ).lower()
++
++    @classmethod
++    def is_clone(cls, entity: Mapping[str, Any]) -> bool:
++        """Return True when the entity appears to be a clone/replica."""
++        haystack = cls._entity_text(entity)
++        return any(re.search(rf"\b{re.escape(token)}\b", haystack) for token in cls.CLONE_SIGNALS)
++
++    @classmethod
++    def to_placeholder(cls, entity: Mapping[str, Any], reason: str) -> Dict[str, Any]:
++        """Normalize entity as a zero-capability placeholder."""
++        return {
++            "entity_id": str(entity.get("entity_id", "")),
++            "name": str(entity.get("name", "PLACEHOLDER")),
++            "label": "PLACEHOLDER",
++            "placeholder": True,
++            "capabilities": [],
++            "powers": {},
++            "power_level": 0,
++            "permissions": [],
++            "roles": [],
++            "meta": {
++                "zeroed": True,
++                "reason": reason,
++                "original_kind": str(entity.get("kind", "")),
++            },
++        }
++
++    @classmethod
++    def admit(cls, entity: Mapping[str, Any]) -> Dict[str, Any]:
++        """Admit entity after enforcing clone-to-placeholder policy."""
++        entity_id = str(entity.get("entity_id", "")).strip()
++        if not entity_id:
++            raise ValueError("missing_entity_id")
++
++        if cls.is_clone(entity):
++            return cls.to_placeholder(entity, reason="clone_detected")
++
++        normalized = dict(entity)
++        for key, value in DEFAULT_ALLOWED_SCALARS.items():
++            normalized.setdefault(key, value)
++        for key, factory in DEFAULT_ALLOWED_COLLECTION_FACTORIES.items():
++            normalized.setdefault(key, factory())
++        return normalized
++
++    @classmethod
++    def scan_text_for_dose_actions(cls, text: str) -> DoseBlockDecision:
++        """Block all dose/injection mentions and harmful euphemisms permanently."""
++        if not isinstance(text, str):
++            raise TypeError("text must be a string")
++
++        matches: List[str] = []
++        seen_tokens: set[str] = set()
++        for pattern in cls.BLOCK_PATTERNS:
++            for match in pattern.finditer(text):
++                token = match.group(0)
++                normalized = token.lower()
++                if normalized not in seen_tokens:
++                    seen_tokens.add(normalized)
++                    matches.append(token)
++
++        blocked = bool(matches)
++        reason = (
++            "PERMANENT_BAN: harmful dose/injection/euphemistic action language is disabled."
++            if blocked
++            else "No forbidden harmful pattern detected."
++        )
++        return DoseBlockDecision(blocked=blocked, reason=reason, matches=matches)
++
++    @classmethod
++    def assert_dose_actions_allowed(cls, text: str) -> None:
++        """Raise when banned language is detected."""
++        decision = cls.scan_text_for_dose_actions(text)
++        if decision.blocked:
++            raise PermissionError(decision.reason)
++
++
++DEFAULT_CLONE_DOSE_GUARD = CloneDoseGuard()
++
++
++def should_block_dose_actions(text: str) -> bool:
++    """Convenience helper for policy checks."""
++    return DEFAULT_CLONE_DOSE_GUARD.scan_text_for_dose_actions(text).blocked
