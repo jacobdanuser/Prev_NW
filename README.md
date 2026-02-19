@@ -89153,3 +89153,235 @@ index 0000000000000000000000000000000000000000..de0c19593b902be6860c1e21d554c067
 +            cleaned = pattern.sub(replacement, cleaned)
 +
 +        return cleaned
+diff --git a/README.md b/README.md
+index 2c77bb72226709553d6a27ad1e119d2d3e2d2db2..8d6c97ee63c673640384d9bb3cbdbd074432d909 100644
+--- a/README.md
++++ b/README.md
+@@ -88839,25 +88839,45 @@ class SafeScrambler
+   def initialize(secret:)
+     @secret = secret
+   end
+ 
+   def scramble(value, length: 20)
+     return "" if value.nil? || value == ""
+     digest = OpenSSL::HMAC.digest("SHA256", @secret, value.to_s)
+     Base64.urlsafe_encode64(digest, padding: false)[0, length]
+   end
+ end
+ 
+ # Usage:
+ # s = SafeScrambler.new(secret: ENV.fetch("SCRAMBLE_SECRET"))
+ # s.scramble("julia.anderson@example.com") # => pseudonym
+ # app/models/api_key.rb
+ class ApiKey < ApplicationRecord
+   belongs_to :user
+   scope :active, -> { where(revoked_at: nil) }
+ 
+   def revoke!
+     update!(revoked_at: Time.current)
+   end
+ end
+ # revoke all keys fast
+ ApiKey.active.update_all(revoked_at: Time.current)
++
++## Strict blocker for JPG/IMG/IMGUR + keys
++
++Use `content_blocker.py` to block text containing:
++- `.jpg` / `.jpeg` references
++- `img`, `image`, `jpg`, `jpeg` keywords
++- `imgur.com` URLs
++- underlaid/obfuscated image markers (e.g. `i-m-g-u-r`, `i​m​g`, `j p g`)
++- product-key-like activation strings (e.g. `XXXXX-XXXXX-XXXXX-XXXXX-XXXXX`)
++- crypto/private-key material (e.g. `-----BEGIN PRIVATE KEY-----`, 64-hex key strings)
++
++Example:
++
++```python
++from content_blocker import should_block_content
++
++text = "Here is my key ABCDE-12345-FGHIJ-KLMNO-PQRST"
++if should_block_content(text):
++    print("Blocked")
++```
+diff --git a/content_blocker.py b/content_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..350bf934d2c67f59d7d7fd98e042320132f398be
+--- /dev/null
++++ b/content_blocker.py
+@@ -0,0 +1,118 @@
++"""
++Content blocking utilities for filtering image-related references and sensitive keys.
++
++This module provides a strict blocker that can be used in chat moderation,
++input validation, logging pipelines, or API gateways.
++"""
++
++from __future__ import annotations
++
++import re
++from dataclasses import dataclass, field
++from typing import Iterable, List, Pattern, Sequence
++
++
++@dataclass
++class BlockHit:
++    """A single blocking match returned by the scanner."""
++
++    category: str
++    pattern: str
++    value: str
++
++
++@dataclass
++class BlockResult:
++    """Outcome of a scan operation."""
++
++    blocked: bool
++    hits: List[BlockHit] = field(default_factory=list)
++
++
++class StrictContentBlocker:
++    """
++    Block JPEG/IMG/IMGUR indicators, activation keys, and crypto-key materials.
++
++    Categories:
++      - image_extension: jpg/jpeg file references
++      - image_keyword: broad image keywords like "img" and "image"
++      - image_host: imgur domains
++      - activation_key: likely software activation/license key formats
++      - crypto_key: likely private-key material or key blocks
++      - obfuscated_image_signal: underlaid/obfuscated image words
++    """
++
++    IMAGE_EXTENSION_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\.(?:jpg|jpeg)(?:\b|\?|#)", re.IGNORECASE),
++    )
++
++    IMAGE_KEYWORD_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b(?:img|image|jpeg|jpg)\b", re.IGNORECASE),
++    )
++
++    IMAGE_HOST_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b(?:https?://)?(?:i\.)?imgur\.com\b", re.IGNORECASE),
++    )
++
++    ACTIVATION_KEY_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b[A-Z0-9]{5}(?:-[A-Z0-9]{5}){4}\b", re.IGNORECASE),
++        re.compile(r"\b[A-Z0-9]{4}(?:-[A-Z0-9]{4}){3}\b", re.IGNORECASE),
++        re.compile(r"\b[A-Z0-9]{4,6}(?:-[A-Z0-9]{4,6}){2,5}\b", re.IGNORECASE),
++    )
++
++    CRYPTO_KEY_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----", re.IGNORECASE),
++        re.compile(r"\b(?:0x)?[A-F0-9]{64}\b", re.IGNORECASE),
++        re.compile(r"\b(?:xprv|yprv|zprv)[1-9A-HJ-NP-Za-km-z]{20,}\b"),
++        re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
++    )
++
++    # catches underlaid forms such as "j p g", "i-m-g-u-r", "i_m_a_g_e"
++    OBFUSCATED_IMAGE_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\bj[\W_]*p[\W_]*e?[\W_]*g\b", re.IGNORECASE),
++        re.compile(r"\bi[\W_]*m[\W_]*g\b", re.IGNORECASE),
++        re.compile(r"\bi[\W_]*m[\W_]*g[\W_]*u[\W_]*r\b", re.IGNORECASE),
++        re.compile(r"\bi[\W_]*m[\W_]*a[\W_]*g[\W_]*e\b", re.IGNORECASE),
++    )
++
++    ZERO_WIDTH_PATTERN = re.compile(r"[\u200B\u200C\u200D\u2060\uFEFF]")
++
++    def _normalized_variants(self, text: str) -> Iterable[str]:
++        """Yield text variants to catch spaced/hidden (underlaid) terms."""
++        cleaned = self.ZERO_WIDTH_PATTERN.sub("", text)
++        collapsed_space = re.sub(r"\s+", "", cleaned)
++        collapsed_non_alnum = re.sub(r"[^A-Za-z0-9]+", "", cleaned)
++        return (text, cleaned, collapsed_space, collapsed_non_alnum)
++
++    def scan(self, text: str) -> BlockResult:
++        """Scan text and return all block hits."""
++        hits: List[BlockHit] = []
++
++        def collect(category: str, patterns: Sequence[Pattern[str]], source: str) -> None:
++            for pattern in patterns:
++                for match in pattern.finditer(source):
++                    hits.append(BlockHit(category=category, pattern=pattern.pattern, value=match.group(0)))
++
++        for variant in self._normalized_variants(text):
++            collect("image_extension", self.IMAGE_EXTENSION_PATTERNS, variant)
++            collect("image_keyword", self.IMAGE_KEYWORD_PATTERNS, variant)
++            collect("image_host", self.IMAGE_HOST_PATTERNS, variant)
++            collect("activation_key", self.ACTIVATION_KEY_PATTERNS, variant)
++            collect("crypto_key", self.CRYPTO_KEY_PATTERNS, variant)
++
++        # run obfuscated checks only on the raw message to preserve evidence in value
++        collect("obfuscated_image_signal", self.OBFUSCATED_IMAGE_PATTERNS, text)
++
++        return BlockResult(blocked=bool(hits), hits=hits)
++
++    def should_block(self, text: str) -> bool:
++        """Return True when any configured rule is triggered."""
++        return self.scan(text).blocked
++
++
++DEFAULT_BLOCKER = StrictContentBlocker()
++
++
++def should_block_content(text: str) -> bool:
++    """Convenience wrapper around the default strict blocker."""
++    return DEFAULT_BLOCKER.should_block(text)
+diff --git a/tests/test_content_blocker.py b/tests/test_content_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..20daf7d0654f5d4722ae543af7816bef88a879da
+--- /dev/null
++++ b/tests/test_content_blocker.py
+@@ -0,0 +1,52 @@
++import unittest
++
++from content_blocker import StrictContentBlocker, should_block_content
++
++
++class TestStrictContentBlocker(unittest.TestCase):
++    def setUp(self) -> None:
++        self.blocker = StrictContentBlocker()
++
++    def test_blocks_jpeg_extension(self):
++        result = self.blocker.scan("download avatar.jpg now")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "image_extension" for hit in result.hits))
++
++    def test_blocks_imgur_domain(self):
++        result = self.blocker.scan("visit https://imgur.com/gallery/abcd")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "image_host" for hit in result.hits))
++
++    def test_blocks_activation_key(self):
++        key = "ABCDE-12345-FGHIJ-KLMNO-PQRST"
++        result = self.blocker.scan(f"my key is {key}")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "activation_key" for hit in result.hits))
++
++    def test_blocks_obfuscated_underlaid_image_token(self):
++        result = self.blocker.scan("please hide this: i-m-g-u-r")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "obfuscated_image_signal" for hit in result.hits))
++
++    def test_blocks_zero_width_obfuscation(self):
++        zero_width_img = "i\u200bm\u200bg"
++        result = self.blocker.scan(f"payload: {zero_width_img}")
++        self.assertTrue(result.blocked)
++
++    def test_blocks_crypto_private_key_material(self):
++        result = self.blocker.scan("-----BEGIN PRIVATE KEY-----\nABCDEF\n-----END PRIVATE KEY-----")
++        self.assertTrue(result.blocked)
++        self.assertTrue(any(hit.category == "crypto_key" for hit in result.hits))
++
++    def test_allows_safe_text(self):
++        result = self.blocker.scan("hello world, nothing sensitive here")
++        self.assertFalse(result.blocked)
++        self.assertEqual(result.hits, [])
++
++    def test_convenience_function(self):
++        self.assertTrue(should_block_content("img link"))
++        self.assertFalse(should_block_content("plain note"))
++
++
++if __name__ == "__main__":
++    unittest.main()
