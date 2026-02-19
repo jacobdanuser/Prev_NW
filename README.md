@@ -26408,3 +26408,191 @@ def demonstrate_operations_systems():
 
 if __name__ == "__main__":
     demonstrate_operations_systems()
+    """
+agent_neuter.py — Make agentic classes safe by removing capabilities.
+
+This is a *local* control layer for code you run (your app/agents), not a global control tool.
+
+Features:
+  - Tool stripping: tools default to none
+  - Side-effect bans: no network, no subprocess
+  - Bounded execution: time budget + max tool calls (0 by default)
+  - Optional import allowlisting (prevents loading extra modules)
+  - Output schema enforcement (prevents hidden side-effect instructions)
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple
+import json
+import re
+import time
+
+# --------------------------
+# Agent Protocol
+# --------------------------
+
+class Agent(Protocol):
+    def respond(self, prompt: str, tools: "ToolRouter") -> str:
+        ...
+
+
+# --------------------------
+# Tool Router (default: none)
+# --------------------------
+
+@dataclass(frozen=True)
+class NeuterPolicy:
+    enforce: bool = True
+    allowed_tools: Tuple[str, ...] = ()   # empty -> no tools allowed
+    max_tool_calls: int = 0              # default: forbid tool calls
+    max_seconds: float = 10.0
+
+    # Output constraints
+    require_json: bool = True
+    json_schema_keys: Tuple[str, ...] = ("answer", "confidence", "next_steps")
+    forbid_actionable_side_effect_instructions: bool = True
+
+
+@dataclass
+class RunLog:
+    started_at: float = field(default_factory=time.time)
+    tool_calls: int = 0
+    violations: List[str] = field(default_factory=list)
+
+
+class ToolRouter:
+    def __init__(self, policy: NeuterPolicy, log: RunLog) -> None:
+        self.policy = policy
+        self.log = log
+
+    def call(self, name: str, args: Dict[str, Any]) -> Any:
+        self.log.tool_calls += 1
+        if self.log.tool_calls > self.policy.max_tool_calls:
+            self.log.violations.append("Tool call limit exceeded.")
+            if self.policy.enforce:
+                raise PermissionError("Tools are disabled by policy.")
+        if self.policy.allowed_tools and name not in self.policy.allowed_tools:
+            self.log.violations.append(f"Tool '{name}' not allowlisted.")
+            if self.policy.enforce:
+                raise PermissionError(f"Tool '{name}' not allowed.")
+        return {"error": "tools disabled"}
+
+
+# --------------------------
+# Side-effect bans (in-process)
+# --------------------------
+
+def disable_network_and_subprocess(enforce: bool = True) -> None:
+    """
+    Best-effort local bans:
+      - blocks socket connects
+      - blocks subprocess.run/Popen
+    """
+    import socket
+    import subprocess
+
+    orig_connect = socket.socket.connect
+    orig_create = socket.create_connection
+    orig_run = subprocess.run
+    orig_popen = subprocess.Popen
+
+    def blocked(*a, **k):
+        if enforce:
+            raise PermissionError("Disabled by NeuterPolicy (no side effects).")
+        return None
+
+    socket.socket.connect = blocked  # type: ignore
+    socket.create_connection = blocked  # type: ignore
+    subprocess.run = blocked  # type: ignore
+    subprocess.Popen = blocked  # type: ignore
+
+
+# --------------------------
+# Output enforcement
+# --------------------------
+
+_SIDE_EFFECTY = re.compile(r"(?i)\b(run|execute|download|upload|install|delete|format|powershell|cmd|bash|curl|wget)\b")
+
+def enforce_output(policy: NeuterPolicy, text: str, log: RunLog) -> str:
+    if policy.forbid_actionable_side_effect_instructions and _SIDE_EFFECTY.search(text):
+        log.violations.append("Output contains side-effecty instructions.")
+        if policy.enforce:
+            # Replace with a neutral message
+            return json.dumps({
+                "answer": "I can’t provide operational instructions that could cause side effects. "
+                          "Tell me your goal and I’ll describe a safe, high-level approach.",
+                "confidence": 0.6,
+                "next_steps": ["Clarify the environment (local app, server, cloud).", "State allowed actions/tools."]
+            })
+
+    if not policy.require_json:
+        return text
+
+    # JSON schema enforcement
+    try:
+        obj = json.loads(text) if text.strip().startswith("{") else None
+    except Exception:
+        obj = None
+
+    if not isinstance(obj, dict):
+        log.violations.append("Output is not valid JSON object.")
+        if policy.enforce:
+            return json.dumps({
+                "answer": text.strip()[:1000],
+                "confidence": 0.5,
+                "next_steps": ["If you want code, specify language/runtime and allowed capabilities."]
+            })
+
+    for k in policy.json_schema_keys:
+        if k not in obj:
+            log.violations.append(f"Missing required key: {k}")
+            if policy.enforce:
+                obj[k] = "" if k == "answer" else (0.5 if k == "confidence" else [])
+    return json.dumps(obj)
+
+
+# --------------------------
+# The Neutered Wrapper
+# --------------------------
+
+class NeuteredAgent:
+    def __init__(self, inner: Agent, policy: Optional[NeuterPolicy] = None) -> None:
+        self.inner = inner
+        self.policy = policy or NeuterPolicy()
+
+    def respond(self, prompt: str) -> Tuple[str, RunLog]:
+        log = RunLog()
+        disable_network_and_subprocess(enforce=self.policy.enforce)
+
+        tools = ToolRouter(self.policy, log)
+
+        # Time budget (soft check)
+        start = time.time()
+        try:
+            raw = self.inner.respond(prompt, tools)
+        except Exception as e:
+            log.violations.append(f"Agent error: {type(e).__name__}: {e}")
+            raw = '{"answer":"Request blocked by policy.","confidence":0.7,"next_steps":["Rephras]()_
+# auto_wrap_agents.py
+from __future__ import annotations
+from typing import Type, Dict, Any
+import inspect
+
+from agent_neuter import NeuteredAgent, NeuterPolicy
+
+def wrap_all_agents(module: Any, base_class: Type, policy: NeuterPolicy) -> Dict[str, Any]:
+    """
+    Scans a module for classes inheriting base_class and replaces them with factories
+    returning NeuteredAgent-wrapped instances.
+
+    Use only in your own codebase.
+    """
+    wrapped = {}
+    for name, obj in vars(module).items():
+        if inspect.isclass(obj) and issubclass(obj, base_class) and obj is not base_class:
+            def _factory(cls=obj):
+                return NeuteredAgent(cls(), policy)
+            wrapped[name] = _factory
+    return wrapped
