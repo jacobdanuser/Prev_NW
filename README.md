@@ -88902,3 +88902,254 @@ JPEG_DISABLED = ENV["JPEG_DISABLED"] == "1"
 if JPEG_DISABLED && file.content_type == "image/jpeg"
   errors.add(:file, "JPEG processing is disabled by policy")
 end
+diff --git a/content_blocker.py b/content_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..dd555128ae29353127466fb3624bab6fabcb1be1
+--- /dev/null
++++ b/content_blocker.py
+@@ -0,0 +1,79 @@
++"""Content blocking utilities for media links and sensitive key patterns."""
++
++from dataclasses import dataclass, field
++import re
++from typing import Dict, List
++
++
++@dataclass
++class BlockDecision:
++    """Result of evaluating text against block rules."""
++
++    blocked: bool
++    reasons: List[str] = field(default_factory=list)
++
++
++class ContentBlocker:
++    """Hard-block known unwanted media/link patterns and key-like tokens."""
++
++    JPEG_PATTERNS = [
++        re.compile(r"\.(jpe?g)(\?|#|$)", re.IGNORECASE),
++        re.compile(r"\bimage/jpeg\b", re.IGNORECASE),
++        re.compile(r"\bjpg\b", re.IGNORECASE),
++    ]
++
++    IMG_PATTERNS = [
++        re.compile(r"\b<img\b", re.IGNORECASE),
++        re.compile(r"\bimage\b", re.IGNORECASE),
++        re.compile(r"\bimg\b", re.IGNORECASE),
++    ]
++
++    IMGUR_PATTERNS = [
++        re.compile(r"\b(?:https?://)?(?:i\.)?imgur\.com/\S+", re.IGNORECASE),
++        re.compile(r"\bimgur\b", re.IGNORECASE),
++    ]
++
++    # Generic activation key forms (Windows/CD/game/API style tokens).
++    ACTIVATION_KEY_PATTERNS = [
++        re.compile(r"\b(?:[A-Z0-9]{4,5}-){3,6}[A-Z0-9]{4,5}\b", re.IGNORECASE),
++        re.compile(r"\b[A-Z0-9]{16,32}\b", re.IGNORECASE),
++        re.compile(r"\b(?:activation\s*key|license\s*key|product\s*key|serial\s*number)\b", re.IGNORECASE),
++    ]
++
++    def evaluate(self, text: str) -> BlockDecision:
++        """Evaluate text and return block decision with all match reasons."""
++        reasons: List[str] = []
++        content = text or ""
++
++        if self._matches_any(content, self.JPEG_PATTERNS):
++            reasons.append("jpeg_or_jpg_content")
++        if self._matches_any(content, self.IMG_PATTERNS):
++            reasons.append("img_image_content")
++        if self._matches_any(content, self.IMGUR_PATTERNS):
++            reasons.append("imgur_content")
++        if self._matches_any(content, self.ACTIVATION_KEY_PATTERNS):
++            reasons.append("activation_key_pattern")
++
++        return BlockDecision(blocked=bool(reasons), reasons=reasons)
++
++    def enforce(self, text: str) -> str:
++        """Raise on blocked content, otherwise return original text."""
++        decision = self.evaluate(text)
++        if decision.blocked:
++            reasons = ", ".join(decision.reasons)
++            raise ValueError(f"Blocked by ContentBlocker: {reasons}")
++        return text
++
++    @staticmethod
++    def _matches_any(text: str, patterns: List[re.Pattern]) -> bool:
++        return any(pattern.search(text) for pattern in patterns)
++
++
++def summarize_decision(text: str) -> Dict:
++    """Convenience helper for quick integration with pipelines."""
++    blocker = ContentBlocker()
++    decision = blocker.evaluate(text)
++    return {
++        "blocked": decision.blocked,
++        "reasons": decision.reasons,
++    }
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..c7382672fc435cfb5737148780c706a6f26684c2 100644
+--- a/examples.py
++++ b/examples.py
+@@ -231,47 +231,69 @@ def example_7_restriction_modification():
+     print("\n--- Adding Environmental Restrictions ---")
+     
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+     
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+     
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+         print(f"Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++def example_8_content_blocker():
++    """Example 8: Blocking JPG/IMG/IMGUR and activation-key style strings."""
++    from content_blocker import summarize_decision
++
++    samples = [
++        "Normal text with no media or keys.",
++        "See https://i.imgur.com/example.jpg for details.",
++        "Activation key: ABCDE-FGHIJ-KLMNO-PQRST-UVWXY",
++    ]
++
++    print("\n" + "=" * 70)
++    print("EXAMPLE 8: Content Blocker")
++    print("=" * 70)
++
++    for sample in samples:
++        result = summarize_decision(sample)
++        print(f"Input: {sample}")
++        print(f"Blocked: {result['blocked']} | Reasons: {result['reasons']}")
++        print("-" * 70)
++
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
++    example_8_content_blocker()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/content_blocker.py b/content_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..de0c19593b902be6860c1e21d554c067a0681d82
+--- /dev/null
++++ b/content_blocker.py
+@@ -0,0 +1,86 @@
++"""Hard-block filtering for JPEG/IMG/IMGUR references and activation keys."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++import re
++from typing import List
++from urllib.parse import urlparse
++
++
++ACTIVATION_KEY_PATTERNS = [
++    # XXXXX-XXXXX-XXXXX-XXXXX-XXXXX
++    re.compile(r"\b(?:[A-Z0-9]{5}-){4}[A-Z0-9]{5}\b", re.IGNORECASE),
++    # XXXX-XXXX-XXXX-XXXX
++    re.compile(r"\b(?:[A-Z0-9]{4}-){3}[A-Z0-9]{4}\b", re.IGNORECASE),
++]
++
++
++@dataclass
++class BlockDecision:
++    blocked: bool
++    reasons: List[str] = field(default_factory=list)
++
++
++class HardBlockFilter:
++    """Blocks text/URLs containing image references or likely activation keys."""
++
++    blocked_terms = {
++        "jpg",
++        "jpeg",
++        "img",
++        "imgur",
++    }
++
++    blocked_domains = {
++        "imgur.com",
++        "i.imgur.com",
++    }
++
++    file_extension_pattern = re.compile(r"\.(?:jpe?g)(?:$|\?)", re.IGNORECASE)
++    token_pattern = re.compile(r"\b[a-z0-9_.-]+\b", re.IGNORECASE)
++
++    def inspect_text(self, text: str) -> BlockDecision:
++        lowered = text.lower()
++        reasons: List[str] = []
++
++        tokens = set(self.token_pattern.findall(lowered))
++        for term in self.blocked_terms:
++            if term in tokens:
++                reasons.append(f"blocked_term:{term}")
++
++        if self.file_extension_pattern.search(lowered):
++            reasons.append("blocked_extension:jpeg")
++
++        if "http://" in lowered or "https://" in lowered:
++            for raw in lowered.split():
++                if raw.startswith(("http://", "https://")):
++                    domain = urlparse(raw).netloc
++                    if domain in self.blocked_domains:
++                        reasons.append(f"blocked_domain:{domain}")
++
++        for pattern in ACTIVATION_KEY_PATTERNS:
++            if pattern.search(text):
++                reasons.append("blocked_pattern:activation_key")
++                break
++
++        return BlockDecision(blocked=bool(reasons), reasons=sorted(set(reasons)))
++
++    def sanitize(self, text: str, replacement: str = "[BLOCKED]") -> str:
++        """Redacts disallowed terms and activation-key patterns from text."""
++        cleaned = text
++
++        for term in self.blocked_terms:
++            cleaned = re.sub(
++                rf"\b{re.escape(term)}\b",
++                replacement,
++                cleaned,
++                flags=re.IGNORECASE,
++            )
++
++        cleaned = self.file_extension_pattern.sub(f".{replacement}", cleaned)
++
++        for pattern in ACTIVATION_KEY_PATTERNS:
++            cleaned = pattern.sub(replacement, cleaned)
++
++        return cleaned
