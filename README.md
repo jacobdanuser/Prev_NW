@@ -70341,4 +70341,163 @@ index 0000000000000000000000000000000000000000..ae54c19e2e0b9682a0a11f0193ebe9b0
 +
 +if __name__ == "__main__":
 +    unittest.main()
+diff --git a/neural_interface_safeguard.py b/neural_interface_safeguard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6557f8c0d2dce045536702c5647fd1529db331fc
+--- /dev/null
++++ b/neural_interface_safeguard.py
+@@ -0,0 +1,100 @@
++"""Neural Network Base System
++
++Utilities for restoring coding-enabled base systems used to build and run
++neural network pipelines.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from typing import Any, Dict, Iterable, List
++
++
++class NeuralBaseSystemError(ValueError):
++    """Raised when a neural base system spec is invalid."""
++
++
++SUPPORTED_FRAMEWORKS = {"pytorch", "tensorflow", "jax", "onnx"}
++SUPPORTED_LANGUAGES = {"python", "cpp", "rust"}
++DEFAULT_TOOLS = ["trainer", "inference", "evaluation", "checkpointing"]
++
++
++@dataclass(frozen=True)
++class NeuralBaseSystem:
++    """Immutable model of a coding-enabled neural base runtime."""
++
++    system_id: str
++    framework: str
++    languages: List[str] = field(default_factory=list)
++    coding_enabled: bool = True
++    programmable_interfaces: List[str] = field(default_factory=list)
++    executable_surfaces: List[str] = field(default_factory=list)
++    network_capabilities: List[str] = field(default_factory=list)
++    tools: List[str] = field(default_factory=list)
++    mode: str = "development"
++
++
++def _normalize_list(values: Iterable[Any]) -> List[str]:
++    return [str(v).strip().lower() for v in values if str(v).strip()]
++
++
++def restore_neural_base_system(system_spec: Dict[str, Any]) -> NeuralBaseSystem:
++    """Restore a coding-capable base system for neural network workflows."""
++
++    system_id = str(system_spec.get("system_id", "")).strip()
++    if not system_id:
++        raise NeuralBaseSystemError("system_id is required")
++
++    framework = str(system_spec.get("framework", "")).strip().lower()
++    if framework not in SUPPORTED_FRAMEWORKS:
++        raise NeuralBaseSystemError(
++            f"framework must be one of: {', '.join(sorted(SUPPORTED_FRAMEWORKS))}"
++        )
++
++    languages = _normalize_list(system_spec.get("languages", ["python"]))
++    if not languages:
++        raise NeuralBaseSystemError("at least one programming language is required")
++
++    unsupported_languages = [lang for lang in languages if lang not in SUPPORTED_LANGUAGES]
++    if unsupported_languages:
++        raise NeuralBaseSystemError(
++            f"unsupported languages: {', '.join(sorted(set(unsupported_languages)))}"
++        )
++
++    interfaces = _normalize_list(system_spec.get("programmable_interfaces", ["python_api", "cli"]))
++    surfaces = _normalize_list(system_spec.get("executable_surfaces", ["training_loop", "inference_server"]))
++    networking = _normalize_list(system_spec.get("network_capabilities", ["model_registry", "metrics_stream"]))
++    tools = _normalize_list(system_spec.get("tools", DEFAULT_TOOLS))
++
++    return NeuralBaseSystem(
++        system_id=system_id,
++        framework=framework,
++        languages=languages,
++        coding_enabled=True,
++        programmable_interfaces=interfaces,
++        executable_surfaces=surfaces,
++        network_capabilities=networking,
++        tools=tools,
++        mode=str(system_spec.get("mode", "development")).strip().lower() or "development",
++    )
++
++
++def assert_coding_ready(system: NeuralBaseSystem) -> None:
++    """Validate that a restored base system can execute neural coding workflows."""
++
++    if not system.coding_enabled:
++        raise NeuralBaseSystemError("coding must be enabled")
++    if not system.programmable_interfaces:
++        raise NeuralBaseSystemError("programmable interfaces cannot be empty")
++    if not system.executable_surfaces:
++        raise NeuralBaseSystemError("executable surfaces cannot be empty")
++    if not system.tools:
++        raise NeuralBaseSystemError("toolchain cannot be empty")
++
++
++__all__ = [
++    "NeuralBaseSystemError",
++    "NeuralBaseSystem",
++    "restore_neural_base_system",
++    "assert_coding_ready",
++]
+diff --git a/test_neural_interface_safeguard.py b/test_neural_interface_safeguard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1a9d3e2e75576fd36f8938a9d482fcb5c6353b06
+--- /dev/null
++++ b/test_neural_interface_safeguard.py
+@@ -0,0 +1,47 @@
++import unittest
++
++from neural_interface_safeguard import (
++    NeuralBaseSystemError,
++    assert_coding_ready,
++    restore_neural_base_system,
++)
++
++
++class NeuralBaseSystemTests(unittest.TestCase):
++    def test_restores_coding_enabled_base_system(self):
++        system = restore_neural_base_system(
++            {
++                "system_id": "neuro-core-01",
++                "framework": "pytorch",
++                "languages": ["python", "rust"],
++                "programmable_interfaces": ["python_api", "grpc"],
++                "executable_surfaces": ["training_loop", "inference_server"],
++                "network_capabilities": ["model_registry"],
++                "tools": ["trainer", "checkpointing"],
++            }
++        )
++
++        self.assertTrue(system.coding_enabled)
++        self.assertEqual(system.framework, "pytorch")
++        self.assertIn("python", system.languages)
++        self.assertIn("python_api", system.programmable_interfaces)
++        self.assertIn("training_loop", system.executable_surfaces)
++        assert_coding_ready(system)
++
++    def test_rejects_missing_system_id(self):
++        with self.assertRaises(NeuralBaseSystemError):
++            restore_neural_base_system({"framework": "pytorch"})
++
++    def test_rejects_unknown_framework(self):
++        with self.assertRaises(NeuralBaseSystemError):
++            restore_neural_base_system({"system_id": "n1", "framework": "unknown"})
++
++    def test_rejects_unsupported_language(self):
++        with self.assertRaises(NeuralBaseSystemError):
++            restore_neural_base_system(
++                {"system_id": "n1", "framework": "jax", "languages": ["java"]}
++            )
++
++
++if __name__ == "__main__":
++    unittest.main()
 
