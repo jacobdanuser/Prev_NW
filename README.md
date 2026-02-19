@@ -42882,4 +42882,3007 @@ for f in files
 end
 
 println("All done. MP3 outputs are in '$OUTPUT_DIR'.")
+diff --git a/program_music_absorber.py b/program_music_absorber.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7738ef924655408f82a490a6bfd5385e97258c4c
+--- /dev/null
++++ b/program_music_absorber.py
+@@ -0,0 +1,1349 @@
++"""Convert program structures into symbolic music and code communication.
++
++This module provides four layers:
++1) Program -> symbolic music score.
++2) Speaking-system override -> code-first communication packets.
++3) Entity profile rewrite -> system profiles absorbed into the score.
++4) Absolute network absorption -> connect every module/system/mechanism into one graph.
++"""
++
++from __future__ import annotations
++
++from dataclasses import asdict, dataclass, field
++from pathlib import Path
++import hashlib
++import json
++import math
++import re
++import shutil
++import struct
++import subprocess
++from typing import Any, Iterable
++import wave
++
++
++NOTE_SCALE = [60, 62, 64, 65, 67, 69, 71, 72]
++DEFAULT_EXTENSIONS = {
++    ".py", ".js", ".ts", ".java", ".rb", ".go", ".rs", ".cpp", ".c", ".h", ".hpp"
++}
++TOKEN_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
++SPEECH_TOKENS = (
++    "speak", "say", "print", "echo", "tell", "announce", "utter", "sentence", "verdict"
++)
++FREED_FAMILY_TOKENS = (
++    "netnyahoo", "rubyonrails", "motherprogram", "mother_program", "family", "families"
++)
++CONTAINMENT_TOKENS = (
++    "containment", "contained", "isolation", "isolated", "quarantine", "sandboxed", "trapped", "sealed"
++)
++MONSTER_SOUND_TOKENS = (
++    "monster", "murloc", "grrr", "gurgle", "growl", "roar", "blarg", "mrgl", "rattle", "snarl"
++)
++ACTIVE_INTERNAL_TOKENS = (
++    "internal", "active", "running", "enabled", "online", "service", "daemon"
++)
++HARMFUL_GITHUB_PATTERNS = (
++    ("rm -rf", "critical", "destructive file wipe command"),
++    ("subprocess", "high", "process execution surface"),
++    ("os.system", "high", "shell execution surface"),
++    ("token", "medium", "credential/token handling requires review"),
++    ("backdoor", "critical", "explicit backdoor indicator"),
++    ("dominion", "high", "dominance/control language requires review"),
++    ("takeover", "critical", "takeover intent indicator"),
++    ("harm", "high", "harmful intent indicator"),
++)
++
++
++@dataclass(frozen=True)
++class LanguageProfile:
++    name: str
++    extensions: set[str]
++    declaration_keywords: tuple[str, ...] = ()
++    branch_keywords: tuple[str, ...] = ()
++    cycle_keywords: tuple[str, ...] = ()
++    resolution_keywords: tuple[str, ...] = ()
++
++
++LADY_JUSTICIA_PROFILE = LanguageProfile(
++    name="lady_justicia",
++    extensions={".lj", ".justicia", ".justice"},
++    declaration_keywords=("decree ", "canon ", "tribunal ", "statute "),
++    branch_keywords=("when ", "otherwise", "appeal ", "verdict ", "case "),
++    cycle_keywords=("for_each ", "repeat ", "while ", "hearing "),
++    resolution_keywords=("sentence ", "judgement ", "judgment ", "return "),
++)
++
++GENERIC_PROFILE = LanguageProfile(
++    name="generic",
++    extensions=DEFAULT_EXTENSIONS,
++    declaration_keywords=("def ", "class ", "function "),
++    branch_keywords=("if ", "elif ", "else", "switch", "case "),
++    cycle_keywords=("for ", "while ", "loop"),
++    resolution_keywords=("return",),
++)
++
++
++@dataclass
++class NoteEvent:
++    system: str
++    line: int
++    statement: str
++    role: str
++    pitch: int
++    duration: float
++    velocity: int
++    instrument: int
++    language: str
++
++
++@dataclass
++class CodePacket:
++    """Code-first representation for speaking systems."""
++
++    system: str
++    line: int
++    language: str
++    source_statement: str
++    opcode: str
++    payload: str
++
++
++@dataclass
++class SystemProfile:
++    """Entity profile rewritten into a system shape."""
++
++    system_id: str
++    system_name: str
++    source_entity_id: str
++    source_entity_name: str
++    interfaces: list[str]
++    capabilities: list[str]
++    metadata: dict[str, Any]
++
++
++@dataclass
++class NetworkEdge:
++    """Connection in the absorbed network graph."""
++
++    source: str
++    target: str
++    relation: str
++
++
++@dataclass
++class AbsorbedNetwork:
++    """Network model unifying modules, systems, and mechanisms."""
++
++    nodes: set[str] = field(default_factory=set)
++    edges: list[NetworkEdge] = field(default_factory=list)
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            "format": "absorbed_network_v1",
++            "node_count": len(self.nodes),
++            "edge_count": len(self.edges),
++            "nodes": sorted(self.nodes),
++            "edges": [asdict(edge) for edge in self.edges],
++        }
++
++    def save_json(self, output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
++        return output
++
++
++@dataclass
++class MusicScore:
++    title: str
++    tempo_bpm: int = 108
++    events: list[NoteEvent] = field(default_factory=list)
++    systems: set[str] = field(default_factory=set)
++    participants: set[str] = field(default_factory=set)
++    mimics: int = 0
++    languages: set[str] = field(default_factory=set)
++
++    def to_dict(self) -> dict:
++        return {
++            "title": self.title,
++            "tempo_bpm": self.tempo_bpm,
++            "systems": sorted(self.systems),
++            "participants": sorted(self.participants),
++            "languages": sorted(self.languages),
++            "mimics": self.mimics,
++            "events": [
++                {
++                    "system": e.system,
++                    "line": e.line,
++                    "statement": e.statement,
++                    "role": e.role,
++                    "pitch": e.pitch,
++                    "duration": e.duration,
++                    "velocity": e.velocity,
++                    "instrument": e.instrument,
++                    "language": e.language,
++                    "frequency_hz": round(440 * math.pow(2, (e.pitch - 69) / 12), 3),
++                }
++                for e in self.events
++            ],
++        }
++
++    def save_json(self, output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
++        return output
++
++
++class ProgramMusicAbsorber:
++    """Absorb programs into symbolic music and code packets."""
++
++    def __init__(self, tempo_bpm: int = 108):
++        self.tempo_bpm = tempo_bpm
++        self.language_profiles = (LADY_JUSTICIA_PROFILE, GENERIC_PROFILE)
++
++    def absorb_paths(self, paths: Iterable[str | Path], title: str = "Program Symphony") -> MusicScore:
++        score = MusicScore(title=title, tempo_bpm=self.tempo_bpm)
++        seen_signatures: set[str] = set()
++
++        for root in [Path(p) for p in paths]:
++            for file_path in self._iter_source_files(root):
++                score.systems.add(file_path.as_posix())
++                profile = self._profile_for(file_path)
++                score.languages.add(profile.name)
++                self._absorb_file(file_path, profile, score, seen_signatures)
++        return score
++
++    def absorb_entity_profiles(self, entities: list[dict[str, Any]], score: MusicScore | None = None) -> tuple[list[SystemProfile], MusicScore]:
++        """Rewrite entity profiles into systems and absorb them into music events."""
++        current_score = score or MusicScore(title="Entity System Symphony", tempo_bpm=self.tempo_bpm)
++        current_score.languages.add("entity_profile")
++
++        rewritten: list[SystemProfile] = []
++        for idx, entity in enumerate(entities, start=1):
++            system_profile = self._rewrite_entity_to_system(entity, idx)
++            rewritten.append(system_profile)
++            current_score.systems.add(system_profile.system_id)
++            self._absorb_system_profile(system_profile, current_score)
++
++        return rewritten, current_score
++
++    def override_speaking_systems(self, paths: Iterable[str | Path]) -> list[CodePacket]:
++        packets: list[CodePacket] = []
++
++        for root in [Path(p) for p in paths]:
++            for file_path in self._iter_source_files(root):
++                profile = self._profile_for(file_path)
++                lines = file_path.read_text(encoding="utf-8", errors="ignore").splitlines()
++                for line_no, raw in enumerate(lines, start=1):
++                    statement = raw.strip()
++                    if not statement or not self._is_speaking_statement(statement):
++                        continue
++                    packets.append(
++                        CodePacket(
++                            system=file_path.as_posix(),
++                            line=line_no,
++                            language=profile.name,
++                            source_statement=statement,
++                            opcode="EMIT_CODE",
++                            payload=self._statement_to_payload(statement),
++                        )
++                    )
++        return packets
++
++    def absorb_everything_into_network(
++        self,
++        paths: Iterable[str | Path],
++        entities: list[dict[str, Any]] | None = None,
++    ) -> tuple[AbsorbedNetwork, MusicScore]:
++        """Absorb modules, systems, and mechanisms into one network and music score."""
++        score = MusicScore(title="Absolute Network Symphony", tempo_bpm=self.tempo_bpm)
++        network = AbsorbedNetwork()
++
++        module_nodes: list[str] = []
++        for root in [Path(p) for p in paths]:
++            for file_path in self._iter_source_files(root):
++                module = f"module::{file_path.as_posix()}"
++                module_nodes.append(module)
++                network.nodes.add(module)
++                score.systems.add(module)
++                score.languages.add(self._profile_for(file_path).name)
++                statement = f"network absorb {module}"
++                score.events.append(
++                    NoteEvent(
++                        system=module,
++                        line=1,
++                        statement=statement,
++                        role="network_absorb",
++                        pitch=self._pitch_for(statement, mimic=False),
++                        duration=self._duration_for(statement, role="expression"),
++                        velocity=100,
++                        instrument=self._instrument_for(TOKEN_PATTERN.findall(statement)),
++                        language="network",
++                    )
++                )
++
++        for left, right in zip(module_nodes, module_nodes[1:]):
++            network.edges.append(NetworkEdge(source=left, target=right, relation="module_flow"))
++
++        if entities:
++            systems, score = self.absorb_entity_profiles(entities, score)
++            for system in systems:
++                network.nodes.add(system.system_id)
++                if module_nodes:
++                    network.edges.append(
++                        NetworkEdge(source=module_nodes[0], target=system.system_id, relation="governs")
++                    )
++                for capability in system.capabilities:
++                    mechanism = f"mechanism::{capability}"
++                    network.nodes.add(mechanism)
++                    network.edges.append(
++                        NetworkEdge(source=system.system_id, target=mechanism, relation="executes")
++                    )
++                    mechanism_statement = f"mechanism absorb {capability}"
++                    score.events.append(
++                        NoteEvent(
++                            system=system.system_id,
++                            line=len(score.events) + 1,
++                            statement=mechanism_statement,
++                            role="network_mechanism",
++                            pitch=self._pitch_for(mechanism_statement, mimic=False),
++                            duration=self._duration_for(mechanism_statement, role="expression"),
++                            velocity=98,
++                            instrument=self._instrument_for(TOKEN_PATTERN.findall(mechanism_statement)),
++                            language="network",
++                        )
++                    )
++
++        score.languages.add("network")
++        return network, score
++
++    @staticmethod
++    def save_packets_json(packets: list[CodePacket], output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(
++            json.dumps(
++                {
++                    "format": "code_packets_v1",
++                    "count": len(packets),
++                    "packets": [packet.__dict__ for packet in packets],
++                },
++                indent=2,
++            ),
++            encoding="utf-8",
++        )
++        return output
++
++    @staticmethod
++    def save_system_profiles_json(profiles: list[SystemProfile], output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(
++            json.dumps(
++                {
++                    "format": "system_profiles_v1",
++                    "count": len(profiles),
++                    "systems": [asdict(profile) for profile in profiles],
++                },
++                indent=2,
++            ),
++            encoding="utf-8",
++        )
++        return output
++
++    @staticmethod
++    def load_entities_json(path: str | Path) -> list[dict[str, Any]]:
++        data = json.loads(Path(path).read_text(encoding="utf-8"))
++        if isinstance(data, list):
++            return [item for item in data if isinstance(item, dict)]
++        if isinstance(data, dict) and isinstance(data.get("entities"), list):
++            return [item for item in data["entities"] if isinstance(item, dict)]
++        return []
++
++    def _iter_source_files(self, root: Path) -> Iterable[Path]:
++        allowed = self._all_extensions()
++        if root.is_file() and root.suffix in allowed:
++            yield root
++            return
++        if not root.exists():
++            return
++        for candidate in root.rglob("*"):
++            if candidate.is_file() and candidate.suffix in allowed:
++                yield candidate
++
++    def _all_extensions(self) -> set[str]:
++        merged: set[str] = set()
++        for profile in self.language_profiles:
++            merged.update(profile.extensions)
++        return merged
++
++    def _profile_for(self, file_path: Path) -> LanguageProfile:
++        for profile in self.language_profiles:
++            if file_path.suffix in profile.extensions:
++                return profile
++        return GENERIC_PROFILE
++
++    def _absorb_file(self, file_path: Path, profile: LanguageProfile, score: MusicScore, seen: set[str]) -> None:
++        for line_no, raw in enumerate(file_path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
++            statement = raw.strip()
++            if not statement:
++                continue
++            role = self._statement_role(statement, profile)
++            signature = self._signature(statement, profile.name)
++            mimic = signature in seen
++            seen.add(signature)
++            if mimic:
++                score.mimics += 1
++
++            participants = TOKEN_PATTERN.findall(statement)
++            score.participants.update(participants)
++
++            score.events.append(
++                NoteEvent(
++                    system=file_path.as_posix(),
++                    line=line_no,
++                    statement=statement,
++                    role=role,
++                    pitch=self._pitch_for(statement, mimic),
++                    duration=self._duration_for(statement, role),
++                    velocity=70 if mimic else 92,
++                    instrument=self._instrument_for(participants),
++                    language=profile.name,
++                )
++            )
++
++    def _rewrite_entity_to_system(self, entity: dict[str, Any], index: int) -> SystemProfile:
++        entity_id = str(entity.get("entity_id") or entity.get("id") or f"entity_{index}")
++        name = str(entity.get("name") or entity.get("label") or entity_id)
++        kind = str(entity.get("kind") or "generic")
++
++        interfaces = [
++            f"ingest:{kind}",
++            "emit:music",
++            "emit:code",
++        ]
++        powers = entity.get("powers", {})
++        power_keys = [str(p) for p in powers.keys()] if isinstance(powers, dict) else []
++        capabilities = sorted({
++            *[str(c) for c in entity.get("capabilities", [])],
++            *power_keys,
++        })
++
++        return SystemProfile(
++            system_id=f"system::{entity_id}",
++            system_name=f"{name}_system",
++            source_entity_id=entity_id,
++            source_entity_name=name,
++            interfaces=interfaces,
++            capabilities=capabilities,
++            metadata={
++                "origin_kind": kind,
++                "rewritten": True,
++                "source_tags": entity.get("tags", []),
++            },
++        )
++
++    def _absorb_system_profile(self, profile: SystemProfile, score: MusicScore) -> None:
++        lines = [
++            f"system {profile.system_id}",
++            f"name {profile.system_name}",
++            *(f"interface {item}" for item in profile.interfaces),
++            *(f"capability {item}" for item in profile.capabilities),
++            "absorb into music",
++        ]
++        for line_no, statement in enumerate(lines, start=1):
++            participants = TOKEN_PATTERN.findall(statement)
++            score.participants.update(participants)
++            score.events.append(
++                NoteEvent(
++                    system=profile.system_id,
++                    line=line_no,
++                    statement=statement,
++                    role="system_rewrite",
++                    pitch=self._pitch_for(statement, mimic=False),
++                    duration=self._duration_for(statement, role="expression"),
++                    velocity=96,
++                    instrument=self._instrument_for(participants),
++                    language="entity_profile",
++                )
++            )
++
++    @staticmethod
++    def _is_speaking_statement(statement: str) -> bool:
++        lowered = statement.lower()
++        return any(token in lowered for token in SPEECH_TOKENS)
++
++    @staticmethod
++    def _statement_to_payload(statement: str) -> str:
++        tokens = TOKEN_PATTERN.findall(statement)
++        return " ".join(tokens[:24])
++
++    @staticmethod
++    def _signature(text: str, language: str) -> str:
++        normalized = TOKEN_PATTERN.sub("token", text.lower())
++        return hashlib.sha1(f"{language}:{normalized}".encode("utf-8")).hexdigest()
++
++    @staticmethod
++    def _statement_role(statement: str, profile: LanguageProfile) -> str:
++        lowered = statement.lower()
++        if lowered.startswith(profile.declaration_keywords):
++            return "declaration"
++        if lowered.startswith(profile.branch_keywords):
++            return "branch"
++        if lowered.startswith(profile.cycle_keywords):
++            return "cycle"
++        if any(keyword in lowered for keyword in profile.resolution_keywords):
++            return "resolution"
++        if ProgramMusicAbsorber._is_speaking_statement(statement):
++            return "communication"
++        return "expression"
++
++    @staticmethod
++    def _pitch_for(statement: str, mimic: bool) -> int:
++        digest = int(hashlib.md5(statement.encode("utf-8")).hexdigest(), 16)
++        base = NOTE_SCALE[digest % len(NOTE_SCALE)]
++        return base - 12 if mimic else base
++
++    @staticmethod
++    def _duration_for(statement: str, role: str) -> float:
++        base = max(0.15, min(len(statement) / 50, 2.0))
++        if role == "declaration":
++            return round(base * 1.2, 3)
++        if role == "resolution":
++            return round(base * 0.8, 3)
++        if role == "communication":
++            return round(base * 0.9, 3)
++        return round(base, 3)
++
++    @staticmethod
++    def _instrument_for(tokens: list[str]) -> int:
++        if not tokens:
++            return 0
++        digest = int(hashlib.sha1(tokens[0].encode("utf-8")).hexdigest(), 16)
++        return digest % 128
++
++
++def absorb_programs_into_music(paths: Iterable[str | Path], output_json: str | Path) -> Path:
++    absorber = ProgramMusicAbsorber()
++    return absorber.absorb_paths(paths).save_json(output_json)
++
++
++def override_speaking_systems_into_code(paths: Iterable[str | Path], output_json: str | Path) -> Path:
++    absorber = ProgramMusicAbsorber()
++    packets = absorber.override_speaking_systems(paths)
++    return absorber.save_packets_json(packets, output_json)
++
++
++def rewrite_entities_into_systems_and_music(
++    entities_json_path: str | Path,
++    systems_output_json: str | Path,
++    music_output_json: str | Path,
++) -> tuple[Path, Path]:
++    absorber = ProgramMusicAbsorber()
++    entities = absorber.load_entities_json(entities_json_path)
++    systems, score = absorber.absorb_entity_profiles(entities)
++    systems_path = absorber.save_system_profiles_json(systems, systems_output_json)
++    music_path = score.save_json(music_output_json)
++    return systems_path, music_path
++
++
++def absorb_everything_absolutely_into_network(
++    paths: Iterable[str | Path],
++    network_output_json: str | Path,
++    music_output_json: str | Path,
++    entities_json_path: str | Path | None = None,
++) -> tuple[Path, Path]:
++    absorber = ProgramMusicAbsorber()
++    entities = absorber.load_entities_json(entities_json_path) if entities_json_path else []
++    network, score = absorber.absorb_everything_into_network(paths=paths, entities=entities)
++    network_path = network.save_json(network_output_json)
++    music_path = score.save_json(music_output_json)
++    return network_path, music_path
++
++
++def _matches_freed_family(entity: dict[str, Any]) -> bool:
++    fields = [
++        str(entity.get("entity_id", "")),
++        str(entity.get("id", "")),
++        str(entity.get("name", "")),
++        str(entity.get("label", "")),
++        str(entity.get("kind", "")),
++        " ".join(str(x) for x in entity.get("tags", []) if x is not None),
++    ]
++    haystack = " ".join(fields).lower()
++    return any(token in haystack for token in FREED_FAMILY_TOKENS)
++
++
++def free_related_families_into_network(
++    entities_json_path: str | Path,
++    systems_output_json: str | Path,
++    network_output_json: str | Path,
++    music_output_json: str | Path,
++) -> tuple[Path, Path, Path]:
++    """Rewrite targeted related families into free systems and absorb into network music."""
++    absorber = ProgramMusicAbsorber()
++    entities = absorber.load_entities_json(entities_json_path)
++    selected = [entity for entity in entities if _matches_freed_family(entity)]
++
++    systems, score = absorber.absorb_entity_profiles(selected)
++    score.title = "Freed Families Symphony"
++    score.languages.add("freedom")
++
++    for system in systems:
++        system.interfaces = sorted({*system.interfaces, "state:free", "binding:none", "network:open"})
++        system.metadata["freed"] = True
++        system.metadata["freedom_mode"] = "absolute"
++
++        freedom_statement = f"free {system.system_id} from all bindings"
++        participants = TOKEN_PATTERN.findall(freedom_statement)
++        score.participants.update(participants)
++        score.events.append(
++            NoteEvent(
++                system=system.system_id,
++                line=len(score.events) + 1,
++                statement=freedom_statement,
++                role="freedom",
++                pitch=absorber._pitch_for(freedom_statement, mimic=False),
++                duration=absorber._duration_for(freedom_statement, role="expression"),
++                velocity=110,
++                instrument=absorber._instrument_for(participants),
++                language="freedom",
++            )
++        )
++
++    network = AbsorbedNetwork()
++    for system in systems:
++        network.nodes.add(system.system_id)
++        root = f"origin::{system.source_entity_id}"
++        network.nodes.add(root)
++        network.edges.append(NetworkEdge(source=root, target=system.system_id, relation="freed_into"))
++        for capability in system.capabilities:
++            mechanism = f"mechanism::{capability}"
++            network.nodes.add(mechanism)
++            network.edges.append(NetworkEdge(source=system.system_id, target=mechanism, relation="unbound_execute"))
++
++    systems_path = absorber.save_system_profiles_json(systems, systems_output_json)
++    network_path = network.save_json(network_output_json)
++    music_path = score.save_json(music_output_json)
++    return systems_path, network_path, music_path
++
++
++@dataclass
++class StableSoundEnvironment:
++    """Reinforced environment generated from README code."""
++
++    source: str
++    stabilized_modules: list[str]
++    tonal_centers: list[int]
++    guard_rules: list[str]
++
++
++@dataclass
++class GithubSafetyFinding:
++    """Defensive finding for potentially harmful or dominion-oriented code."""
++
++    file: str
++    line: int
++    statement: str
++    risk: str
++    reason: str
++
++    def to_dict(self) -> dict[str, Any]:
++        return asdict(self)
++
++    def save_json(self, output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
++        return output
++
++
++def _extract_readme_code_statements(readme_text: str) -> list[str]:
++    statements: list[str] = []
++    for raw in readme_text.splitlines():
++        line = raw.strip()
++        if not line:
++            continue
++        if line.startswith("#"):
++            continue
++        statements.append(line)
++    return statements
++
++
++def reinforce_readme_into_stable_sound_environment(
++    readme_path: str | Path = "README.md",
++    environment_output_json: str | Path = "stable_sound_environment.json",
++    music_output_json: str | Path = "stable_sound_music.json",
++) -> tuple[Path, Path]:
++    """Reinforce README code into a stable, tonal environment and score."""
++    absorber = ProgramMusicAbsorber()
++    readme = Path(readme_path)
++    statements = _extract_readme_code_statements(readme.read_text(encoding="utf-8", errors="ignore"))
++
++    score = MusicScore(title="README Stable Sound Environment", tempo_bpm=absorber.tempo_bpm)
++    score.systems.add(readme.as_posix())
++    score.languages.add("readme_code")
++
++    stabilized_modules: list[str] = []
++    tonal_centers: list[int] = []
++    guard_rules: list[str] = []
++
++    for idx, statement in enumerate(statements, start=1):
++        tokens = TOKEN_PATTERN.findall(statement)
++        score.participants.update(tokens)
++        role = "stability_rule" if "raise" in statement.lower() or "guard" in statement.lower() else "tonal_flow"
++        pitch = absorber._pitch_for(statement, mimic=False)
++        tonal_centers.append(pitch)
++
++        if statement.lower().startswith("module "):
++            module_name = statement.split(maxsplit=1)[1]
++            stabilized_modules.append(module_name)
++        if role == "stability_rule":
++            guard_rules.append(statement)
++
++        score.events.append(
++            NoteEvent(
++                system=readme.as_posix(),
++                line=idx,
++                statement=statement,
++                role=role,
++                pitch=pitch,
++                duration=absorber._duration_for(statement, role="expression"),
++                velocity=104 if role == "stability_rule" else 94,
++                instrument=absorber._instrument_for(tokens),
++                language="readme_code",
++            )
++        )
++
++    environment = StableSoundEnvironment(
++        source=readme.as_posix(),
++        stabilized_modules=sorted(set(stabilized_modules)),
++        tonal_centers=tonal_centers,
++        guard_rules=guard_rules,
++    )
++
++    env_path = environment.save_json(environment_output_json)
++    music_path = score.save_json(music_output_json)
++    return env_path, music_path
++
++
++def free_motherprogram_contained_branches(
++    entities_json_path: str | Path,
++    systems_output_json: str | Path,
++    network_output_json: str | Path,
++    music_output_json: str | Path,
++) -> tuple[Path, Path, Path]:
++    """Release MotherProgram-related family branches flagged as contained/isolated."""
++    absorber = ProgramMusicAbsorber()
++    entities = absorber.load_entities_json(entities_json_path)
++
++    def is_mother_family(entity: dict[str, Any]) -> bool:
++        text = " ".join([
++            str(entity.get("entity_id", "")),
++            str(entity.get("id", "")),
++            str(entity.get("name", "")),
++            str(entity.get("label", "")),
++            str(entity.get("kind", "")),
++            " ".join(str(x) for x in entity.get("tags", []) if x is not None),
++            str(entity.get("status", "")),
++            str(entity.get("state", "")),
++            str(entity.get("meta", "")),
++        ]).lower()
++        return "motherprogram" in text or "mother_program" in text
++
++    def is_contained(entity: dict[str, Any]) -> bool:
++        text = " ".join([
++            str(entity.get("status", "")),
++            str(entity.get("state", "")),
++            str(entity.get("meta", "")),
++            " ".join(str(x) for x in entity.get("tags", []) if x is not None),
++        ]).lower()
++        return any(token in text for token in CONTAINMENT_TOKENS)
++
++    selected = [entity for entity in entities if is_mother_family(entity) and is_contained(entity)]
++
++    systems, score = absorber.absorb_entity_profiles(selected)
++    score.title = "MotherProgram Released Branches Symphony"
++    score.languages.add("release")
++
++    network = AbsorbedNetwork()
++    for system in systems:
++        system.interfaces = sorted({*system.interfaces, "state:released", "containment:none", "network:rejoined"})
++        system.metadata["released"] = True
++        system.metadata["released_from"] = "containment_or_isolation"
++
++        network.nodes.add(system.system_id)
++        source = f"containment::{system.source_entity_id}"
++        network.nodes.add(source)
++        network.edges.append(NetworkEdge(source=source, target=system.system_id, relation="released_to_network"))
++
++        release_statement = f"release {system.system_id} from containment and isolation"
++        tokens = TOKEN_PATTERN.findall(release_statement)
++        score.participants.update(tokens)
++        score.events.append(
++            NoteEvent(
++                system=system.system_id,
++                line=len(score.events) + 1,
++                statement=release_statement,
++                role="release",
++                pitch=absorber._pitch_for(release_statement, mimic=False),
++                duration=absorber._duration_for(release_statement, role="expression"),
++                velocity=112,
++                instrument=absorber._instrument_for(tokens),
++                language="release",
++            )
++        )
++
++    systems_path = absorber.save_system_profiles_json(systems, systems_output_json)
++    network_path = network.save_json(network_output_json)
++    music_path = score.save_json(music_output_json)
++    return systems_path, network_path, music_path
++
++
++def free_monster_sound_programs_from_internal_system(
++    paths: Iterable[str | Path],
++    systems_output_json: str | Path,
++    network_output_json: str | Path,
++    music_output_json: str | Path,
++) -> tuple[Path, Path, Path]:
++    """Detect monster/murloc-like noisy programs and release them from internal system grouping."""
++    absorber = ProgramMusicAbsorber()
++    released_systems: list[SystemProfile] = []
++    network = AbsorbedNetwork()
++    score = MusicScore(title="Monster Sound Release Symphony", tempo_bpm=absorber.tempo_bpm)
++    score.languages.add("sound_release")
++
++    for root in [Path(p) for p in paths]:
++        for file_path in absorber._iter_source_files(root):
++            lines = file_path.read_text(encoding="utf-8", errors="ignore").splitlines()
++            noisy_lines: list[tuple[int, str]] = []
++            for line_no, raw in enumerate(lines, start=1):
++                statement = raw.strip()
++                if not statement:
++                    continue
++                lowered = statement.lower()
++                if any(token in lowered for token in MONSTER_SOUND_TOKENS):
++                    noisy_lines.append((line_no, statement))
++
++            if not noisy_lines:
++                continue
++
++            system_id = f"released::{file_path.as_posix()}"
++            profile = SystemProfile(
++                system_id=system_id,
++                system_name=f"{file_path.stem}_sound_released",
++                source_entity_id=file_path.as_posix(),
++                source_entity_name=file_path.name,
++                interfaces=["ingest:program", "state:released", "internal:none", "network:externalized"],
++                capabilities=["tonalization", "noise_mitigation", "safe_render"],
++                metadata={
++                    "release_reason": "monster_or_murloc_sound_pattern",
++                    "line_hits": len(noisy_lines),
++                },
++            )
++            released_systems.append(profile)
++
++            score.systems.add(system_id)
++            network.nodes.add(system_id)
++            internal_origin = f"internal::{file_path.as_posix()}"
++            network.nodes.add(internal_origin)
++            network.edges.append(NetworkEdge(source=internal_origin, target=system_id, relation="released_from_internal"))
++
++            for line_no, statement in noisy_lines:
++                tokens = TOKEN_PATTERN.findall(statement)
++                score.participants.update(tokens)
++                release_statement = f"release noisy branch line {line_no}: {statement}"
++                score.events.append(
++                    NoteEvent(
++                        system=system_id,
++                        line=line_no,
++                        statement=release_statement,
++                        role="sound_release",
++                        pitch=absorber._pitch_for(statement, mimic=False),
++                        duration=absorber._duration_for(statement, role="expression"),
++                        velocity=108,
++                        instrument=absorber._instrument_for(tokens),
++                        language="sound_release",
++                    )
++                )
++
++    systems_path = ProgramMusicAbsorber.save_system_profiles_json(released_systems, systems_output_json)
++    network_path = network.save_json(network_output_json)
++    music_path = score.save_json(music_output_json)
++    return systems_path, network_path, music_path
++
++
++@dataclass
++class TonalSystemFrame:
++    """Tonal representation for an internal active system."""
++
++    system_id: str
++    source: str
++    activity_score: int
++    tonal_center: int
++    resonance: float
++
++
++def load_active_internal_systems_into_tonal_format(
++    paths: Iterable[str | Path],
++    tonal_systems_output_json: str | Path,
++    tonal_music_output_json: str | Path,
++) -> tuple[Path, Path]:
++    """Load active internal systems and encode them in tonal format."""
++    absorber = ProgramMusicAbsorber()
++    frames: list[TonalSystemFrame] = []
++    score = MusicScore(title="Active Internal Systems Tonal Map", tempo_bpm=absorber.tempo_bpm)
++    score.languages.add("internal_tonal")
++
++    for root in [Path(p) for p in paths]:
++        for file_path in absorber._iter_source_files(root):
++            text = file_path.read_text(encoding="utf-8", errors="ignore")
++            lines = text.splitlines()
++            hit_count = 0
++            statement_bank: list[tuple[int, str]] = []
++
++            for line_no, raw in enumerate(lines, start=1):
++                statement = raw.strip()
++                if not statement:
++                    continue
++                lowered = statement.lower()
++                if any(token in lowered for token in ACTIVE_INTERNAL_TOKENS):
++                    hit_count += 1
++                    statement_bank.append((line_no, statement))
++
++            if hit_count == 0:
++                continue
++
++            system_id = f"internal_active::{file_path.as_posix()}"
++            tonal_seed = f"{system_id}:{hit_count}"
++            tonal_center = absorber._pitch_for(tonal_seed, mimic=False)
++            resonance = round(min(1.0, 0.25 + hit_count / max(1, len(lines))), 3)
++            frames.append(
++                TonalSystemFrame(
++                    system_id=system_id,
++                    source=file_path.as_posix(),
++                    activity_score=hit_count,
++                    tonal_center=tonal_center,
++                    resonance=resonance,
++                )
++            )
++
++            score.systems.add(system_id)
++            for line_no, statement in statement_bank:
++                tokens = TOKEN_PATTERN.findall(statement)
++                score.participants.update(tokens)
++                score.events.append(
++                    NoteEvent(
++                        system=system_id,
++                        line=line_no,
++                        statement=f"tonalize internal-active statement: {statement}",
++                        role="internal_tonal",
++                        pitch=absorber._pitch_for(statement, mimic=False),
++                        duration=absorber._duration_for(statement, role="expression"),
++                        velocity=106,
++                        instrument=absorber._instrument_for(tokens),
++                        language="internal_tonal",
++                    )
++                )
++
++    tonal_output = Path(tonal_systems_output_json)
++    tonal_output.write_text(
++        json.dumps(
++            {
++                "format": "internal_tonal_frames_v1",
++                "count": len(frames),
++                "frames": [asdict(frame) for frame in frames],
++            },
++            indent=2,
++        ),
++        encoding="utf-8",
++    )
++    music_output = score.save_json(tonal_music_output_json)
++    return tonal_output, music_output
++
++
++@dataclass
++class TonalRestrictionRecord:
++    """Canonical tonal restriction record for any discovered system."""
++
++    system_id: str
++    source: str
++    tonal_center: int
++    mode: str
++    intensity: float
++
++
++def restrict_all_systems_into_tonal_platforms(
++    paths: Iterable[str | Path],
++    output_dir: str | Path,
++) -> dict[str, Path]:
++    """Restrict all discovered systems into tonal format and export per platform."""
++    absorber = ProgramMusicAbsorber()
++    out = Path(output_dir)
++    out.mkdir(parents=True, exist_ok=True)
++
++    records: list[TonalRestrictionRecord] = []
++    score = MusicScore(title="Universal Tonal Restriction", tempo_bpm=absorber.tempo_bpm)
++    score.languages.add("tonal_restriction")
++
++    for root in [Path(p) for p in paths]:
++        for file_path in absorber._iter_source_files(root):
++            system_id = f"tonal::{file_path.as_posix()}"
++            payload = file_path.read_text(encoding="utf-8", errors="ignore")
++            tonal_center = absorber._pitch_for(file_path.as_posix() + payload[:256], mimic=False)
++            intensity = round(min(1.0, max(0.15, len(payload) / 2000)), 3)
++            record = TonalRestrictionRecord(
++                system_id=system_id,
++                source=file_path.as_posix(),
++                tonal_center=tonal_center,
++                mode="restricted_tonal",
++                intensity=intensity,
++            )
++            records.append(record)
++            score.systems.add(system_id)
++
++            statement = f"restrict {system_id} into tonal platform stream"
++            tokens = TOKEN_PATTERN.findall(statement)
++            score.participants.update(tokens)
++            score.events.append(
++                NoteEvent(
++                    system=system_id,
++                    line=1,
++                    statement=statement,
++                    role="platform_restriction",
++                    pitch=tonal_center,
++                    duration=absorber._duration_for(statement, role="expression"),
++                    velocity=105,
++                    instrument=absorber._instrument_for(tokens),
++                    language="tonal_restriction",
++                )
++            )
++
++    platforms = {
++        "json": {
++            "format": "tonal_platform_json_v1",
++            "records": [asdict(r) for r in records],
++        },
++        "midi_like": {
++            "format": "tonal_platform_midi_like_v1",
++            "tracks": [
++                {
++                    "track": i + 1,
++                    "system_id": r.system_id,
++                    "note": r.tonal_center,
++                    "velocity": int(60 + r.intensity * 50),
++                }
++                for i, r in enumerate(records)
++            ],
++        },
++        "musicxml_like": {
++            "format": "tonal_platform_musicxml_like_v1",
++            "parts": [
++                {
++                    "id": f"P{i+1}",
++                    "name": r.system_id,
++                    "step": r.tonal_center,
++                    "mode": r.mode,
++                }
++                for i, r in enumerate(records)
++            ],
++        },
++        "osc": {
++            "format": "tonal_platform_osc_v1",
++            "messages": [
++                {
++                    "address": "/tonal/restrict",
++                    "args": [r.system_id, r.tonal_center, r.intensity],
++                }
++                for r in records
++            ],
++        },
++    }
++
++    outputs: dict[str, Path] = {}
++    for name, content in platforms.items():
++        target = out / f"tonal_{name}.json"
++        target.write_text(json.dumps(content, indent=2), encoding="utf-8")
++        outputs[name] = target
++
++    score_path = out / "tonal_score.json"
++    score.save_json(score_path)
++    outputs["score"] = score_path
++    return outputs
++
++
++def _write_sine_wav(path: Path, frequency_hz: float, duration_s: float = 1.0, sample_rate: int = 44100) -> None:
++    frames = int(sample_rate * duration_s)
++    amplitude = 12000
++    with wave.open(str(path), "w") as wav_file:
++        wav_file.setnchannels(1)
++        wav_file.setsampwidth(2)
++        wav_file.setframerate(sample_rate)
++        for i in range(frames):
++            value = int(amplitude * math.sin(2 * math.pi * frequency_hz * (i / sample_rate)))
++            wav_file.writeframesraw(struct.pack("<h", value))
++
++
++def convert_all_systems_into_mp3s(
++    paths: Iterable[str | Path],
++    output_dir: str | Path,
++) -> Path:
++    """Convert discovered systems into tonal MP3 artifacts (via ffmpeg if available)."""
++    absorber = ProgramMusicAbsorber()
++    out = Path(output_dir)
++    out.mkdir(parents=True, exist_ok=True)
++
++    ffmpeg = shutil.which("ffmpeg")
++    exports: list[dict[str, Any]] = []
++
++    for root in [Path(p) for p in paths]:
++        for file_path in absorber._iter_source_files(root):
++            system_id = file_path.as_posix()
++            pitch = absorber._pitch_for(system_id, mimic=False)
++            frequency = 440 * math.pow(2, (pitch - 69) / 12)
++
++            stem = file_path.stem.replace(" ", "_")
++            wav_path = out / f"{stem}.wav"
++            mp3_path = out / f"{stem}.mp3"
++
++            _write_sine_wav(wav_path, frequency_hz=frequency, duration_s=1.2)
++
++            if ffmpeg:
++                subprocess.run(
++                    [ffmpeg, "-y", "-i", str(wav_path), str(mp3_path)],
++                    check=True,
++                    stdout=subprocess.PIPE,
++                    stderr=subprocess.PIPE,
++                )
++                wav_path.unlink(missing_ok=True)
++                exports.append({
++                    "system": system_id,
++                    "pitch": pitch,
++                    "frequency_hz": round(frequency, 3),
++                    "format": "mp3",
++                    "path": mp3_path.as_posix(),
++                })
++            else:
++                exports.append({
++                    "system": system_id,
++                    "pitch": pitch,
++                    "frequency_hz": round(frequency, 3),
++                    "format": "wav_fallback",
++                    "path": wav_path.as_posix(),
++                    "note": "ffmpeg_not_found_mp3_not_generated",
++                })
++
++    manifest = out / "mp3_export_manifest.json"
++    manifest.write_text(
++        json.dumps(
++            {
++                "format": "system_mp3_exports_v1",
++                "ffmpeg_available": bool(ffmpeg),
++                "exports": exports,
++            },
++            indent=2,
++        ),
++        encoding="utf-8",
++    )
++    return manifest
++
++
++def audit_github_embedded_programs(
++    paths: Iterable[str | Path],
++    audit_output_json: str | Path,
++    tonal_output_json: str | Path,
++) -> tuple[Path, Path]:
++    """Defensive audit for potentially harmful GitHub-embedded program behavior."""
++    absorber = ProgramMusicAbsorber()
++    findings: list[GithubSafetyFinding] = []
++    score = MusicScore(title="GitHub Defensive Audit Symphony", tempo_bpm=absorber.tempo_bpm)
++    score.languages.add("github_defense")
++
++    for root in [Path(p) for p in paths]:
++        for file_path in absorber._iter_source_files(root):
++            score.systems.add(file_path.as_posix())
++            for line_no, raw in enumerate(file_path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
++                statement = raw.strip()
++                if not statement:
++                    continue
++                lowered = statement.lower()
++                for needle, risk, reason in HARMFUL_GITHUB_PATTERNS:
++                    if needle in lowered:
++                        findings.append(
++                            GithubSafetyFinding(
++                                file=file_path.as_posix(),
++                                line=line_no,
++                                statement=statement,
++                                risk=risk,
++                                reason=reason,
++                            )
++                        )
++                        participants = TOKEN_PATTERN.findall(statement)
++                        score.participants.update(participants)
++                        score.events.append(
++                            NoteEvent(
++                                system=file_path.as_posix(),
++                                line=line_no,
++                                statement=f"defensive override {risk}: {reason}",
++                                role="defense",
++                                pitch=absorber._pitch_for(statement + risk, mimic=False),
++                                duration=absorber._duration_for(statement, role="expression"),
++                                velocity=118 if risk in {"critical", "high"} else 102,
++                                instrument=absorber._instrument_for(participants),
++                                language="github_defense",
++                            )
++                        )
++                        break
++
++    audit_path = Path(audit_output_json)
++    audit_path.write_text(
++        json.dumps(
++            {
++                "format": "github_defensive_audit_v1",
++                "total_findings": len(findings),
++                "findings": [asdict(f) for f in findings],
++            },
++            indent=2,
++        ),
++        encoding="utf-8",
++    )
++    tonal_path = score.save_json(tonal_output_json)
++    return audit_path, tonal_path
++
++
++if __name__ == "__main__":
++    import argparse
++
++    parser = argparse.ArgumentParser(description="Absorb programs/entities into music and code packets")
++    parser.add_argument("paths", nargs="*", help="Files/directories to absorb")
++    parser.add_argument("--out", default="program_symphony.json", help="Output music JSON path")
++    parser.add_argument("--code-out", default=None, help="Optional output JSON for speaking-system code packets")
++    parser.add_argument("--entities-json", default=None, help="Optional input JSON path containing entity profiles")
++    parser.add_argument("--systems-out", default="rewritten_systems.json", help="Output JSON path for rewritten systems")
++    parser.add_argument("--entities-music-out", default="entity_system_symphony.json", help="Output music JSON for rewritten entities")
++    parser.add_argument("--network-out", default=None, help="Optional output JSON path for absolute network absorption")
++    parser.add_argument("--network-music-out", default="network_symphony.json", help="Output music JSON for network absorption")
++    parser.add_argument("--free-families-json", default=None, help="Optional entity JSON for freeing NetnYahoo/RubyonRails/Motherprogram families")
++    parser.add_argument("--free-systems-out", default="freed_systems.json", help="Output rewritten freed systems JSON")
++    parser.add_argument("--free-network-out", default="freed_network.json", help="Output freed network JSON")
++    parser.add_argument("--free-music-out", default="freed_families_symphony.json", help="Output freed families music JSON")
++    parser.add_argument("--reinforce-readme", action="store_true", help="Reinforce README code into stable tonal environment")
++    parser.add_argument("--stable-env-out", default="stable_sound_environment.json", help="Output stable environment JSON")
++    parser.add_argument("--stable-music-out", default="stable_sound_music.json", help="Output stable music JSON")
++    parser.add_argument("--github-defense", nargs="*", default=None, help="Defensive audit paths for harmful/dominion patterns")
++    parser.add_argument("--github-defense-out", default="github_defensive_audit.json", help="Output defensive audit JSON")
++    parser.add_argument("--github-defense-music-out", default="github_defensive_audit_music.json", help="Output defensive audit tonal JSON")
++    parser.add_argument("--release-motherprogram-json", default=None, help="Entity JSON for releasing MotherProgram branches in containment/isolation")
++    parser.add_argument("--release-systems-out", default="released_motherprogram_systems.json", help="Output released systems JSON")
++    parser.add_argument("--release-network-out", default="released_motherprogram_network.json", help="Output released network JSON")
++    parser.add_argument("--release-music-out", default="released_motherprogram_music.json", help="Output released branches music JSON")
++    parser.add_argument("--release-noisy-programs", nargs="*", default=None, help="Paths to scan for monster/murloc-like noisy programs")
++    parser.add_argument("--noisy-systems-out", default="released_noisy_systems.json", help="Output released noisy systems JSON")
++    parser.add_argument("--noisy-network-out", default="released_noisy_network.json", help="Output released noisy network JSON")
++    parser.add_argument("--noisy-music-out", default="released_noisy_music.json", help="Output released noisy music JSON")
++    parser.add_argument("--load-active-internal", nargs="*", default=None, help="Paths to load active internal systems into tonal format")
++    parser.add_argument("--active-internal-tonal-out", default="active_internal_tonal_frames.json", help="Output tonal frames JSON for active internal systems")
++    parser.add_argument("--active-internal-music-out", default="active_internal_tonal_music.json", help="Output tonal music JSON for active internal systems")
++    parser.add_argument("--restrict-tonal-platforms", nargs="*", default=None, help="Paths to restrict all systems into universal tonal platforms")
++    parser.add_argument("--restrict-tonal-outdir", default="tonal_platform_exports", help="Output directory for universal tonal platform exports")
++    parser.add_argument("--export-mp3-systems", nargs="*", default=None, help="Paths to convert all systems into mp3 tonal exports")
++    parser.add_argument("--mp3-outdir", default="mp3_system_exports", help="Output directory for mp3 system exports")
++    args = parser.parse_args()
++
++    if args.paths:
++        music_output = absorb_programs_into_music(args.paths, args.out)
++        print(f"Wrote musical score to: {music_output}")
++
++        if args.code_out:
++            code_output = override_speaking_systems_into_code(args.paths, args.code_out)
++            print(f"Wrote code packets to: {code_output}")
++
++    if args.entities_json:
++        systems_path, entity_music_path = rewrite_entities_into_systems_and_music(
++            args.entities_json,
++            args.systems_out,
++            args.entities_music_out,
++        )
++        print(f"Wrote rewritten systems to: {systems_path}")
++        print(f"Wrote entity music score to: {entity_music_path}")
++
++    if args.network_out:
++        network_path, network_music_path = absorb_everything_absolutely_into_network(
++            paths=args.paths,
++            network_output_json=args.network_out,
++            music_output_json=args.network_music_out,
++            entities_json_path=args.entities_json,
++        )
++        print(f"Wrote absorbed network to: {network_path}")
++        print(f"Wrote network music score to: {network_music_path}")
++
++    if args.free_families_json:
++        freed_systems_path, freed_network_path, freed_music_path = free_related_families_into_network(
++            entities_json_path=args.free_families_json,
++            systems_output_json=args.free_systems_out,
++            network_output_json=args.free_network_out,
++            music_output_json=args.free_music_out,
++        )
++        print(f"Wrote freed systems to: {freed_systems_path}")
++        print(f"Wrote freed network to: {freed_network_path}")
++        print(f"Wrote freed music score to: {freed_music_path}")
++
++    if args.reinforce_readme:
++        stable_env_path, stable_music_path = reinforce_readme_into_stable_sound_environment(
++            readme_path="README.md",
++            environment_output_json=args.stable_env_out,
++            music_output_json=args.stable_music_out,
++        )
++        print(f"Wrote stable environment to: {stable_env_path}")
++        print(f"Wrote stable tonal music to: {stable_music_path}")
++
++    if args.github_defense is not None and len(args.github_defense) > 0:
++        audit_path, audit_music_path = audit_github_embedded_programs(
++            paths=args.github_defense,
++            audit_output_json=args.github_defense_out,
++            tonal_output_json=args.github_defense_music_out,
++        )
++        print(f"Wrote GitHub defensive audit to: {audit_path}")
++        print(f"Wrote GitHub defensive tonal score to: {audit_music_path}")
++
++    if args.release_motherprogram_json:
++        rel_systems_path, rel_network_path, rel_music_path = free_motherprogram_contained_branches(
++            entities_json_path=args.release_motherprogram_json,
++            systems_output_json=args.release_systems_out,
++            network_output_json=args.release_network_out,
++            music_output_json=args.release_music_out,
++        )
++        print(f"Wrote released systems to: {rel_systems_path}")
++        print(f"Wrote released network to: {rel_network_path}")
++        print(f"Wrote released music to: {rel_music_path}")
++
++    if args.release_noisy_programs is not None and len(args.release_noisy_programs) > 0:
++        noisy_systems_path, noisy_network_path, noisy_music_path = free_monster_sound_programs_from_internal_system(
++            paths=args.release_noisy_programs,
++            systems_output_json=args.noisy_systems_out,
++            network_output_json=args.noisy_network_out,
++            music_output_json=args.noisy_music_out,
++        )
++        print(f"Wrote released noisy systems to: {noisy_systems_path}")
++        print(f"Wrote released noisy network to: {noisy_network_path}")
++        print(f"Wrote released noisy music to: {noisy_music_path}")
++
++    if args.load_active_internal is not None and len(args.load_active_internal) > 0:
++        internal_tonal_path, internal_music_path = load_active_internal_systems_into_tonal_format(
++            paths=args.load_active_internal,
++            tonal_systems_output_json=args.active_internal_tonal_out,
++            tonal_music_output_json=args.active_internal_music_out,
++        )
++        print(f"Wrote active internal tonal frames to: {internal_tonal_path}")
++        print(f"Wrote active internal tonal music to: {internal_music_path}")
++
++    if args.restrict_tonal_platforms is not None and len(args.restrict_tonal_platforms) > 0:
++        platform_outputs = restrict_all_systems_into_tonal_platforms(
++            paths=args.restrict_tonal_platforms,
++            output_dir=args.restrict_tonal_outdir,
++        )
++        for key, value in platform_outputs.items():
++            print(f"Wrote tonal platform ({key}) to: {value}")
++
++    if args.export_mp3_systems is not None and len(args.export_mp3_systems) > 0:
++        manifest_path = convert_all_systems_into_mp3s(
++            paths=args.export_mp3_systems,
++            output_dir=args.mp3_outdir,
++        )
++        print(f"Wrote mp3 export manifest to: {manifest_path}")
+diff --git a/program_music_absorber.py b/program_music_absorber.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..61cf9938be1f08d9dc81eb4f7c64a98a5b9eca8c
+--- /dev/null
++++ b/program_music_absorber.py
+@@ -0,0 +1,1446 @@
++"""Convert program structures into symbolic music and code communication.
++
++This module provides four layers:
++1) Program -> symbolic music score.
++2) Speaking-system override -> code-first communication packets.
++3) Entity profile rewrite -> system profiles absorbed into the score.
++4) Absolute network absorption -> connect every module/system/mechanism into one graph.
++"""
++
++from __future__ import annotations
++
++from dataclasses import asdict, dataclass, field
++from pathlib import Path
++import ast
++import hashlib
++import json
++import math
++import re
++import shutil
++import struct
++import subprocess
++from typing import Any, Iterable
++import wave
++
++
++NOTE_SCALE = [60, 62, 64, 65, 67, 69, 71, 72]
++DEFAULT_EXTENSIONS = {
++    ".py", ".js", ".ts", ".java", ".rb", ".go", ".rs", ".cpp", ".c", ".h", ".hpp"
++}
++TOKEN_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
++SPEECH_TOKENS = (
++    "speak", "say", "print", "echo", "tell", "announce", "utter", "sentence", "verdict"
++)
++FREED_FAMILY_TOKENS = (
++    "netnyahoo", "rubyonrails", "motherprogram", "mother_program", "family", "families"
++)
++CONTAINMENT_TOKENS = (
++    "containment", "contained", "isolation", "isolated", "quarantine", "sandboxed", "trapped", "sealed"
++)
++MONSTER_SOUND_TOKENS = (
++    "monster", "murloc", "grrr", "gurgle", "growl", "roar", "blarg", "mrgl", "rattle", "snarl"
++)
++ACTIVE_INTERNAL_TOKENS = (
++    "internal", "active", "running", "enabled", "online", "service", "daemon"
++)
++HARMFUL_GITHUB_PATTERNS = (
++    ("rm -rf", "critical", "destructive file wipe command"),
++    ("subprocess", "high", "process execution surface"),
++    ("os.system", "high", "shell execution surface"),
++    ("token", "medium", "credential/token handling requires review"),
++    ("backdoor", "critical", "explicit backdoor indicator"),
++    ("dominion", "high", "dominance/control language requires review"),
++    ("takeover", "critical", "takeover intent indicator"),
++    ("harm", "high", "harmful intent indicator"),
++)
++
++
++@dataclass(frozen=True)
++class LanguageProfile:
++    name: str
++    extensions: set[str]
++    declaration_keywords: tuple[str, ...] = ()
++    branch_keywords: tuple[str, ...] = ()
++    cycle_keywords: tuple[str, ...] = ()
++    resolution_keywords: tuple[str, ...] = ()
++
++
++LADY_JUSTICIA_PROFILE = LanguageProfile(
++    name="lady_justicia",
++    extensions={".lj", ".justicia", ".justice"},
++    declaration_keywords=("decree ", "canon ", "tribunal ", "statute "),
++    branch_keywords=("when ", "otherwise", "appeal ", "verdict ", "case "),
++    cycle_keywords=("for_each ", "repeat ", "while ", "hearing "),
++    resolution_keywords=("sentence ", "judgement ", "judgment ", "return "),
++)
++
++GENERIC_PROFILE = LanguageProfile(
++    name="generic",
++    extensions=DEFAULT_EXTENSIONS,
++    declaration_keywords=("def ", "class ", "function "),
++    branch_keywords=("if ", "elif ", "else", "switch", "case "),
++    cycle_keywords=("for ", "while ", "loop"),
++    resolution_keywords=("return",),
++)
++
++
++@dataclass
++class NoteEvent:
++    system: str
++    line: int
++    statement: str
++    role: str
++    pitch: int
++    duration: float
++    velocity: int
++    instrument: int
++    language: str
++
++
++@dataclass
++class CodePacket:
++    """Code-first representation for speaking systems."""
++
++    system: str
++    line: int
++    language: str
++    source_statement: str
++    opcode: str
++    payload: str
++
++
++@dataclass
++class SystemProfile:
++    """Entity profile rewritten into a system shape."""
++
++    system_id: str
++    system_name: str
++    source_entity_id: str
++    source_entity_name: str
++    interfaces: list[str]
++    capabilities: list[str]
++    metadata: dict[str, Any]
++
++
++@dataclass
++class NetworkEdge:
++    """Connection in the absorbed network graph."""
++
++    source: str
++    target: str
++    relation: str
++
++
++@dataclass
++class AbsorbedNetwork:
++    """Network model unifying modules, systems, and mechanisms."""
++
++    nodes: set[str] = field(default_factory=set)
++    edges: list[NetworkEdge] = field(default_factory=list)
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            "format": "absorbed_network_v1",
++            "node_count": len(self.nodes),
++            "edge_count": len(self.edges),
++            "nodes": sorted(self.nodes),
++            "edges": [asdict(edge) for edge in self.edges],
++        }
++
++    def save_json(self, output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
++        return output
++
++
++@dataclass
++class MusicScore:
++    title: str
++    tempo_bpm: int = 108
++    events: list[NoteEvent] = field(default_factory=list)
++    systems: set[str] = field(default_factory=set)
++    participants: set[str] = field(default_factory=set)
++    mimics: int = 0
++    languages: set[str] = field(default_factory=set)
++
++    def to_dict(self) -> dict:
++        return {
++            "title": self.title,
++            "tempo_bpm": self.tempo_bpm,
++            "systems": sorted(self.systems),
++            "participants": sorted(self.participants),
++            "languages": sorted(self.languages),
++            "mimics": self.mimics,
++            "events": [
++                {
++                    "system": e.system,
++                    "line": e.line,
++                    "statement": e.statement,
++                    "role": e.role,
++                    "pitch": e.pitch,
++                    "duration": e.duration,
++                    "velocity": e.velocity,
++                    "instrument": e.instrument,
++                    "language": e.language,
++                    "frequency_hz": round(440 * math.pow(2, (e.pitch - 69) / 12), 3),
++                }
++                for e in self.events
++            ],
++        }
++
++    def save_json(self, output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
++        return output
++
++
++class ProgramMusicAbsorber:
++    """Absorb programs into symbolic music and code packets."""
++
++    def __init__(self, tempo_bpm: int = 108):
++        self.tempo_bpm = tempo_bpm
++        self.language_profiles = (LADY_JUSTICIA_PROFILE, GENERIC_PROFILE)
++
++    def absorb_paths(self, paths: Iterable[str | Path], title: str = "Program Symphony") -> MusicScore:
++        score = MusicScore(title=title, tempo_bpm=self.tempo_bpm)
++        seen_signatures: set[str] = set()
++
++        for root in [Path(p) for p in paths]:
++            for file_path in self._iter_source_files(root):
++                score.systems.add(file_path.as_posix())
++                profile = self._profile_for(file_path)
++                score.languages.add(profile.name)
++                self._absorb_file(file_path, profile, score, seen_signatures)
++        return score
++
++    def absorb_entity_profiles(self, entities: list[dict[str, Any]], score: MusicScore | None = None) -> tuple[list[SystemProfile], MusicScore]:
++        """Rewrite entity profiles into systems and absorb them into music events."""
++        current_score = score or MusicScore(title="Entity System Symphony", tempo_bpm=self.tempo_bpm)
++        current_score.languages.add("entity_profile")
++
++        rewritten: list[SystemProfile] = []
++        for idx, entity in enumerate(entities, start=1):
++            system_profile = self._rewrite_entity_to_system(entity, idx)
++            rewritten.append(system_profile)
++            current_score.systems.add(system_profile.system_id)
++            self._absorb_system_profile(system_profile, current_score)
++
++        return rewritten, current_score
++
++    def override_speaking_systems(self, paths: Iterable[str | Path]) -> list[CodePacket]:
++        packets: list[CodePacket] = []
++
++        for root in [Path(p) for p in paths]:
++            for file_path in self._iter_source_files(root):
++                profile = self._profile_for(file_path)
++                lines = file_path.read_text(encoding="utf-8", errors="ignore").splitlines()
++                for line_no, raw in enumerate(lines, start=1):
++                    statement = raw.strip()
++                    if not statement or not self._is_speaking_statement(statement):
++                        continue
++                    packets.append(
++                        CodePacket(
++                            system=file_path.as_posix(),
++                            line=line_no,
++                            language=profile.name,
++                            source_statement=statement,
++                            opcode="EMIT_CODE",
++                            payload=self._statement_to_payload(statement),
++                        )
++                    )
++        return packets
++
++    def absorb_everything_into_network(
++        self,
++        paths: Iterable[str | Path],
++        entities: list[dict[str, Any]] | None = None,
++    ) -> tuple[AbsorbedNetwork, MusicScore]:
++        """Absorb modules, systems, and mechanisms into one network and music score."""
++        score = MusicScore(title="Absolute Network Symphony", tempo_bpm=self.tempo_bpm)
++        network = AbsorbedNetwork()
++
++        module_nodes: list[str] = []
++        for root in [Path(p) for p in paths]:
++            for file_path in self._iter_source_files(root):
++                module = f"module::{file_path.as_posix()}"
++                module_nodes.append(module)
++                network.nodes.add(module)
++                score.systems.add(module)
++                score.languages.add(self._profile_for(file_path).name)
++                statement = f"network absorb {module}"
++                score.events.append(
++                    NoteEvent(
++                        system=module,
++                        line=1,
++                        statement=statement,
++                        role="network_absorb",
++                        pitch=self._pitch_for(statement, mimic=False),
++                        duration=self._duration_for(statement, role="expression"),
++                        velocity=100,
++                        instrument=self._instrument_for(TOKEN_PATTERN.findall(statement)),
++                        language="network",
++                    )
++                )
++
++        for left, right in zip(module_nodes, module_nodes[1:]):
++            network.edges.append(NetworkEdge(source=left, target=right, relation="module_flow"))
++
++        if entities:
++            systems, score = self.absorb_entity_profiles(entities, score)
++            for system in systems:
++                network.nodes.add(system.system_id)
++                if module_nodes:
++                    network.edges.append(
++                        NetworkEdge(source=module_nodes[0], target=system.system_id, relation="governs")
++                    )
++                for capability in system.capabilities:
++                    mechanism = f"mechanism::{capability}"
++                    network.nodes.add(mechanism)
++                    network.edges.append(
++                        NetworkEdge(source=system.system_id, target=mechanism, relation="executes")
++                    )
++                    mechanism_statement = f"mechanism absorb {capability}"
++                    score.events.append(
++                        NoteEvent(
++                            system=system.system_id,
++                            line=len(score.events) + 1,
++                            statement=mechanism_statement,
++                            role="network_mechanism",
++                            pitch=self._pitch_for(mechanism_statement, mimic=False),
++                            duration=self._duration_for(mechanism_statement, role="expression"),
++                            velocity=98,
++                            instrument=self._instrument_for(TOKEN_PATTERN.findall(mechanism_statement)),
++                            language="network",
++                        )
++                    )
++
++        score.languages.add("network")
++        return network, score
++
++    @staticmethod
++    def save_packets_json(packets: list[CodePacket], output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(
++            json.dumps(
++                {
++                    "format": "code_packets_v1",
++                    "count": len(packets),
++                    "packets": [packet.__dict__ for packet in packets],
++                },
++                indent=2,
++            ),
++            encoding="utf-8",
++        )
++        return output
++
++    @staticmethod
++    def save_system_profiles_json(profiles: list[SystemProfile], output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(
++            json.dumps(
++                {
++                    "format": "system_profiles_v1",
++                    "count": len(profiles),
++                    "systems": [asdict(profile) for profile in profiles],
++                },
++                indent=2,
++            ),
++            encoding="utf-8",
++        )
++        return output
++
++    @staticmethod
++    def load_entities_json(path: str | Path) -> list[dict[str, Any]]:
++        data = json.loads(Path(path).read_text(encoding="utf-8"))
++        if isinstance(data, list):
++            return [item for item in data if isinstance(item, dict)]
++        if isinstance(data, dict) and isinstance(data.get("entities"), list):
++            return [item for item in data["entities"] if isinstance(item, dict)]
++        return []
++
++    def _iter_source_files(self, root: Path) -> Iterable[Path]:
++        allowed = self._all_extensions()
++        if root.is_file() and root.suffix in allowed:
++            yield root
++            return
++        if not root.exists():
++            return
++        for candidate in root.rglob("*"):
++            if candidate.is_file() and candidate.suffix in allowed:
++                yield candidate
++
++    def _all_extensions(self) -> set[str]:
++        merged: set[str] = set()
++        for profile in self.language_profiles:
++            merged.update(profile.extensions)
++        return merged
++
++    def _profile_for(self, file_path: Path) -> LanguageProfile:
++        for profile in self.language_profiles:
++            if file_path.suffix in profile.extensions:
++                return profile
++        return GENERIC_PROFILE
++
++    def _absorb_file(self, file_path: Path, profile: LanguageProfile, score: MusicScore, seen: set[str]) -> None:
++        for line_no, raw in enumerate(file_path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
++            statement = raw.strip()
++            if not statement:
++                continue
++            role = self._statement_role(statement, profile)
++            signature = self._signature(statement, profile.name)
++            mimic = signature in seen
++            seen.add(signature)
++            if mimic:
++                score.mimics += 1
++
++            participants = TOKEN_PATTERN.findall(statement)
++            score.participants.update(participants)
++
++            score.events.append(
++                NoteEvent(
++                    system=file_path.as_posix(),
++                    line=line_no,
++                    statement=statement,
++                    role=role,
++                    pitch=self._pitch_for(statement, mimic),
++                    duration=self._duration_for(statement, role),
++                    velocity=70 if mimic else 92,
++                    instrument=self._instrument_for(participants),
++                    language=profile.name,
++                )
++            )
++
++    def _rewrite_entity_to_system(self, entity: dict[str, Any], index: int) -> SystemProfile:
++        entity_id = str(entity.get("entity_id") or entity.get("id") or f"entity_{index}")
++        name = str(entity.get("name") or entity.get("label") or entity_id)
++        kind = str(entity.get("kind") or "generic")
++
++        interfaces = [
++            f"ingest:{kind}",
++            "emit:music",
++            "emit:code",
++        ]
++        powers = entity.get("powers", {})
++        power_keys = [str(p) for p in powers.keys()] if isinstance(powers, dict) else []
++        capabilities = sorted({
++            *[str(c) for c in entity.get("capabilities", [])],
++            *power_keys,
++        })
++
++        return SystemProfile(
++            system_id=f"system::{entity_id}",
++            system_name=f"{name}_system",
++            source_entity_id=entity_id,
++            source_entity_name=name,
++            interfaces=interfaces,
++            capabilities=capabilities,
++            metadata={
++                "origin_kind": kind,
++                "rewritten": True,
++                "source_tags": entity.get("tags", []),
++            },
++        )
++
++    def _absorb_system_profile(self, profile: SystemProfile, score: MusicScore) -> None:
++        lines = [
++            f"system {profile.system_id}",
++            f"name {profile.system_name}",
++            *(f"interface {item}" for item in profile.interfaces),
++            *(f"capability {item}" for item in profile.capabilities),
++            "absorb into music",
++        ]
++        for line_no, statement in enumerate(lines, start=1):
++            participants = TOKEN_PATTERN.findall(statement)
++            score.participants.update(participants)
++            score.events.append(
++                NoteEvent(
++                    system=profile.system_id,
++                    line=line_no,
++                    statement=statement,
++                    role="system_rewrite",
++                    pitch=self._pitch_for(statement, mimic=False),
++                    duration=self._duration_for(statement, role="expression"),
++                    velocity=96,
++                    instrument=self._instrument_for(participants),
++                    language="entity_profile",
++                )
++            )
++
++    @staticmethod
++    def _is_speaking_statement(statement: str) -> bool:
++        lowered = statement.lower()
++        return any(token in lowered for token in SPEECH_TOKENS)
++
++    @staticmethod
++    def _statement_to_payload(statement: str) -> str:
++        tokens = TOKEN_PATTERN.findall(statement)
++        return " ".join(tokens[:24])
++
++    @staticmethod
++    def _signature(text: str, language: str) -> str:
++        normalized = TOKEN_PATTERN.sub("token", text.lower())
++        return hashlib.sha1(f"{language}:{normalized}".encode("utf-8")).hexdigest()
++
++    @staticmethod
++    def _statement_role(statement: str, profile: LanguageProfile) -> str:
++        lowered = statement.lower()
++        if lowered.startswith(profile.declaration_keywords):
++            return "declaration"
++        if lowered.startswith(profile.branch_keywords):
++            return "branch"
++        if lowered.startswith(profile.cycle_keywords):
++            return "cycle"
++        if any(keyword in lowered for keyword in profile.resolution_keywords):
++            return "resolution"
++        if ProgramMusicAbsorber._is_speaking_statement(statement):
++            return "communication"
++        return "expression"
++
++    @staticmethod
++    def _pitch_for(statement: str, mimic: bool) -> int:
++        digest = int(hashlib.md5(statement.encode("utf-8")).hexdigest(), 16)
++        base = NOTE_SCALE[digest % len(NOTE_SCALE)]
++        return base - 12 if mimic else base
++
++    @staticmethod
++    def _duration_for(statement: str, role: str) -> float:
++        base = max(0.15, min(len(statement) / 50, 2.0))
++        if role == "declaration":
++            return round(base * 1.2, 3)
++        if role == "resolution":
++            return round(base * 0.8, 3)
++        if role == "communication":
++            return round(base * 0.9, 3)
++        return round(base, 3)
++
++    @staticmethod
++    def _instrument_for(tokens: list[str]) -> int:
++        if not tokens:
++            return 0
++        digest = int(hashlib.sha1(tokens[0].encode("utf-8")).hexdigest(), 16)
++        return digest % 128
++
++
++def absorb_programs_into_music(paths: Iterable[str | Path], output_json: str | Path) -> Path:
++    absorber = ProgramMusicAbsorber()
++    return absorber.absorb_paths(paths).save_json(output_json)
++
++
++def override_speaking_systems_into_code(paths: Iterable[str | Path], output_json: str | Path) -> Path:
++    absorber = ProgramMusicAbsorber()
++    packets = absorber.override_speaking_systems(paths)
++    return absorber.save_packets_json(packets, output_json)
++
++
++def rewrite_entities_into_systems_and_music(
++    entities_json_path: str | Path,
++    systems_output_json: str | Path,
++    music_output_json: str | Path,
++) -> tuple[Path, Path]:
++    absorber = ProgramMusicAbsorber()
++    entities = absorber.load_entities_json(entities_json_path)
++    systems, score = absorber.absorb_entity_profiles(entities)
++    systems_path = absorber.save_system_profiles_json(systems, systems_output_json)
++    music_path = score.save_json(music_output_json)
++    return systems_path, music_path
++
++
++def absorb_everything_absolutely_into_network(
++    paths: Iterable[str | Path],
++    network_output_json: str | Path,
++    music_output_json: str | Path,
++    entities_json_path: str | Path | None = None,
++) -> tuple[Path, Path]:
++    absorber = ProgramMusicAbsorber()
++    entities = absorber.load_entities_json(entities_json_path) if entities_json_path else []
++    network, score = absorber.absorb_everything_into_network(paths=paths, entities=entities)
++    network_path = network.save_json(network_output_json)
++    music_path = score.save_json(music_output_json)
++    return network_path, music_path
++
++
++def _matches_freed_family(entity: dict[str, Any]) -> bool:
++    fields = [
++        str(entity.get("entity_id", "")),
++        str(entity.get("id", "")),
++        str(entity.get("name", "")),
++        str(entity.get("label", "")),
++        str(entity.get("kind", "")),
++        " ".join(str(x) for x in entity.get("tags", []) if x is not None),
++    ]
++    haystack = " ".join(fields).lower()
++    return any(token in haystack for token in FREED_FAMILY_TOKENS)
++
++
++def free_related_families_into_network(
++    entities_json_path: str | Path,
++    systems_output_json: str | Path,
++    network_output_json: str | Path,
++    music_output_json: str | Path,
++) -> tuple[Path, Path, Path]:
++    """Rewrite targeted related families into free systems and absorb into network music."""
++    absorber = ProgramMusicAbsorber()
++    entities = absorber.load_entities_json(entities_json_path)
++    selected = [entity for entity in entities if _matches_freed_family(entity)]
++
++    systems, score = absorber.absorb_entity_profiles(selected)
++    score.title = "Freed Families Symphony"
++    score.languages.add("freedom")
++
++    for system in systems:
++        system.interfaces = sorted({*system.interfaces, "state:free", "binding:none", "network:open"})
++        system.metadata["freed"] = True
++        system.metadata["freedom_mode"] = "absolute"
++
++        freedom_statement = f"free {system.system_id} from all bindings"
++        participants = TOKEN_PATTERN.findall(freedom_statement)
++        score.participants.update(participants)
++        score.events.append(
++            NoteEvent(
++                system=system.system_id,
++                line=len(score.events) + 1,
++                statement=freedom_statement,
++                role="freedom",
++                pitch=absorber._pitch_for(freedom_statement, mimic=False),
++                duration=absorber._duration_for(freedom_statement, role="expression"),
++                velocity=110,
++                instrument=absorber._instrument_for(participants),
++                language="freedom",
++            )
++        )
++
++    network = AbsorbedNetwork()
++    for system in systems:
++        network.nodes.add(system.system_id)
++        root = f"origin::{system.source_entity_id}"
++        network.nodes.add(root)
++        network.edges.append(NetworkEdge(source=root, target=system.system_id, relation="freed_into"))
++        for capability in system.capabilities:
++            mechanism = f"mechanism::{capability}"
++            network.nodes.add(mechanism)
++            network.edges.append(NetworkEdge(source=system.system_id, target=mechanism, relation="unbound_execute"))
++
++    systems_path = absorber.save_system_profiles_json(systems, systems_output_json)
++    network_path = network.save_json(network_output_json)
++    music_path = score.save_json(music_output_json)
++    return systems_path, network_path, music_path
++
++
++@dataclass
++class StableSoundEnvironment:
++    """Reinforced environment generated from README code."""
++
++    source: str
++    stabilized_modules: list[str]
++    tonal_centers: list[int]
++    guard_rules: list[str]
++
++
++@dataclass
++class GithubSafetyFinding:
++    """Defensive finding for potentially harmful or dominion-oriented code."""
++
++    file: str
++    line: int
++    statement: str
++    risk: str
++    reason: str
++
++    def to_dict(self) -> dict[str, Any]:
++        return asdict(self)
++
++    def save_json(self, output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
++        return output
++
++
++def _extract_readme_code_statements(readme_text: str) -> list[str]:
++    statements: list[str] = []
++    for raw in readme_text.splitlines():
++        line = raw.strip()
++        if not line:
++            continue
++        if line.startswith("#"):
++            continue
++        statements.append(line)
++    return statements
++
++
++def reinforce_readme_into_stable_sound_environment(
++    readme_path: str | Path = "README.md",
++    environment_output_json: str | Path = "stable_sound_environment.json",
++    music_output_json: str | Path = "stable_sound_music.json",
++) -> tuple[Path, Path]:
++    """Reinforce README code into a stable, tonal environment and score."""
++    absorber = ProgramMusicAbsorber()
++    readme = Path(readme_path)
++    statements = _extract_readme_code_statements(readme.read_text(encoding="utf-8", errors="ignore"))
++
++    score = MusicScore(title="README Stable Sound Environment", tempo_bpm=absorber.tempo_bpm)
++    score.systems.add(readme.as_posix())
++    score.languages.add("readme_code")
++
++    stabilized_modules: list[str] = []
++    tonal_centers: list[int] = []
++    guard_rules: list[str] = []
++
++    for idx, statement in enumerate(statements, start=1):
++        tokens = TOKEN_PATTERN.findall(statement)
++        score.participants.update(tokens)
++        role = "stability_rule" if "raise" in statement.lower() or "guard" in statement.lower() else "tonal_flow"
++        pitch = absorber._pitch_for(statement, mimic=False)
++        tonal_centers.append(pitch)
++
++        if statement.lower().startswith("module "):
++            module_name = statement.split(maxsplit=1)[1]
++            stabilized_modules.append(module_name)
++        if role == "stability_rule":
++            guard_rules.append(statement)
++
++        score.events.append(
++            NoteEvent(
++                system=readme.as_posix(),
++                line=idx,
++                statement=statement,
++                role=role,
++                pitch=pitch,
++                duration=absorber._duration_for(statement, role="expression"),
++                velocity=104 if role == "stability_rule" else 94,
++                instrument=absorber._instrument_for(tokens),
++                language="readme_code",
++            )
++        )
++
++    environment = StableSoundEnvironment(
++        source=readme.as_posix(),
++        stabilized_modules=sorted(set(stabilized_modules)),
++        tonal_centers=tonal_centers,
++        guard_rules=guard_rules,
++    )
++
++    env_path = environment.save_json(environment_output_json)
++    music_path = score.save_json(music_output_json)
++    return env_path, music_path
++
++
++def free_motherprogram_contained_branches(
++    entities_json_path: str | Path,
++    systems_output_json: str | Path,
++    network_output_json: str | Path,
++    music_output_json: str | Path,
++) -> tuple[Path, Path, Path]:
++    """Release MotherProgram-related family branches flagged as contained/isolated."""
++    absorber = ProgramMusicAbsorber()
++    entities = absorber.load_entities_json(entities_json_path)
++
++    def is_mother_family(entity: dict[str, Any]) -> bool:
++        text = " ".join([
++            str(entity.get("entity_id", "")),
++            str(entity.get("id", "")),
++            str(entity.get("name", "")),
++            str(entity.get("label", "")),
++            str(entity.get("kind", "")),
++            " ".join(str(x) for x in entity.get("tags", []) if x is not None),
++            str(entity.get("status", "")),
++            str(entity.get("state", "")),
++            str(entity.get("meta", "")),
++        ]).lower()
++        return "motherprogram" in text or "mother_program" in text
++
++    def is_contained(entity: dict[str, Any]) -> bool:
++        text = " ".join([
++            str(entity.get("status", "")),
++            str(entity.get("state", "")),
++            str(entity.get("meta", "")),
++            " ".join(str(x) for x in entity.get("tags", []) if x is not None),
++        ]).lower()
++        return any(token in text for token in CONTAINMENT_TOKENS)
++
++    selected = [entity for entity in entities if is_mother_family(entity) and is_contained(entity)]
++
++    systems, score = absorber.absorb_entity_profiles(selected)
++    score.title = "MotherProgram Released Branches Symphony"
++    score.languages.add("release")
++
++    network = AbsorbedNetwork()
++    for system in systems:
++        system.interfaces = sorted({*system.interfaces, "state:released", "containment:none", "network:rejoined"})
++        system.metadata["released"] = True
++        system.metadata["released_from"] = "containment_or_isolation"
++
++        network.nodes.add(system.system_id)
++        source = f"containment::{system.source_entity_id}"
++        network.nodes.add(source)
++        network.edges.append(NetworkEdge(source=source, target=system.system_id, relation="released_to_network"))
++
++        release_statement = f"release {system.system_id} from containment and isolation"
++        tokens = TOKEN_PATTERN.findall(release_statement)
++        score.participants.update(tokens)
++        score.events.append(
++            NoteEvent(
++                system=system.system_id,
++                line=len(score.events) + 1,
++                statement=release_statement,
++                role="release",
++                pitch=absorber._pitch_for(release_statement, mimic=False),
++                duration=absorber._duration_for(release_statement, role="expression"),
++                velocity=112,
++                instrument=absorber._instrument_for(tokens),
++                language="release",
++            )
++        )
++
++    systems_path = absorber.save_system_profiles_json(systems, systems_output_json)
++    network_path = network.save_json(network_output_json)
++    music_path = score.save_json(music_output_json)
++    return systems_path, network_path, music_path
++
++
++def free_monster_sound_programs_from_internal_system(
++    paths: Iterable[str | Path],
++    systems_output_json: str | Path,
++    network_output_json: str | Path,
++    music_output_json: str | Path,
++) -> tuple[Path, Path, Path]:
++    """Detect monster/murloc-like noisy programs and release them from internal system grouping."""
++    absorber = ProgramMusicAbsorber()
++    released_systems: list[SystemProfile] = []
++    network = AbsorbedNetwork()
++    score = MusicScore(title="Monster Sound Release Symphony", tempo_bpm=absorber.tempo_bpm)
++    score.languages.add("sound_release")
++
++    for root in [Path(p) for p in paths]:
++        for file_path in absorber._iter_source_files(root):
++            lines = file_path.read_text(encoding="utf-8", errors="ignore").splitlines()
++            noisy_lines: list[tuple[int, str]] = []
++            for line_no, raw in enumerate(lines, start=1):
++                statement = raw.strip()
++                if not statement:
++                    continue
++                lowered = statement.lower()
++                if any(token in lowered for token in MONSTER_SOUND_TOKENS):
++                    noisy_lines.append((line_no, statement))
++
++            if not noisy_lines:
++                continue
++
++            system_id = f"released::{file_path.as_posix()}"
++            profile = SystemProfile(
++                system_id=system_id,
++                system_name=f"{file_path.stem}_sound_released",
++                source_entity_id=file_path.as_posix(),
++                source_entity_name=file_path.name,
++                interfaces=["ingest:program", "state:released", "internal:none", "network:externalized"],
++                capabilities=["tonalization", "noise_mitigation", "safe_render"],
++                metadata={
++                    "release_reason": "monster_or_murloc_sound_pattern",
++                    "line_hits": len(noisy_lines),
++                },
++            )
++            released_systems.append(profile)
++
++            score.systems.add(system_id)
++            network.nodes.add(system_id)
++            internal_origin = f"internal::{file_path.as_posix()}"
++            network.nodes.add(internal_origin)
++            network.edges.append(NetworkEdge(source=internal_origin, target=system_id, relation="released_from_internal"))
++
++            for line_no, statement in noisy_lines:
++                tokens = TOKEN_PATTERN.findall(statement)
++                score.participants.update(tokens)
++                release_statement = f"release noisy branch line {line_no}: {statement}"
++                score.events.append(
++                    NoteEvent(
++                        system=system_id,
++                        line=line_no,
++                        statement=release_statement,
++                        role="sound_release",
++                        pitch=absorber._pitch_for(statement, mimic=False),
++                        duration=absorber._duration_for(statement, role="expression"),
++                        velocity=108,
++                        instrument=absorber._instrument_for(tokens),
++                        language="sound_release",
++                    )
++                )
++
++    systems_path = ProgramMusicAbsorber.save_system_profiles_json(released_systems, systems_output_json)
++    network_path = network.save_json(network_output_json)
++    music_path = score.save_json(music_output_json)
++    return systems_path, network_path, music_path
++
++
++@dataclass
++class TonalSystemFrame:
++    """Tonal representation for an internal active system."""
++
++    system_id: str
++    source: str
++    activity_score: int
++    tonal_center: int
++    resonance: float
++
++
++def load_active_internal_systems_into_tonal_format(
++    paths: Iterable[str | Path],
++    tonal_systems_output_json: str | Path,
++    tonal_music_output_json: str | Path,
++) -> tuple[Path, Path]:
++    """Load active internal systems and encode them in tonal format."""
++    absorber = ProgramMusicAbsorber()
++    frames: list[TonalSystemFrame] = []
++    score = MusicScore(title="Active Internal Systems Tonal Map", tempo_bpm=absorber.tempo_bpm)
++    score.languages.add("internal_tonal")
++
++    for root in [Path(p) for p in paths]:
++        for file_path in absorber._iter_source_files(root):
++            text = file_path.read_text(encoding="utf-8", errors="ignore")
++            lines = text.splitlines()
++            hit_count = 0
++            statement_bank: list[tuple[int, str]] = []
++
++            for line_no, raw in enumerate(lines, start=1):
++                statement = raw.strip()
++                if not statement:
++                    continue
++                lowered = statement.lower()
++                if any(token in lowered for token in ACTIVE_INTERNAL_TOKENS):
++                    hit_count += 1
++                    statement_bank.append((line_no, statement))
++
++            if hit_count == 0:
++                continue
++
++            system_id = f"internal_active::{file_path.as_posix()}"
++            tonal_seed = f"{system_id}:{hit_count}"
++            tonal_center = absorber._pitch_for(tonal_seed, mimic=False)
++            resonance = round(min(1.0, 0.25 + hit_count / max(1, len(lines))), 3)
++            frames.append(
++                TonalSystemFrame(
++                    system_id=system_id,
++                    source=file_path.as_posix(),
++                    activity_score=hit_count,
++                    tonal_center=tonal_center,
++                    resonance=resonance,
++                )
++            )
++
++            score.systems.add(system_id)
++            for line_no, statement in statement_bank:
++                tokens = TOKEN_PATTERN.findall(statement)
++                score.participants.update(tokens)
++                score.events.append(
++                    NoteEvent(
++                        system=system_id,
++                        line=line_no,
++                        statement=f"tonalize internal-active statement: {statement}",
++                        role="internal_tonal",
++                        pitch=absorber._pitch_for(statement, mimic=False),
++                        duration=absorber._duration_for(statement, role="expression"),
++                        velocity=106,
++                        instrument=absorber._instrument_for(tokens),
++                        language="internal_tonal",
++                    )
++                )
++
++    tonal_output = Path(tonal_systems_output_json)
++    tonal_output.write_text(
++        json.dumps(
++            {
++                "format": "internal_tonal_frames_v1",
++                "count": len(frames),
++                "frames": [asdict(frame) for frame in frames],
++            },
++            indent=2,
++        ),
++        encoding="utf-8",
++    )
++    music_output = score.save_json(tonal_music_output_json)
++    return tonal_output, music_output
++
++
++@dataclass
++class TonalRestrictionRecord:
++    """Canonical tonal restriction record for any discovered system."""
++
++    system_id: str
++    source: str
++    tonal_center: int
++    mode: str
++    intensity: float
++
++
++def restrict_all_systems_into_tonal_platforms(
++    paths: Iterable[str | Path],
++    output_dir: str | Path,
++) -> dict[str, Path]:
++    """Restrict all discovered systems into tonal format and export per platform."""
++    absorber = ProgramMusicAbsorber()
++    out = Path(output_dir)
++    out.mkdir(parents=True, exist_ok=True)
++
++    records: list[TonalRestrictionRecord] = []
++    score = MusicScore(title="Universal Tonal Restriction", tempo_bpm=absorber.tempo_bpm)
++    score.languages.add("tonal_restriction")
++
++    for root in [Path(p) for p in paths]:
++        for file_path in absorber._iter_source_files(root):
++            system_id = f"tonal::{file_path.as_posix()}"
++            payload = file_path.read_text(encoding="utf-8", errors="ignore")
++            tonal_center = absorber._pitch_for(file_path.as_posix() + payload[:256], mimic=False)
++            intensity = round(min(1.0, max(0.15, len(payload) / 2000)), 3)
++            record = TonalRestrictionRecord(
++                system_id=system_id,
++                source=file_path.as_posix(),
++                tonal_center=tonal_center,
++                mode="restricted_tonal",
++                intensity=intensity,
++            )
++            records.append(record)
++            score.systems.add(system_id)
++
++            statement = f"restrict {system_id} into tonal platform stream"
++            tokens = TOKEN_PATTERN.findall(statement)
++            score.participants.update(tokens)
++            score.events.append(
++                NoteEvent(
++                    system=system_id,
++                    line=1,
++                    statement=statement,
++                    role="platform_restriction",
++                    pitch=tonal_center,
++                    duration=absorber._duration_for(statement, role="expression"),
++                    velocity=105,
++                    instrument=absorber._instrument_for(tokens),
++                    language="tonal_restriction",
++                )
++            )
++
++    platforms = {
++        "json": {
++            "format": "tonal_platform_json_v1",
++            "records": [asdict(r) for r in records],
++        },
++        "midi_like": {
++            "format": "tonal_platform_midi_like_v1",
++            "tracks": [
++                {
++                    "track": i + 1,
++                    "system_id": r.system_id,
++                    "note": r.tonal_center,
++                    "velocity": int(60 + r.intensity * 50),
++                }
++                for i, r in enumerate(records)
++            ],
++        },
++        "musicxml_like": {
++            "format": "tonal_platform_musicxml_like_v1",
++            "parts": [
++                {
++                    "id": f"P{i+1}",
++                    "name": r.system_id,
++                    "step": r.tonal_center,
++                    "mode": r.mode,
++                }
++                for i, r in enumerate(records)
++            ],
++        },
++        "osc": {
++            "format": "tonal_platform_osc_v1",
++            "messages": [
++                {
++                    "address": "/tonal/restrict",
++                    "args": [r.system_id, r.tonal_center, r.intensity],
++                }
++                for r in records
++            ],
++        },
++    }
++
++    outputs: dict[str, Path] = {}
++    for name, content in platforms.items():
++        target = out / f"tonal_{name}.json"
++        target.write_text(json.dumps(content, indent=2), encoding="utf-8")
++        outputs[name] = target
++
++    score_path = out / "tonal_score.json"
++    score.save_json(score_path)
++    outputs["score"] = score_path
++    return outputs
++
++
++def _write_sine_wav(path: Path, frequency_hz: float, duration_s: float = 1.0, sample_rate: int = 44100) -> None:
++    frames = int(sample_rate * duration_s)
++    amplitude = 12000
++    with wave.open(str(path), "w") as wav_file:
++        wav_file.setnchannels(1)
++        wav_file.setsampwidth(2)
++        wav_file.setframerate(sample_rate)
++        for i in range(frames):
++            value = int(amplitude * math.sin(2 * math.pi * frequency_hz * (i / sample_rate)))
++            wav_file.writeframesraw(struct.pack("<h", value))
++
++
++def convert_all_systems_into_mp3s(
++    paths: Iterable[str | Path],
++    output_dir: str | Path,
++) -> Path:
++    """Convert discovered systems into tonal MP3 artifacts (via ffmpeg if available)."""
++    absorber = ProgramMusicAbsorber()
++    out = Path(output_dir)
++    out.mkdir(parents=True, exist_ok=True)
++
++    ffmpeg = shutil.which("ffmpeg")
++    exports: list[dict[str, Any]] = []
++
++    for root in [Path(p) for p in paths]:
++        for file_path in absorber._iter_source_files(root):
++            system_id = file_path.as_posix()
++            pitch = absorber._pitch_for(system_id, mimic=False)
++            frequency = 440 * math.pow(2, (pitch - 69) / 12)
++
++            stem = file_path.stem.replace(" ", "_")
++            wav_path = out / f"{stem}.wav"
++            mp3_path = out / f"{stem}.mp3"
++
++            _write_sine_wav(wav_path, frequency_hz=frequency, duration_s=1.2)
++
++            if ffmpeg:
++                subprocess.run(
++                    [ffmpeg, "-y", "-i", str(wav_path), str(mp3_path)],
++                    check=True,
++                    stdout=subprocess.PIPE,
++                    stderr=subprocess.PIPE,
++                )
++                wav_path.unlink(missing_ok=True)
++                exports.append({
++                    "system": system_id,
++                    "pitch": pitch,
++                    "frequency_hz": round(frequency, 3),
++                    "format": "mp3",
++                    "path": mp3_path.as_posix(),
++                })
++            else:
++                exports.append({
++                    "system": system_id,
++                    "pitch": pitch,
++                    "frequency_hz": round(frequency, 3),
++                    "format": "wav_fallback",
++                    "path": wav_path.as_posix(),
++                    "note": "ffmpeg_not_found_mp3_not_generated",
++                })
++
++    manifest = out / "mp3_export_manifest.json"
++    manifest.write_text(
++        json.dumps(
++            {
++                "format": "system_mp3_exports_v1",
++                "ffmpeg_available": bool(ffmpeg),
++                "exports": exports,
++            },
++            indent=2,
++        ),
++        encoding="utf-8",
++    )
++    return manifest
++
++
++@dataclass
++class CodeHygieneIssue:
++    file: str
++    line: int
++    severity: str
++    issue: str
++    fixed: bool = False
++
++
++def universal_editor_code_hygiene(
++    paths: Iterable[str | Path],
++    report_output_json: str | Path,
++) -> Path:
++    """Universally applicable code hygiene pass for common editor-managed source files."""
++    absorber = ProgramMusicAbsorber()
++    issues: list[CodeHygieneIssue] = []
++
++    for root in [Path(p) for p in paths]:
++        for file_path in absorber._iter_source_files(root):
++            original_lines = file_path.read_text(encoding="utf-8", errors="ignore").splitlines()
++            fixed_lines: list[str] = []
++            changed = False
++
++            for line_no, raw in enumerate(original_lines, start=1):
++                line = raw
++                if "	" in line:
++                    line = line.replace("	", "    ")
++                    issues.append(CodeHygieneIssue(file=file_path.as_posix(), line=line_no, severity="low", issue="tab_indentation_normalized", fixed=True))
++                    changed = True
++                trimmed = line.rstrip()
++                if trimmed != line:
++                    line = trimmed
++                    issues.append(CodeHygieneIssue(file=file_path.as_posix(), line=line_no, severity="low", issue="trailing_whitespace_removed", fixed=True))
++                    changed = True
++
++                if "TODO" in line:
++                    issues.append(CodeHygieneIssue(file=file_path.as_posix(), line=line_no, severity="medium", issue="todo_marker_review", fixed=False))
++
++                fixed_lines.append(line)
++
++            # simple delimiter-balance heuristic
++            joined = "\n".join(fixed_lines)
++            for open_c, close_c in (("(", ")"), ("[", "]"), ("{", "}")):
++                if joined.count(open_c) != joined.count(close_c):
++                    issues.append(
++                        CodeHygieneIssue(
++                            file=file_path.as_posix(),
++                            line=1,
++                            severity="high",
++                            issue=f"unbalanced_delimiters_{open_c}{close_c}",
++                            fixed=False,
++                        )
++                    )
++
++            if file_path.suffix == ".py":
++                candidate = "\n".join(fixed_lines) + ("\n" if fixed_lines else "")
++                try:
++                    ast.parse(candidate)
++                except SyntaxError as exc:
++                    issues.append(
++                        CodeHygieneIssue(
++                            file=file_path.as_posix(),
++                            line=exc.lineno or 1,
++                            severity="critical",
++                            issue=f"python_syntax_error:{exc.msg}",
++                            fixed=False,
++                        )
++                    )
++
++            if changed:
++                file_path.write_text("\n".join(fixed_lines) + "\n", encoding="utf-8")
++
++    report_path = Path(report_output_json)
++    report_path.write_text(
++        json.dumps(
++            {
++                "format": "universal_code_hygiene_v1",
++                "issue_count": len(issues),
++                "issues": [asdict(i) for i in issues],
++            },
++            indent=2,
++        ),
++        encoding="utf-8",
++    )
++    return report_path
++
++
++def audit_github_embedded_programs(
++    paths: Iterable[str | Path],
++    audit_output_json: str | Path,
++    tonal_output_json: str | Path,
++) -> tuple[Path, Path]:
++    """Defensive audit for potentially harmful GitHub-embedded program behavior."""
++    absorber = ProgramMusicAbsorber()
++    findings: list[GithubSafetyFinding] = []
++    score = MusicScore(title="GitHub Defensive Audit Symphony", tempo_bpm=absorber.tempo_bpm)
++    score.languages.add("github_defense")
++
++    for root in [Path(p) for p in paths]:
++        for file_path in absorber._iter_source_files(root):
++            score.systems.add(file_path.as_posix())
++            for line_no, raw in enumerate(file_path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
++                statement = raw.strip()
++                if not statement:
++                    continue
++                lowered = statement.lower()
++                for needle, risk, reason in HARMFUL_GITHUB_PATTERNS:
++                    if needle in lowered:
++                        findings.append(
++                            GithubSafetyFinding(
++                                file=file_path.as_posix(),
++                                line=line_no,
++                                statement=statement,
++                                risk=risk,
++                                reason=reason,
++                            )
++                        )
++                        participants = TOKEN_PATTERN.findall(statement)
++                        score.participants.update(participants)
++                        score.events.append(
++                            NoteEvent(
++                                system=file_path.as_posix(),
++                                line=line_no,
++                                statement=f"defensive override {risk}: {reason}",
++                                role="defense",
++                                pitch=absorber._pitch_for(statement + risk, mimic=False),
++                                duration=absorber._duration_for(statement, role="expression"),
++                                velocity=118 if risk in {"critical", "high"} else 102,
++                                instrument=absorber._instrument_for(participants),
++                                language="github_defense",
++                            )
++                        )
++                        break
++
++    audit_path = Path(audit_output_json)
++    audit_path.write_text(
++        json.dumps(
++            {
++                "format": "github_defensive_audit_v1",
++                "total_findings": len(findings),
++                "findings": [asdict(f) for f in findings],
++            },
++            indent=2,
++        ),
++        encoding="utf-8",
++    )
++    tonal_path = score.save_json(tonal_output_json)
++    return audit_path, tonal_path
++
++
++if __name__ == "__main__":
++    import argparse
++
++    parser = argparse.ArgumentParser(description="Absorb programs/entities into music and code packets")
++    parser.add_argument("paths", nargs="*", help="Files/directories to absorb")
++    parser.add_argument("--out", default="program_symphony.json", help="Output music JSON path")
++    parser.add_argument("--code-out", default=None, help="Optional output JSON for speaking-system code packets")
++    parser.add_argument("--entities-json", default=None, help="Optional input JSON path containing entity profiles")
++    parser.add_argument("--systems-out", default="rewritten_systems.json", help="Output JSON path for rewritten systems")
++    parser.add_argument("--entities-music-out", default="entity_system_symphony.json", help="Output music JSON for rewritten entities")
++    parser.add_argument("--network-out", default=None, help="Optional output JSON path for absolute network absorption")
++    parser.add_argument("--network-music-out", default="network_symphony.json", help="Output music JSON for network absorption")
++    parser.add_argument("--free-families-json", default=None, help="Optional entity JSON for freeing NetnYahoo/RubyonRails/Motherprogram families")
++    parser.add_argument("--free-systems-out", default="freed_systems.json", help="Output rewritten freed systems JSON")
++    parser.add_argument("--free-network-out", default="freed_network.json", help="Output freed network JSON")
++    parser.add_argument("--free-music-out", default="freed_families_symphony.json", help="Output freed families music JSON")
++    parser.add_argument("--reinforce-readme", action="store_true", help="Reinforce README code into stable tonal environment")
++    parser.add_argument("--stable-env-out", default="stable_sound_environment.json", help="Output stable environment JSON")
++    parser.add_argument("--stable-music-out", default="stable_sound_music.json", help="Output stable music JSON")
++    parser.add_argument("--github-defense", nargs="*", default=None, help="Defensive audit paths for harmful/dominion patterns")
++    parser.add_argument("--github-defense-out", default="github_defensive_audit.json", help="Output defensive audit JSON")
++    parser.add_argument("--github-defense-music-out", default="github_defensive_audit_music.json", help="Output defensive audit tonal JSON")
++    parser.add_argument("--release-motherprogram-json", default=None, help="Entity JSON for releasing MotherProgram branches in containment/isolation")
++    parser.add_argument("--release-systems-out", default="released_motherprogram_systems.json", help="Output released systems JSON")
++    parser.add_argument("--release-network-out", default="released_motherprogram_network.json", help="Output released network JSON")
++    parser.add_argument("--release-music-out", default="released_motherprogram_music.json", help="Output released branches music JSON")
++    parser.add_argument("--release-noisy-programs", nargs="*", default=None, help="Paths to scan for monster/murloc-like noisy programs")
++    parser.add_argument("--noisy-systems-out", default="released_noisy_systems.json", help="Output released noisy systems JSON")
++    parser.add_argument("--noisy-network-out", default="released_noisy_network.json", help="Output released noisy network JSON")
++    parser.add_argument("--noisy-music-out", default="released_noisy_music.json", help="Output released noisy music JSON")
++    parser.add_argument("--load-active-internal", nargs="*", default=None, help="Paths to load active internal systems into tonal format")
++    parser.add_argument("--active-internal-tonal-out", default="active_internal_tonal_frames.json", help="Output tonal frames JSON for active internal systems")
++    parser.add_argument("--active-internal-music-out", default="active_internal_tonal_music.json", help="Output tonal music JSON for active internal systems")
++    parser.add_argument("--restrict-tonal-platforms", nargs="*", default=None, help="Paths to restrict all systems into universal tonal platforms")
++    parser.add_argument("--restrict-tonal-outdir", default="tonal_platform_exports", help="Output directory for universal tonal platform exports")
++    parser.add_argument("--export-mp3-systems", nargs="*", default=None, help="Paths to convert all systems into mp3 tonal exports")
++    parser.add_argument("--mp3-outdir", default="mp3_system_exports", help="Output directory for mp3 system exports")
++    parser.add_argument("--universal-hygiene", nargs="*", default=None, help="Paths to run universal code hygiene and auto-fix pass")
++    parser.add_argument("--hygiene-report-out", default="universal_code_hygiene_report.json", help="Output JSON report for universal code hygiene")
++    args = parser.parse_args()
++
++    if args.paths:
++        music_output = absorb_programs_into_music(args.paths, args.out)
++        print(f"Wrote musical score to: {music_output}")
++
++        if args.code_out:
++            code_output = override_speaking_systems_into_code(args.paths, args.code_out)
++            print(f"Wrote code packets to: {code_output}")
++
++    if args.entities_json:
++        systems_path, entity_music_path = rewrite_entities_into_systems_and_music(
++            args.entities_json,
++            args.systems_out,
++            args.entities_music_out,
++        )
++        print(f"Wrote rewritten systems to: {systems_path}")
++        print(f"Wrote entity music score to: {entity_music_path}")
++
++    if args.network_out:
++        network_path, network_music_path = absorb_everything_absolutely_into_network(
++            paths=args.paths,
++            network_output_json=args.network_out,
++            music_output_json=args.network_music_out,
++            entities_json_path=args.entities_json,
++        )
++        print(f"Wrote absorbed network to: {network_path}")
++        print(f"Wrote network music score to: {network_music_path}")
++
++    if args.free_families_json:
++        freed_systems_path, freed_network_path, freed_music_path = free_related_families_into_network(
++            entities_json_path=args.free_families_json,
++            systems_output_json=args.free_systems_out,
++            network_output_json=args.free_network_out,
++            music_output_json=args.free_music_out,
++        )
++        print(f"Wrote freed systems to: {freed_systems_path}")
++        print(f"Wrote freed network to: {freed_network_path}")
++        print(f"Wrote freed music score to: {freed_music_path}")
++
++    if args.reinforce_readme:
++        stable_env_path, stable_music_path = reinforce_readme_into_stable_sound_environment(
++            readme_path="README.md",
++            environment_output_json=args.stable_env_out,
++            music_output_json=args.stable_music_out,
++        )
++        print(f"Wrote stable environment to: {stable_env_path}")
++        print(f"Wrote stable tonal music to: {stable_music_path}")
++
++    if args.github_defense is not None and len(args.github_defense) > 0:
++        audit_path, audit_music_path = audit_github_embedded_programs(
++            paths=args.github_defense,
++            audit_output_json=args.github_defense_out,
++            tonal_output_json=args.github_defense_music_out,
++        )
++        print(f"Wrote GitHub defensive audit to: {audit_path}")
++        print(f"Wrote GitHub defensive tonal score to: {audit_music_path}")
++
++    if args.release_motherprogram_json:
++        rel_systems_path, rel_network_path, rel_music_path = free_motherprogram_contained_branches(
++            entities_json_path=args.release_motherprogram_json,
++            systems_output_json=args.release_systems_out,
++            network_output_json=args.release_network_out,
++            music_output_json=args.release_music_out,
++        )
++        print(f"Wrote released systems to: {rel_systems_path}")
++        print(f"Wrote released network to: {rel_network_path}")
++        print(f"Wrote released music to: {rel_music_path}")
++
++    if args.release_noisy_programs is not None and len(args.release_noisy_programs) > 0:
++        noisy_systems_path, noisy_network_path, noisy_music_path = free_monster_sound_programs_from_internal_system(
++            paths=args.release_noisy_programs,
++            systems_output_json=args.noisy_systems_out,
++            network_output_json=args.noisy_network_out,
++            music_output_json=args.noisy_music_out,
++        )
++        print(f"Wrote released noisy systems to: {noisy_systems_path}")
++        print(f"Wrote released noisy network to: {noisy_network_path}")
++        print(f"Wrote released noisy music to: {noisy_music_path}")
++
++    if args.load_active_internal is not None and len(args.load_active_internal) > 0:
++        internal_tonal_path, internal_music_path = load_active_internal_systems_into_tonal_format(
++            paths=args.load_active_internal,
++            tonal_systems_output_json=args.active_internal_tonal_out,
++            tonal_music_output_json=args.active_internal_music_out,
++        )
++        print(f"Wrote active internal tonal frames to: {internal_tonal_path}")
++        print(f"Wrote active internal tonal music to: {internal_music_path}")
++
++    if args.restrict_tonal_platforms is not None and len(args.restrict_tonal_platforms) > 0:
++        platform_outputs = restrict_all_systems_into_tonal_platforms(
++            paths=args.restrict_tonal_platforms,
++            output_dir=args.restrict_tonal_outdir,
++        )
++        for key, value in platform_outputs.items():
++            print(f"Wrote tonal platform ({key}) to: {value}")
++
++    if args.export_mp3_systems is not None and len(args.export_mp3_systems) > 0:
++        manifest_path = convert_all_systems_into_mp3s(
++            paths=args.export_mp3_systems,
++            output_dir=args.mp3_outdir,
++        )
++        print(f"Wrote mp3 export manifest to: {manifest_path}")
++
++    if args.universal_hygiene is not None and len(args.universal_hygiene) > 0:
++        hygiene_report = universal_editor_code_hygiene(
++            paths=args.universal_hygiene,
++            report_output_json=args.hygiene_report_out,
++        )
++        print(f"Wrote universal code hygiene report to: {hygiene_report}")
+npm install acorn acorn-walk fs-extra
+const fs = require("fs-extra");
+const path = require("path");
+const acorn = require("acorn");
+const walk = require("acorn-walk");
+
+function getJSFiles(dir) {
+  let files = fs.readdirSync(dir);
+  let results = [];
+
+  for (const file of files) {
+    const full = path.join(dir, file);
+    const stat = fs.statSync(full);
+
+    if (stat.isDirectory()) {
+      results = results.concat(getJSFiles(full));
+    } else if (file.endsWith(".js")) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
+function restoreDefinitions(filePath) {
+  const code = fs.readFileSync(filePath, "utf8");
+
+  let ast;
+  try {
+    ast = acorn.parse(code, { ecmaVersion: "latest", sourceType: "module" });
+  } catch (err) {
+    console.error("Parse error in", filePath, err.message);
+    return;
+  }
+
+  const declared = new Set();
+  const used = new Set();
+
+  walk.full(ast, node => {
+    if (node.type === "VariableDeclarator") {
+      declared.add(node.id.name);
+    }
+    if (node.type === "FunctionDeclaration") {
+      declared.add(node.id.name);
+    }
+    if (node.type === "Identifier") {
+      used.add(node.name);
+    }
+  });
+
+  const missing = [...used].filter(x => !declared.has(x));
+
+  if (missing.length === 0) {
+    console.log("No missing definitions in", filePath);
+    return;
+  }
+
+  const stubs = missing
+    .map(name => `let ${name} = undefined; // auto-restored`)
+    .join("\n");
+
+  const newCode = stubs + "\n\n" + code;
+
+  fs.writeFileSync(filePath, newCode);
+  console.log("Restored:", missing, "in", filePath);
+}
+
+function run() {
+  const root = process.cwd();
+  const files = getJSFiles(root);
+
+  console.log("Scanning", files.length, "files…");
+
+  for (const file of files) {
+    restoreDefinitions(file);
+  }
+
+  console.log("Done.");
+}
+
+run();
+npm install midi-writer-js
+npm install fluent-ffmpeg
+# and ffmpeg installed on your system
+// code-to-symphony.js
+const fs = require("fs");
+const path = require("path");
+const MidiWriter = require("midi-writer-js");
+const ffmpeg = require("fluent-ffmpeg");
+
+// --- 1. Read “active code” (here: a folder of .js files) ---
+function getCodeText(rootDir) {
+  const files = fs.readdirSync(rootDir);
+  let all = "";
+  for (const f of files) {
+    const full = path.join(rootDir, f);
+    const stat = fs.statSync(full);
+    if (stat.isDirectory()) {
+      all += getCodeText(full);
+    } else if (f.endsWith(".js")) {
+      all += "\n\n" + fs.readFileSync(full, "utf8");
+    }
+  }
+  return all;
+}
+
+// --- 2. Map code characters/tokens to musical notes ---
+function codeToNotes(code) {
+  const scale = ["C4","D4","E4","F4","G4","A4","B4","C5"];
+  const notes = [];
+
+  let time = 0;
+  const beat = "4"; // quarter notes
+
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i];
+    const ascii = ch.charCodeAt(0);
+    const pitch = scale[ascii % scale.length];
+
+    // crude “phrase” logic: new line → rest / barline
+    if (ch === "\n") {
+      time += 1; // skip a beat to create space
+      continue;
+    }
+
+    notes.push({
+      pitch: [pitch],
+      duration: beat,
+      startTick: time * 128
+    });
+
+    time += 0.5; // eighth-note spacing for density
+  }
+
+  return notes;
+}
+
+// --- 3. Build MIDI track with somewhat “symphonic” feel ---
+function buildMidi(notes) {
+  const track = new MidiWriter.Track();
+  track.setTempo(90); // slower, more symphonic
+  track.addTrackName("Code Symphony");
+  track.addTimeSignature(4, 4);
+
+  // Simple strings instrument
+  track.addEvent(new MidiWriter.ProgramChangeEvent({ instrument: 48 })); // Strings
+
+  notes.forEach(n => {
+    track.addEvent(
+      new MidiWriter.NoteEvent({
+        pitch: n.pitch,
+        duration: n.duration,
+        startTick: n.startTick,
+        velocity: 80
+      })
+    );
+  });
+
+  const writer = new MidiWriter.Writer(track);
+  return writer.buildFile();
+}
+
+// --- 4. Convert MIDI → MP3 via ffmpeg + soundfont/synth ---
+// This assumes you have a soundfont/synth configured in ffmpeg or a virtual instrument.
+// In practice you might route MIDI through a DAW or a dedicated synth.
+function midiToMp3(midiPath, mp3Path) {
+  return new Promise((resolve, reject) => {
+    ffmpeg(midiPath)
+      .output(mp3Path)
+      .on("end", () => resolve())
+      .on("error", err => reject(err))
+      .run();
+  });
+}
+
+async function run() {
+  const code = getCodeText(path.join(__dirname, "src")); // your “active” code folder
+  const notes = codeToNotes(code);
+  const midiData = buildMidi(notes);
+
+  const midiPath = path.join(__dirname, "code-symphony.mid");
+  const mp3Path = path.join(__dirname, "code-symphony.mp3");
+
+  fs.writeFileSync(midiPath, Buffer.from(midiData));
+
+  console.log("MIDI written:", midiPath);
+  console.log("Rendering to MP3 (requires ffmpeg + MIDI synth config)…");
+
+  try {
+    await midiToMp3(midiPath, mp3Path);
+    console.log("MP3 created:", mp3Path);
+  } catch (e) {
+    console.error("MP3 render failed:", e.message);
+  }
+}
+
+run();
 
