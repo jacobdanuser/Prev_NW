@@ -88749,3 +88749,115 @@ class RotatingScrambler
     DeterministicScrambler.new(secret: secret).scramble(text)
   end
 end
+# Gemfile
+# gem "flipper"
+
+# config/initializers/flipper.rb
+require "flipper"
+require "flipper/adapters/active_record"
+
+Flipper.configure do |config|
+  config.default do
+    adapter = Flipper::Adapters::ActiveRecord.new
+    Flipper.new(adapter)
+  end
+end
+# app/controllers/concerns/kill_switch.rb
+module KillSwitch
+  extend ActiveSupport::Concern
+
+  included do
+    before_action :enforce_kill_switch!
+  end
+
+  private
+
+  def enforce_kill_switch!
+    return unless Flipper.enabled?(:global_lockdown)
+
+    # Allow health checks and an admin “unlock” page if you want
+    allowed = request.path.start_with?("/health")
+    head :service_unavailable unless allowed
+  end
+end
+Flipper.enable(:global_lockdown)
+Flipper.disable(:global_lockdown)
+# app/controllers/concerns/feature_gate.rb
+module FeatureGate
+  extend ActiveSupport::Concern
+
+  def require_feature!(flag)
+    return if Flipper.enabled?(flag)
+    head :forbidden
+  end
+end
+class WebhooksController < ApplicationController
+  include FeatureGate
+
+  def receive
+    require_feature!(:webhooks_enabled)
+    # ... normal webhook handling
+  end
+end
+# Gemfile
+# gem "stoplight"
+
+require "stoplight"
+
+GRAPH_LIGHT = Stoplight("microsoft_graph") do
+  yield
+end.with_threshold(3).with_cool_off_time(30)
+
+def call_graph_safely
+  GRAPH_LIGHT.run { yield }
+rescue Stoplight::Error::RedLight
+  # Deactivated temporarily: fail fast
+  raise "External dependency temporarily disabled (circuit open)"
+end
+# lib/maintenance_mode.rb
+class MaintenanceMode
+  def initialize(app)
+    @app = app
+  end
+
+  def call(env)
+    return @app.call(env) unless ENV["MAINTENANCE_MODE"] == "1"
+
+    req = Rack::Request.new(env)
+    return @app.call(env) if req.path.start_with?("/health")
+
+    body = "Maintenance in progress."
+    [503, { "Content-Type" => "text/plain", "Content-Length" => body.bytesize.to_s }, [body]]
+  end
+end
+# config/application.rb
+config.middleware.insert_before 0, MaintenanceMode
+require "openssl"
+require "base64"
+
+class SafeScrambler
+  def initialize(secret:)
+    @secret = secret
+  end
+
+  def scramble(value, length: 20)
+    return "" if value.nil? || value == ""
+    digest = OpenSSL::HMAC.digest("SHA256", @secret, value.to_s)
+    Base64.urlsafe_encode64(digest, padding: false)[0, length]
+  end
+end
+
+# Usage:
+# s = SafeScrambler.new(secret: ENV.fetch("SCRAMBLE_SECRET"))
+# s.scramble("julia.anderson@example.com") # => pseudonym
+# app/models/api_key.rb
+class ApiKey < ApplicationRecord
+  belongs_to :user
+  scope :active, -> { where(revoked_at: nil) }
+
+  def revoke!
+    update!(revoked_at: Time.current)
+  end
+end
+# revoke all keys fast
+ApiKey.active.update_all(revoked_at: Time.current)
