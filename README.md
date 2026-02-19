@@ -71762,4 +71762,295 @@ index 511fed8bdc796640671c5b9e1717bb785137252a..ad8af77c9a8873925574fb6e8b4817eb
 +- `commands/*.txt` for volatile state snapshots
 +- `artifacts/` copied profile evidence (shell history, SSH, browser, cloud CLI, logs)
 +- `manifest.csv` with SHA-256 hashes and timestamps for chain-of-custody support
+diff --git a/forensic_collection.py b/forensic_collection.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..498ba647fa061a538f7dfaa2b1935364bdafc25c
+--- /dev/null
++++ b/forensic_collection.py
+@@ -0,0 +1,285 @@
++#!/usr/bin/env python3
++"""Read-only forensic collection utility.
++
++This script collects high-value forensic artifacts from local user profiles without
++modifying source evidence. It copies files into a timestamped case directory,
++records metadata, and emits SHA-256 hashes for chain-of-custody verification.
++"""
++
++from __future__ import annotations
++
++import argparse
++import csv
++import hashlib
++import json
++import os
++import platform
++import shutil
++import stat
++import sys
++from dataclasses import dataclass
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Iterable, Iterator, Sequence
++
++
++DEFAULT_PATHS = {
++    "linux": [
++        ".bash_history",
++        ".zsh_history",
++        ".ssh",
++        ".config",
++        ".local/share/recently-used.xbel",
++        ".mozilla",
++        ".cache/chromium",
++        ".config/google-chrome",
++    ],
++    "darwin": [
++        ".bash_history",
++        ".zsh_history",
++        ".ssh",
++        "Library/Safari",
++        "Library/Application Support/Google/Chrome",
++        "Library/Application Support/Firefox",
++        "Library/Preferences",
++    ],
++    "windows": [
++        "NTUSER.DAT",
++        "AppData/Roaming/Microsoft/Windows/Recent",
++        "AppData/Local/Google/Chrome/User Data",
++        "AppData/Roaming/Mozilla/Firefox/Profiles",
++        "AppData/Roaming/Microsoft/Windows/PowerShell/PSReadLine/ConsoleHost_history.txt",
++    ],
++}
++
++
++@dataclass
++class ArtifactRecord:
++    source: str
++    destination: str
++    status: str
++    size: int
++    mtime_utc: str
++    sha256: str
++    note: str = ""
++
++
++def utc_now() -> str:
++    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
++
++
++def detect_os_family() -> str:
++    system = platform.system().lower()
++    if "linux" in system:
++        return "linux"
++    if "darwin" in system or "mac" in system:
++        return "darwin"
++    if "windows" in system:
++        return "windows"
++    return "linux"
++
++
++def sha256_of_file(path: Path) -> str:
++    digest = hashlib.sha256()
++    with path.open("rb") as handle:
++        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
++            digest.update(chunk)
++    return digest.hexdigest()
++
++
++def safe_iter_paths(profile_root: Path, targets: Sequence[str]) -> Iterator[Path]:
++    for rel in targets:
++        candidate = (profile_root / rel).expanduser()
++        if candidate.exists():
++            yield candidate
++
++
++def ensure_parent(path: Path) -> None:
++    path.parent.mkdir(parents=True, exist_ok=True)
++
++
++def open_read_noatime(path: Path):
++    flags = os.O_RDONLY
++    if hasattr(os, "O_NOATIME"):
++        flags |= os.O_NOATIME
++    fd = os.open(path, flags)
++    return os.fdopen(fd, "rb")
++
++
++def copy_file_read_only(src: Path, dst: Path) -> None:
++    ensure_parent(dst)
++    with open_read_noatime(src) as in_f, dst.open("wb") as out_f:
++        shutil.copyfileobj(in_f, out_f, length=1024 * 1024)
++    src_stat = src.stat(follow_symlinks=False)
++    os.chmod(dst, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
++    os.utime(dst, (src_stat.st_atime, src_stat.st_mtime))
++
++
++def copy_tree_read_only(src_dir: Path, dst_dir: Path, records: list[ArtifactRecord]) -> None:
++    for root, dirs, files in os.walk(src_dir):
++        root_p = Path(root)
++        rel_root = root_p.relative_to(src_dir)
++        for d in dirs:
++            (dst_dir / rel_root / d).mkdir(parents=True, exist_ok=True)
++        for f in files:
++            src_f = root_p / f
++            dst_f = dst_dir / rel_root / f
++            try:
++                copy_file_read_only(src_f, dst_f)
++                src_stat = src_f.stat(follow_symlinks=False)
++                records.append(
++                    ArtifactRecord(
++                        source=str(src_f),
++                        destination=str(dst_f),
++                        status="copied",
++                        size=src_stat.st_size,
++                        mtime_utc=datetime.fromtimestamp(src_stat.st_mtime, tz=timezone.utc).isoformat(),
++                        sha256=sha256_of_file(dst_f),
++                    )
++                )
++            except Exception as exc:  # noqa: BLE001
++                records.append(
++                    ArtifactRecord(
++                        source=str(src_f),
++                        destination=str(dst_f),
++                        status="error",
++                        size=0,
++                        mtime_utc="",
++                        sha256="",
++                        note=str(exc),
++                    )
++                )
++
++
++def collect_profile(profile_root: Path, case_root: Path, os_family: str) -> list[ArtifactRecord]:
++    records: list[ArtifactRecord] = []
++    targets = DEFAULT_PATHS[os_family]
++
++    for source in safe_iter_paths(profile_root, targets):
++        destination = case_root / profile_root.name / source.relative_to(profile_root)
++        try:
++            if source.is_dir():
++                copy_tree_read_only(source, destination, records)
++            else:
++                copy_file_read_only(source, destination)
++                src_stat = source.stat(follow_symlinks=False)
++                records.append(
++                    ArtifactRecord(
++                        source=str(source),
++                        destination=str(destination),
++                        status="copied",
++                        size=src_stat.st_size,
++                        mtime_utc=datetime.fromtimestamp(src_stat.st_mtime, tz=timezone.utc).isoformat(),
++                        sha256=sha256_of_file(destination),
++                    )
++                )
++        except Exception as exc:  # noqa: BLE001
++            records.append(
++                ArtifactRecord(
++                    source=str(source),
++                    destination=str(destination),
++                    status="error",
++                    size=0,
++                    mtime_utc="",
++                    sha256="",
++                    note=str(exc),
++                )
++            )
++
++    return records
++
++
++def resolve_profiles(explicit_profiles: Sequence[str], os_family: str) -> list[Path]:
++    if explicit_profiles:
++        return [Path(p).expanduser().resolve() for p in explicit_profiles]
++
++    if os_family in {"linux", "darwin"}:
++        return [p for p in Path("/home").iterdir() if p.is_dir()] + ([Path("/root")] if Path("/root").exists() else [])
++
++    if os_family == "windows":
++        users_root = Path("C:/Users")
++        if users_root.exists():
++            return [p for p in users_root.iterdir() if p.is_dir()]
++
++    return [Path.home()]
++
++
++def write_reports(case_root: Path, records: Iterable[ArtifactRecord], metadata: dict) -> None:
++    recs = list(records)
++
++    csv_path = case_root / "collection_log.csv"
++    with csv_path.open("w", newline="", encoding="utf-8") as handle:
++        writer = csv.DictWriter(handle, fieldnames=list(ArtifactRecord.__dataclass_fields__.keys()))
++        writer.writeheader()
++        for row in recs:
++            writer.writerow(row.__dict__)
++
++    json_path = case_root / "collection_log.json"
++    json_path.write_text(json.dumps([r.__dict__ for r in recs], indent=2), encoding="utf-8")
++
++    manifest = {
++        "metadata": metadata,
++        "report_sha256": {
++            "collection_log.csv": sha256_of_file(csv_path),
++            "collection_log.json": sha256_of_file(json_path),
++        },
++    }
++    (case_root / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
++
++
++def parse_args(argv: Sequence[str]) -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description="Read-only forensic collection tool")
++    parser.add_argument("--output", default="./forensic_output", help="Output directory for case folders")
++    parser.add_argument("--case-id", default=None, help="Case identifier used in output path")
++    parser.add_argument(
++        "--profile",
++        action="append",
++        default=[],
++        help="Explicit profile path to collect (repeatable). Defaults to all local profiles.",
++    )
++    return parser.parse_args(argv)
++
++
++def main(argv: Sequence[str]) -> int:
++    args = parse_args(argv)
++    os_family = detect_os_family()
++    case_id = args.case_id or f"case-{utc_now()}"
++    case_root = Path(args.output).expanduser().resolve() / case_id
++    case_root.mkdir(parents=True, exist_ok=True)
++
++    profiles = resolve_profiles(args.profile, os_family)
++
++    all_records: list[ArtifactRecord] = []
++    for profile in profiles:
++        if not profile.exists():
++            all_records.append(
++                ArtifactRecord(
++                    source=str(profile),
++                    destination="",
++                    status="skipped",
++                    size=0,
++                    mtime_utc="",
++                    sha256="",
++                    note="profile path does not exist",
++                )
++            )
++            continue
++        all_records.extend(collect_profile(profile, case_root, os_family))
++
++    metadata = {
++        "case_id": case_id,
++        "created_utc": utc_now(),
++        "os_family": os_family,
++        "profiles": [str(p) for p in profiles],
++        "tool": "forensic_collection.py",
++        "read_only_design": True,
++    }
++    write_reports(case_root, all_records, metadata)
++
++    print(f"Collection complete: {case_root}")
++    print(f"Artifacts recorded: {len(all_records)}")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main(sys.argv[1:]))
 
