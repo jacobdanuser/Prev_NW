@@ -70748,4 +70748,230 @@ index 0000000000000000000000000000000000000000..352303324b614f99d8891d2a4cbcd29f
 +
 +if __name__ == "__main__":
 +    unittest.main()
+diff --git a/neural_interface_safeguard.py b/neural_interface_safeguard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b4780a00efe16c60cc6db450df77ebdfe9440e78
+--- /dev/null
++++ b/neural_interface_safeguard.py
+@@ -0,0 +1,154 @@
++"""Kardash Systems
++
++Complete rewrite of the prior safeguard code into a standalone "Kardash"
++systems engine with explicit lifecycle rules, policy gates, and activation
++controls.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from typing import Dict, Iterable, List
++
++
++class KardashSystemError(ValueError):
++    """Raised when a Kardash system is invalid or used incorrectly."""
++
++
++class SystemState(str, Enum):
++    DRAFT = "draft"
++    READY = "ready"
++    ACTIVE = "active"
++    FROZEN = "frozen"
++
++
++ALLOWED_LAYERS = {"core", "compute", "memory", "network", "governance"}
++ALLOWED_POLICY_LEVELS = {"open", "moderate", "strict"}
++
++
++@dataclass(frozen=True)
++class KardashSystem:
++    """Immutable representation of a Kardash system configuration."""
++
++    system_id: str
++    owner: str
++    layers: List[str] = field(default_factory=list)
++    policy_level: str = "moderate"
++    state: SystemState = SystemState.DRAFT
++    capabilities: List[str] = field(default_factory=list)
++    controls_enabled: bool = True
++
++
++def _normalize(items: Iterable[str]) -> List[str]:
++    return [str(item).strip().lower() for item in items if str(item).strip()]
++
++
++def create_kardash_system(spec: Dict[str, object]) -> KardashSystem:
++    """Create a Kardash system from raw spec with full validation."""
++
++    system_id = str(spec.get("system_id", "")).strip()
++    owner = str(spec.get("owner", "")).strip()
++    if not system_id:
++        raise KardashSystemError("system_id is required")
++    if not owner:
++        raise KardashSystemError("owner is required")
++
++    layers = _normalize(spec.get("layers", ["core", "compute", "memory"]))
++    if not layers:
++        raise KardashSystemError("layers cannot be empty")
++
++    invalid_layers = [layer for layer in layers if layer not in ALLOWED_LAYERS]
++    if invalid_layers:
++        raise KardashSystemError(f"invalid layers: {', '.join(sorted(set(invalid_layers)))}")
++
++    policy_level = str(spec.get("policy_level", "moderate")).strip().lower()
++    if policy_level not in ALLOWED_POLICY_LEVELS:
++        raise KardashSystemError(
++            f"policy_level must be one of: {', '.join(sorted(ALLOWED_POLICY_LEVELS))}"
++        )
++
++    capabilities = _normalize(spec.get("capabilities", ["orchestration", "telemetry"]))
++
++    return KardashSystem(
++        system_id=system_id,
++        owner=owner,
++        layers=layers,
++        policy_level=policy_level,
++        state=SystemState.DRAFT,
++        capabilities=capabilities,
++        controls_enabled=True,
++    )
++
++
++def prepare_system(system: KardashSystem) -> KardashSystem:
++    """Move a draft system into READY state after minimal checks."""
++
++    if system.state != SystemState.DRAFT:
++        raise KardashSystemError("system can only be prepared from draft state")
++    if "core" not in system.layers:
++        raise KardashSystemError("core layer is required")
++
++    return KardashSystem(
++        system_id=system.system_id,
++        owner=system.owner,
++        layers=system.layers,
++        policy_level=system.policy_level,
++        state=SystemState.READY,
++        capabilities=system.capabilities,
++        controls_enabled=system.controls_enabled,
++    )
++
++
++def activate_system(system: KardashSystem) -> KardashSystem:
++    """Activate a READY system if controls permit activation."""
++
++    if system.state != SystemState.READY:
++        raise KardashSystemError("system can only be activated from ready state")
++    if not system.controls_enabled:
++        raise KardashSystemError("controls must be enabled before activation")
++
++    return KardashSystem(
++        system_id=system.system_id,
++        owner=system.owner,
++        layers=system.layers,
++        policy_level=system.policy_level,
++        state=SystemState.ACTIVE,
++        capabilities=system.capabilities,
++        controls_enabled=system.controls_enabled,
++    )
++
++
++def freeze_system(system: KardashSystem) -> KardashSystem:
++    """Freeze a system to block further operation while preserving metadata."""
++
++    return KardashSystem(
++        system_id=system.system_id,
++        owner=system.owner,
++        layers=system.layers,
++        policy_level=system.policy_level,
++        state=SystemState.FROZEN,
++        capabilities=system.capabilities,
++        controls_enabled=False,
++    )
++
++
++def assert_operational(system: KardashSystem) -> None:
++    """Ensure a system is in an active, operationally valid state."""
++
++    if system.state != SystemState.ACTIVE:
++        raise KardashSystemError("system is not active")
++    if not system.controls_enabled:
++        raise KardashSystemError("system controls are disabled")
++
++
++__all__ = [
++    "KardashSystemError",
++    "SystemState",
++    "KardashSystem",
++    "create_kardash_system",
++    "prepare_system",
++    "activate_system",
++    "freeze_system",
++    "assert_operational",
++]
+diff --git a/test_neural_interface_safeguard.py b/test_neural_interface_safeguard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7e84ec7cf4249b1ac189fb5f0a5324b758f19008
+--- /dev/null
++++ b/test_neural_interface_safeguard.py
+@@ -0,0 +1,60 @@
++import unittest
++
++from neural_interface_safeguard import (
++    KardashSystemError,
++    SystemState,
++    activate_system,
++    assert_operational,
++    create_kardash_system,
++    freeze_system,
++    prepare_system,
++)
++
++
++class KardashSystemsTests(unittest.TestCase):
++    def test_full_lifecycle(self):
++        system = create_kardash_system(
++            {
++                "system_id": "kardash-001",
++                "owner": "ops-team",
++                "layers": ["core", "compute", "network"],
++                "policy_level": "strict",
++                "capabilities": ["orchestration", "autoscale"],
++            }
++        )
++        self.assertEqual(system.state, SystemState.DRAFT)
++
++        ready = prepare_system(system)
++        self.assertEqual(ready.state, SystemState.READY)
++
++        active = activate_system(ready)
++        self.assertEqual(active.state, SystemState.ACTIVE)
++        assert_operational(active)
++
++    def test_reject_invalid_layer(self):
++        with self.assertRaises(KardashSystemError):
++            create_kardash_system(
++                {
++                    "system_id": "kardash-002",
++                    "owner": "ops-team",
++                    "layers": ["core", "invalid"],
++                }
++            )
++
++    def test_reject_prepare_from_non_draft(self):
++        system = create_kardash_system({"system_id": "k3", "owner": "ops"})
++        frozen = freeze_system(system)
++        with self.assertRaises(KardashSystemError):
++            prepare_system(frozen)
++
++    def test_freeze_disables_controls(self):
++        system = create_kardash_system({"system_id": "k4", "owner": "ops"})
++        frozen = freeze_system(system)
++        self.assertEqual(frozen.state, SystemState.FROZEN)
++        self.assertFalse(frozen.controls_enabled)
++        with self.assertRaises(KardashSystemError):
++            assert_operational(frozen)
++
++
++if __name__ == "__main__":
++    unittest.main()
 
