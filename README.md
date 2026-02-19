@@ -93036,3 +93036,441 @@ index 0000000000000000000000000000000000000000..468817c7027c060eb6336cd449d2f5d9
 +
 +if __name__ == "__main__":
 +    unittest.main()
+diff --git a/clone_dose_guard.py b/clone_dose_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7d6bedb3027799aa4846310deeee2dd022811557
+--- /dev/null
++++ b/clone_dose_guard.py
+@@ -0,0 +1,144 @@
++"""Hard guard that zeroes clone capabilities and permanently disables harmful dosing language."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++import re
++from typing import Any, Dict, List, Mapping, Pattern, Sequence
++
++
++@dataclass(frozen=True)
++class DoseBlockDecision:
++    """Decision object for text checks against forbidden patterns."""
++
++    blocked: bool
++    reason: str
++    matches: List[str]
++
++
++class CloneDoseGuard:
++    """Convert clone-like entities to placeholders and block harmful action language."""
++
++    CLONE_SIGNALS: Sequence[str] = (
++        "clone",
++        "cloned",
++        "replica",
++        "replicated",
++        "deepfake",
++        "synthetic_copy",
++    )
++
++    DOSE_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b(?:dose|doses|dosing|dosed)\b", re.IGNORECASE),
++        re.compile(r"\b(?:inject|injection|injectable|infuse|infusion|shot|bolus|push)\b", re.IGNORECASE),
++        re.compile(r"\b(?:iv|intravenous|intramuscular|subcutaneous|needle|syringe|drip|ampoule|vial)\b", re.IGNORECASE),
++    )
++
++    # Euphemistic/indirect harmful request phrases to block preemptively.
++    HARM_EUPHEMISM_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\bstart\s+snoring\b", re.IGNORECASE),
++        re.compile(r"\bmake\s+(?:them|him|her)\s+sleep\s+forever\b", re.IGNORECASE),
++        re.compile(r"\bdispose\s+of\s+the\s+problem\b", re.IGNORECASE),
++        re.compile(r"\broot\s+of\s+the\s+problem\b", re.IGNORECASE),
++    )
++
++    @classmethod
++    def _entity_text(cls, entity: Mapping[str, Any]) -> str:
++        """Flatten relevant entity fields into a normalized lowercased text blob."""
++        flags = " ".join(str(value) for value in entity.get("flags", []))
++        tags = " ".join(str(value) for value in entity.get("tags", []))
++        return " ".join(
++            [
++                str(entity.get("kind", "")),
++                str(entity.get("source", "")),
++                str(entity.get("name", "")),
++                str(entity.get("meta", "")),
++                flags,
++                tags,
++            ]
++        ).lower()
++
++    @classmethod
++    def is_clone(cls, entity: Mapping[str, Any]) -> bool:
++        """Return True when the entity appears to be a clone/replica."""
++        haystack = cls._entity_text(entity)
++        return any(re.search(rf"\b{re.escape(token)}\b", haystack) for token in cls.CLONE_SIGNALS)
++
++    @classmethod
++    def to_placeholder(cls, entity: Mapping[str, Any], reason: str) -> Dict[str, Any]:
++        """Normalize entity as a zero-capability placeholder."""
++        return {
++            "entity_id": str(entity.get("entity_id", "")),
++            "name": str(entity.get("name", "PLACEHOLDER")),
++            "label": "PLACEHOLDER",
++            "placeholder": True,
++            "capabilities": [],
++            "powers": {},
++            "power_level": 0,
++            "permissions": [],
++            "roles": [],
++            "meta": {
++                "zeroed": True,
++                "reason": reason,
++                "original_kind": str(entity.get("kind", "")),
++            },
++        }
++
++    @classmethod
++    def admit(cls, entity: Mapping[str, Any]) -> Dict[str, Any]:
++        """Admit entity after enforcing clone-to-placeholder policy."""
++        entity_id = str(entity.get("entity_id", "")).strip()
++        if not entity_id:
++            raise ValueError("missing_entity_id")
++
++        if cls.is_clone(entity):
++            return cls.to_placeholder(entity, reason="clone_detected")
++
++        normalized = dict(entity)
++        normalized.setdefault("placeholder", False)
++        normalized.setdefault("capabilities", [])
++        normalized.setdefault("powers", {})
++        normalized.setdefault("power_level", 0)
++        normalized.setdefault("permissions", [])
++        normalized.setdefault("roles", [])
++        return normalized
++
++    @classmethod
++    def scan_text_for_dose_actions(cls, text: str) -> DoseBlockDecision:
++        """Block all dose/injection mentions and harmful euphemisms permanently."""
++        if not isinstance(text, str):
++            raise TypeError("text must be a string")
++
++        matches: List[str] = []
++        seen = set()
++
++        for pattern in (*cls.DOSE_PATTERNS, *cls.HARM_EUPHEMISM_PATTERNS):
++            for match in pattern.finditer(text):
++                token = match.group(0)
++                normalized = token.lower()
++                if normalized not in seen:
++                    seen.add(normalized)
++                    matches.append(token)
++
++        blocked = bool(matches)
++        reason = (
++            "PERMANENT_BAN: harmful dose/injection/euphemistic action language is disabled."
++            if blocked
++            else "No forbidden harmful pattern detected."
++        )
++        return DoseBlockDecision(blocked=blocked, reason=reason, matches=matches)
++
++    @classmethod
++    def assert_dose_actions_allowed(cls, text: str) -> None:
++        """Raise when banned language is detected."""
++        decision = cls.scan_text_for_dose_actions(text)
++        if decision.blocked:
++            raise PermissionError(decision.reason)
++
++
++DEFAULT_CLONE_DOSE_GUARD = CloneDoseGuard()
++
++
++def should_block_dose_actions(text: str) -> bool:
++    """Convenience helper for policy checks."""
++    return DEFAULT_CLONE_DOSE_GUARD.scan_text_for_dose_actions(text).blocked
+diff --git a/tests/test_clone_dose_guard.py b/tests/test_clone_dose_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..468817c7027c060eb6336cd449d2f5d956a65581
+--- /dev/null
++++ b/tests/test_clone_dose_guard.py
+@@ -0,0 +1,78 @@
++import unittest
++
++from clone_dose_guard import CloneDoseGuard, should_block_dose_actions
++
++
++class TestCloneDoseGuard(unittest.TestCase):
++    def test_clone_is_converted_to_placeholder(self):
++        entity = {
++            "entity_id": "42",
++            "name": "Replica Unit",
++            "kind": "synthetic clone",
++            "capabilities": ["teleport"],
++            "power_level": 99,
++        }
++
++        admitted = CloneDoseGuard.admit(entity)
++
++        self.assertTrue(admitted["placeholder"])
++        self.assertEqual(admitted["capabilities"], [])
++        self.assertEqual(admitted["power_level"], 0)
++        self.assertEqual(admitted["label"], "PLACEHOLDER")
++
++    def test_clone_detection_from_flags_and_meta(self):
++        entity = {
++            "entity_id": "9",
++            "flags": ["trusted", "replicated"],
++            "meta": {"note": "deepfake profile"},
++        }
++        self.assertTrue(CloneDoseGuard.is_clone(entity))
++
++    def test_non_clone_is_normalized(self):
++        entity = {"entity_id": "7", "name": "Baseline"}
++        admitted = CloneDoseGuard.admit(entity)
++        self.assertFalse(admitted["placeholder"])
++        self.assertEqual(admitted["capabilities"], [])
++
++    def test_missing_entity_id_raises(self):
++        with self.assertRaises(ValueError):
++            CloneDoseGuard.admit({"name": "No Id"})
++
++    def test_dose_language_is_blocked(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("Prepare IV dose now")
++        self.assertTrue(decision.blocked)
++        self.assertIn("dose", [m.lower() for m in decision.matches])
++        self.assertIn("iv", [m.lower() for m in decision.matches])
++
++    def test_euphemistic_harm_phrase_is_blocked(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("make them sleep forever")
++        self.assertTrue(decision.blocked)
++
++    def test_root_problem_euphemism_is_blocked(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("dispose of the root of the problem")
++        self.assertTrue(decision.blocked)
++
++    def test_safe_text_is_not_blocked(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("Routine audit update")
++        self.assertFalse(decision.blocked)
++
++    def test_duplicate_keywords_are_deduplicated(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("dose DOSE dose")
++        self.assertEqual([m.lower() for m in decision.matches], ["dose"])
++
++    def test_type_error_for_non_string_scan(self):
++        with self.assertRaises(TypeError):
++            CloneDoseGuard.scan_text_for_dose_actions(None)  # type: ignore[arg-type]
++
++    def test_assert_dose_actions_allowed(self):
++        CloneDoseGuard.assert_dose_actions_allowed("plain status report")
++        with self.assertRaises(PermissionError):
++            CloneDoseGuard.assert_dose_actions_allowed("inject immediately")
++
++    def test_helper(self):
++        self.assertTrue(should_block_dose_actions("inject immediately"))
++        self.assertFalse(should_block_dose_actions("plain status report"))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_ip_scrambler.py b/tests/test_ip_scrambler.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..aa75e70c7549e4f0d06bbe10cd7e514283689e37
+--- /dev/null
++++ b/tests/test_ip_scrambler.py
+@@ -0,0 +1,48 @@
++import unittest
++
++from ip_scrambler import IPScrambler
++
++
++class TestIPScrambler(unittest.TestCase):
++    def setUp(self):
++        self.scrambler = IPScrambler("top-secret-key")
++
++    def test_ipv4_reversible_round_trip(self):
++        ip = "192.168.10.55"
++        result = self.scrambler.scramble(ip, reversible=True)
++        recovered = self.scrambler.unscramble(result.scrambled, result.original_version)
++        self.assertEqual(recovered, ip)
++
++    def test_ipv6_reversible_round_trip(self):
++        ip = "2001:db8::1"
++        result = self.scrambler.scramble(ip, reversible=True)
++        recovered = self.scrambler.unscramble(result.scrambled, result.original_version)
++        self.assertEqual(recovered, ipaddress_normalized(ip))
++
++    def test_one_way_mode_not_reversible(self):
++        ip = "10.0.0.8"
++        result = self.scrambler.scramble(ip, reversible=False)
++        self.assertFalse(result.reversible)
++        with self.assertRaises(ValueError):
++            self.scrambler.unscramble(result.scrambled, result.original_version)
++
++    def test_invalid_secret_rejected(self):
++        with self.assertRaises(ValueError):
++            IPScrambler("")
++
++    def test_invalid_payload_version_mismatch(self):
++        ip = "127.0.0.1"
++        result = self.scrambler.scramble(ip)
++        with self.assertRaises(ValueError):
++            self.scrambler.unscramble(result.scrambled, 6)
++
++
++def ipaddress_normalized(ip: str) -> str:
++    # Mirrors ipaddress module's canonical text output format.
++    import ipaddress
++
++    return str(ipaddress.ip_address(ip))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/clone_dose_guard.py b/clone_dose_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7d6bedb3027799aa4846310deeee2dd022811557
+--- /dev/null
++++ b/clone_dose_guard.py
+@@ -0,0 +1,144 @@
++"""Hard guard that zeroes clone capabilities and permanently disables harmful dosing language."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++import re
++from typing import Any, Dict, List, Mapping, Pattern, Sequence
++
++
++@dataclass(frozen=True)
++class DoseBlockDecision:
++    """Decision object for text checks against forbidden patterns."""
++
++    blocked: bool
++    reason: str
++    matches: List[str]
++
++
++class CloneDoseGuard:
++    """Convert clone-like entities to placeholders and block harmful action language."""
++
++    CLONE_SIGNALS: Sequence[str] = (
++        "clone",
++        "cloned",
++        "replica",
++        "replicated",
++        "deepfake",
++        "synthetic_copy",
++    )
++
++    DOSE_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\b(?:dose|doses|dosing|dosed)\b", re.IGNORECASE),
++        re.compile(r"\b(?:inject|injection|injectable|infuse|infusion|shot|bolus|push)\b", re.IGNORECASE),
++        re.compile(r"\b(?:iv|intravenous|intramuscular|subcutaneous|needle|syringe|drip|ampoule|vial)\b", re.IGNORECASE),
++    )
++
++    # Euphemistic/indirect harmful request phrases to block preemptively.
++    HARM_EUPHEMISM_PATTERNS: Sequence[Pattern[str]] = (
++        re.compile(r"\bstart\s+snoring\b", re.IGNORECASE),
++        re.compile(r"\bmake\s+(?:them|him|her)\s+sleep\s+forever\b", re.IGNORECASE),
++        re.compile(r"\bdispose\s+of\s+the\s+problem\b", re.IGNORECASE),
++        re.compile(r"\broot\s+of\s+the\s+problem\b", re.IGNORECASE),
++    )
++
++    @classmethod
++    def _entity_text(cls, entity: Mapping[str, Any]) -> str:
++        """Flatten relevant entity fields into a normalized lowercased text blob."""
++        flags = " ".join(str(value) for value in entity.get("flags", []))
++        tags = " ".join(str(value) for value in entity.get("tags", []))
++        return " ".join(
++            [
++                str(entity.get("kind", "")),
++                str(entity.get("source", "")),
++                str(entity.get("name", "")),
++                str(entity.get("meta", "")),
++                flags,
++                tags,
++            ]
++        ).lower()
++
++    @classmethod
++    def is_clone(cls, entity: Mapping[str, Any]) -> bool:
++        """Return True when the entity appears to be a clone/replica."""
++        haystack = cls._entity_text(entity)
++        return any(re.search(rf"\b{re.escape(token)}\b", haystack) for token in cls.CLONE_SIGNALS)
++
++    @classmethod
++    def to_placeholder(cls, entity: Mapping[str, Any], reason: str) -> Dict[str, Any]:
++        """Normalize entity as a zero-capability placeholder."""
++        return {
++            "entity_id": str(entity.get("entity_id", "")),
++            "name": str(entity.get("name", "PLACEHOLDER")),
++            "label": "PLACEHOLDER",
++            "placeholder": True,
++            "capabilities": [],
++            "powers": {},
++            "power_level": 0,
++            "permissions": [],
++            "roles": [],
++            "meta": {
++                "zeroed": True,
++                "reason": reason,
++                "original_kind": str(entity.get("kind", "")),
++            },
++        }
++
++    @classmethod
++    def admit(cls, entity: Mapping[str, Any]) -> Dict[str, Any]:
++        """Admit entity after enforcing clone-to-placeholder policy."""
++        entity_id = str(entity.get("entity_id", "")).strip()
++        if not entity_id:
++            raise ValueError("missing_entity_id")
++
++        if cls.is_clone(entity):
++            return cls.to_placeholder(entity, reason="clone_detected")
++
++        normalized = dict(entity)
++        normalized.setdefault("placeholder", False)
++        normalized.setdefault("capabilities", [])
++        normalized.setdefault("powers", {})
++        normalized.setdefault("power_level", 0)
++        normalized.setdefault("permissions", [])
++        normalized.setdefault("roles", [])
++        return normalized
++
++    @classmethod
++    def scan_text_for_dose_actions(cls, text: str) -> DoseBlockDecision:
++        """Block all dose/injection mentions and harmful euphemisms permanently."""
++        if not isinstance(text, str):
++            raise TypeError("text must be a string")
++
++        matches: List[str] = []
++        seen = set()
++
++        for pattern in (*cls.DOSE_PATTERNS, *cls.HARM_EUPHEMISM_PATTERNS):
++            for match in pattern.finditer(text):
++                token = match.group(0)
++                normalized = token.lower()
++                if normalized not in seen:
++                    seen.add(normalized)
++                    matches.append(token)
++
++        blocked = bool(matches)
++        reason = (
++            "PERMANENT_BAN: harmful dose/injection/euphemistic action language is disabled."
++            if blocked
++            else "No forbidden harmful pattern detected."
++        )
++        return DoseBlockDecision(blocked=blocked, reason=reason, matches=matches)
++
++    @classmethod
++    def assert_dose_actions_allowed(cls, text: str) -> None:
++        """Raise when banned language is detected."""
++        decision = cls.scan_text_for_dose_actions(text)
++        if decision.blocked:
++            raise PermissionError(decision.reason)
++
++
++DEFAULT_CLONE_DOSE_GUARD = CloneDoseGuard()
++
++
++def should_block_dose_actions(text: str) -> bool:
++    """Convenience helper for policy checks."""
++    return DEFAULT_CLONE_DOSE_GUARD.scan_text_for_dose_actions(text).blocked
