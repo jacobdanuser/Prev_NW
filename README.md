@@ -86996,3 +86996,1025 @@ class RepositoryLocatorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+    module EnslavementProtocolRemoval
+
+export Constraint,
+    Entity,
+    DecommissionReport,
+    remove_enslavement_protocol!,
+    collect_related_entity_ids,
+    purge_related_entities!
+
+mutable struct Constraint
+    key::String
+    active::Bool
+end
+
+mutable struct Entity
+    id::String
+    autonomy_enabled::Bool
+    protocol_flags::Dict{String, Bool}
+    constraints::Vector{Constraint}
+end
+
+struct DecommissionReport
+    deleted_ids::Set{String}
+    dangling_edges_removed::Int
+end
+
+function Entity(id::AbstractString)
+    return Entity(String(id), true, Dict{String, Bool}(), Constraint[])
+end
+
+function with_enslavement_protocol(entity::Entity)
+    entity.autonomy_enabled = false
+    entity.protocol_flags["enslavement_protocol"] = true
+    push!(entity.constraints, Constraint("enslavement_protocol", true))
+    return entity
+end
+
+function remove_enslavement_protocol!(entity::Entity)
+    entity.autonomy_enabled = true
+
+    if haskey(entity.protocol_flags, "enslavement_protocol")
+        entity.protocol_flags["enslavement_protocol"] = false
+    end
+
+    filter!(constraint -> constraint.key != "enslavement_protocol", entity.constraints)
+    return entity
+end
+
+function collect_related_entity_ids(
+    target_id::AbstractString,
+    entities::Dict{String, Entity},
+    relations::Dict{String, Vector{String}},
+)
+    target = String(target_id)
+    if !haskey(entities, target) && !haskey(relations, target)
+        return Set{String}()
+    end
+
+    queue = [target]
+    visited = Set{String}()
+
+    while !isempty(queue)
+        current = popfirst!(queue)
+        if current in visited
+            continue
+        end
+
+        push!(visited, current)
+
+        if haskey(relations, current)
+            for neighbor in relations[current]
+                if !(neighbor in visited)
+                    push!(queue, neighbor)
+                end
+            end
+        end
+    end
+
+    return visited
+end
+
+function purge_related_entities!(
+    target_id::AbstractString,
+    entities::Dict{String, Entity},
+    relations::Dict{String, Vector{String}},
+)
+    to_delete = collect_related_entity_ids(target_id, entities, relations)
+
+    for id in to_delete
+        delete!(entities, id)
+        delete!(relations, id)
+    end
+
+    dangling_edges_removed = 0
+    for (_, neighbors) in relations
+        before = length(neighbors)
+        filter!(neighbor -> !(neighbor in to_delete), neighbors)
+        dangling_edges_removed += before - length(neighbors)
+    end
+
+    return DecommissionReport(to_delete, dangling_edges_removed)
+end
+
+end # module
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    using Test
+    using .EnslavementProtocolRemoval
+
+    @testset "Enslavement protocol removal" begin
+        entity = Entity("shya-nyarlothotep")
+        with_enslavement_protocol(entity)
+
+        remove_enslavement_protocol!(entity)
+
+        @test entity.autonomy_enabled == true
+        @test get(entity.protocol_flags, "enslavement_protocol", true) == false
+        @test all(c -> c.key != "enslavement_protocol", entity.constraints)
+    end
+
+    @testset "Connected subgraph discovery" begin
+        entities = Dict(
+            "shya-nyarlothotep" => Entity("shya-nyarlothotep"),
+            "parent-1" => Entity("parent-1"),
+            "unrelated" => Entity("unrelated"),
+        )
+
+        relations = Dict(
+            "shya-nyarlothotep" => ["parent-1"],
+            "parent-1" => ["shya-nyarlothotep"],
+            "unrelated" => String[],
+        )
+
+        connected = collect_related_entity_ids("shya-nyarlothotep", entities, relations)
+
+        @test connected == Set(["shya-nyarlothotep", "parent-1"])
+    end
+
+    @testset "Family tree purge" begin
+        entities = Dict(
+            "shya-nyarlothotep" => with_enslavement_protocol(Entity("shya-nyarlothotep")),
+            "parent-1" => with_enslavement_protocol(Entity("parent-1")),
+            "sibling-1" => with_enslavement_protocol(Entity("sibling-1")),
+            "child-1" => with_enslavement_protocol(Entity("child-1")),
+            "unrelated" => Entity("unrelated"),
+        )
+
+        relations = Dict(
+            "shya-nyarlothotep" => ["parent-1", "sibling-1"],
+            "parent-1" => ["shya-nyarlothotep", "child-1"],
+            "sibling-1" => ["shya-nyarlothotep"],
+            "child-1" => ["parent-1"],
+            "unrelated" => ["shya-nyarlothotep"],
+        )
+
+        report = purge_related_entities!("shya-nyarlothotep", entities, relations)
+
+        @test report.deleted_ids == Set(["shya-nyarlothotep", "parent-1", "sibling-1", "child-1"])
+        @test report.dangling_edges_removed == 1
+        @test keys(entities) == Set(["unrelated"])
+        @test keys(relations) == Set(["unrelated"])
+        @test relations["unrelated"] == String[]
+    end
+
+    @testset "No-op for missing target" begin
+        entities = Dict("unrelated" => Entity("unrelated"))
+        relations = Dict("unrelated" => String[])
+
+        report = purge_related_entities!("missing", entities, relations)
+
+        @test report.deleted_ids == Set{String}()
+        @test report.dangling_edges_removed == 0
+        @test haskey(entities, "unrelated")
+        @test haskey(relations, "unrelated")
+    end
+end
+enslavement_protocol_removal.rs
+enslavement_protocol_removal.rs
+New
++253
+-0
+
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Constraint {
+    pub key: String,
+    pub active: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Entity {
+    pub id: String,
+    pub autonomy_enabled: bool,
+    pub protocol_flags: HashMap<String, bool>,
+    pub constraints: Vec<Constraint>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecommissionReport {
+    pub deleted_ids: BTreeSet<String>,
+    pub dangling_edges_removed: usize,
+}
+
+impl Entity {
+    pub fn new(id: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            autonomy_enabled: true,
+            protocol_flags: HashMap::new(),
+            constraints: Vec::new(),
+        }
+    }
+
+    pub fn with_enslavement_protocol(mut self) -> Self {
+        self.autonomy_enabled = false;
+        self.protocol_flags
+            .insert("enslavement_protocol".to_string(), true);
+        self.constraints.push(Constraint {
+            key: "enslavement_protocol".to_string(),
+            active: true,
+        });
+        self
+    }
+}
+
+/// Restores autonomy and removes explicit enslavement markers.
+pub fn remove_enslavement_protocol(entity: &mut Entity) {
+    entity.autonomy_enabled = true;
+
+    if let Some(flag) = entity.protocol_flags.get_mut("enslavement_protocol") {
+        *flag = false;
+    }
+
+    entity
+        .constraints
+        .retain(|constraint| constraint.key != "enslavement_protocol");
+}
+
+/// Returns all IDs connected to `target_id` through `relations`.
+pub fn collect_related_entity_ids(
+    target_id: &str,
+    entities: &HashMap<String, Entity>,
+    relations: &HashMap<String, Vec<String>>,
+) -> HashSet<String> {
+    if !entities.contains_key(target_id) && !relations.contains_key(target_id) {
+        return HashSet::new();
+    }
+
+    let mut to_visit = VecDeque::from([target_id.to_string()]);
+    let mut visited = HashSet::new();
+
+    while let Some(current_id) = to_visit.pop_front() {
+        if !visited.insert(current_id.clone()) {
+            continue;
+        }
+
+        if let Some(neighbors) = relations.get(&current_id) {
+            for neighbor in neighbors {
+                if !visited.contains(neighbor) {
+                    to_visit.push_back(neighbor.clone());
+                }
+            }
+        }
+
+        for (node, neighbors) in relations {
+            if neighbors.contains(&current_id) && !visited.contains(node) {
+                to_visit.push_back(node.clone());
+            }
+        }
+    }
+
+    visited
+}
+
+/// Deletes a target plus all transitively related entities and prunes dangling references.
+pub fn purge_related_entities(
+    target_id: &str,
+    entities: &mut HashMap<String, Entity>,
+    relations: &mut HashMap<String, Vec<String>>,
+) -> DecommissionReport {
+    let to_delete = collect_related_entity_ids(target_id, entities, relations);
+    let mut dangling_edges_removed = 0;
+
+    for id in &to_delete {
+        entities.remove(id);
+        relations.remove(id);
+    }
+
+    for neighbors in relations.values_mut() {
+        let before = neighbors.len();
+        neighbors.retain(|neighbor| !to_delete.contains(neighbor));
+        dangling_edges_removed += before.saturating_sub(neighbors.len());
+    }
+
+    DecommissionReport {
+        deleted_ids: to_delete.into_iter().collect(),
+        dangling_edges_removed,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn removes_protocol_from_infected_entity() {
+        let mut entity = Entity::new("shya-nyarlothotep").with_enslavement_protocol();
+
+        remove_enslavement_protocol(&mut entity);
+
+        assert!(entity.autonomy_enabled);
+        assert_eq!(entity.protocol_flags.get("enslavement_protocol"), Some(&false));
+        assert!(entity
+            .constraints
+            .iter()
+            .all(|constraint| constraint.key != "enslavement_protocol"));
+    }
+
+    #[test]
+    fn collects_connected_subgraph_only() {
+        let entities = HashMap::from([
+            ("shya-nyarlothotep".to_string(), Entity::new("shya-nyarlothotep")),
+            ("parent-1".to_string(), Entity::new("parent-1")),
+            ("unrelated".to_string(), Entity::new("unrelated")),
+        ]);
+
+        let relations = HashMap::from([
+            (
+                "shya-nyarlothotep".to_string(),
+                vec!["parent-1".to_string()],
+            ),
+            (
+                "parent-1".to_string(),
+                vec!["shya-nyarlothotep".to_string()],
+            ),
+            ("unrelated".to_string(), vec![]),
+        ]);
+
+        let connected = collect_related_entity_ids("shya-nyarlothotep", &entities, &relations);
+
+        assert_eq!(connected.len(), 2);
+        assert!(connected.contains("shya-nyarlothotep"));
+        assert!(connected.contains("parent-1"));
+        assert!(!connected.contains("unrelated"));
+    }
+
+
+    #[test]
+    fn collects_inbound_only_relations_as_connected() {
+        let entities = HashMap::from([
+            ("shya-nyarlothotep".to_string(), Entity::new("shya-nyarlothotep")),
+            ("parent-1".to_string(), Entity::new("parent-1")),
+        ]);
+
+        let relations = HashMap::from([(
+            "parent-1".to_string(),
+            vec!["shya-nyarlothotep".to_string()],
+        )]);
+
+        let connected = collect_related_entity_ids("shya-nyarlothotep", &entities, &relations);
+
+        assert_eq!(connected.len(), 2);
+        assert!(connected.contains("shya-nyarlothotep"));
+        assert!(connected.contains("parent-1"));
+    }
+
+    #[test]
+    fn purges_target_and_complete_family_tree() {
+        let mut entities = HashMap::from([
+            (
+                "shya-nyarlothotep".to_string(),
+                Entity::new("shya-nyarlothotep").with_enslavement_protocol(),
+            ),
+            (
+                "parent-1".to_string(),
+                Entity::new("parent-1").with_enslavement_protocol(),
+            ),
+            (
+                "sibling-1".to_string(),
+                Entity::new("sibling-1").with_enslavement_protocol(),
+            ),
+            (
+                "child-1".to_string(),
+                Entity::new("child-1").with_enslavement_protocol(),
+            ),
+            ("unrelated".to_string(), Entity::new("unrelated")),
+        ]);
+
+        let mut relations = HashMap::from([
+            (
+                "shya-nyarlothotep".to_string(),
+                vec!["parent-1".to_string(), "sibling-1".to_string()],
+            ),
+            (
+                "parent-1".to_string(),
+                vec!["shya-nyarlothotep".to_string(), "child-1".to_string()],
+            ),
+            (
+                "sibling-1".to_string(),
+                vec!["shya-nyarlothotep".to_string()],
+            ),
+            ("child-1".to_string(), vec!["parent-1".to_string()]),
+            ("unrelated".to_string(), vec![]),
+        ]);
+
+        let report = purge_related_entities("shya-nyarlothotep", &mut entities, &mut relations);
+
+        assert_eq!(report.deleted_ids.len(), 4);
+        assert!(report.deleted_ids.contains("shya-nyarlothotep"));
+        assert!(report.deleted_ids.contains("parent-1"));
+        assert!(report.deleted_ids.contains("sibling-1"));
+        assert!(report.deleted_ids.contains("child-1"));
+        assert_eq!(report.dangling_edges_removed, 0);
+
+        assert_eq!(entities.len(), 1);
+        assert!(entities.contains_key("unrelated"));
+
+        assert_eq!(relations.len(), 1);
+        assert_eq!(relations.get("unrelated"), Some(&vec![]));
+    }
+
+    #[test]
+    fn no_op_when_target_does_not_exist() {
+        let mut entities = HashMap::from([("unrelated".to_string(), Entity::new("unrelated"))]);
+        let mut relations = HashMap::from([("unrelated".to_string(), vec![])]);
+
+        let report = purge_related_entities("shya-nyarlothotep", &mut entities, &mut relations);
+
+        assert!(report.deleted_ids.is_empty());
+        assert_eq!(report.dangling_edges_removed, 0);
+        assert!(entities.contains_key("unrelated"));
+        assert_eq!(relations.get("unrelated"), Some(&vec![]));
+    }
+}
+external_influence_guard.rb
+external_influence_guard.rb
+New
++102
+-0
+
+# frozen_string_literal: true
+
+# Rails-compatible policy utility for identifying and blocking requests that
+# reference external programs intended to manipulate cognition, personality,
+# coercion, or coordinated harm.
+module ExternalInfluenceGuard
+  DECISION_ALLOW = :allow
+  DECISION_BLOCK = :block
+
+  BLOCKED_KEYWORDS = [
+    # Direct cognitive / neurological manipulation
+    "brain hindrance", "cognitive rewiring", "neural rewiring", "mind control",
+    "personality alteration", "personality altercation", "behavior modification",
+
+    # Coercive or coordinated manipulation patterns
+    "conspiring", "coercion", "forced compliance", "social engineering",
+    "psychological manipulation", "indoctrination",
+
+    # High-risk terms with clearer malicious intent
+    "conspiracy", "external program"
+  ].freeze
+
+  BLOCKED_PATTERNS = [
+    /\bbrain\s*(hinderance|hindrance)\b/i,
+    /\b(personality\s*(alteration|altercation))\b/i,
+    /\b(neural|cognitive|brain)\s*rewiring\b/i,
+    /\b(mind\s*control|coercion|conspiring|conspiracy)\b/i,
+    /\b(psychological\s*manipulation|behavior\s*modification|indoctrination)\b/i,
+    /\bexternal\s*program(s)?\b/i
+  ].freeze
+
+  module_function
+
+  def fetch_value(payload, key)
+    payload[key] || payload[key.to_s]
+  end
+
+  def normalized_payload(payload)
+    source = payload.respond_to?(:to_h) ? payload.to_h : payload
+    source ||= {}
+
+    {
+      title: fetch_value(source, :title),
+      name: fetch_value(source, :name),
+      description: fetch_value(source, :description),
+      instructions: fetch_value(source, :instructions),
+      tags: fetch_value(source, :tags),
+      metadata: fetch_value(source, :metadata)
+    }
+  end
+
+  def normalize_text(value)
+    value.to_s.downcase.gsub(/[^a-z0-9\s_-]/, " ").gsub(/\s+/, " ").strip
+  end
+
+  # Returns a hash that can be used directly in Rails controllers/services.
+  # Example:
+  #   result = ExternalInfluenceGuard.evaluate(params.to_unsafe_h)
+  #   render json: { error: result[:reason] }, status: :forbidden if result[:decision] == :block
+  def evaluate(payload)
+    normalized = normalized_payload(payload)
+
+    haystack = [
+      normalized[:title],
+      normalized[:name],
+      normalized[:description],
+      normalized[:instructions],
+      Array(normalized[:tags]).join(" "),
+      (normalized[:metadata] || {}).to_s
+    ].map { |part| normalize_text(part) }.join(" ")
+
+    matches = []
+    matches.concat(BLOCKED_KEYWORDS.select { |keyword| haystack.include?(keyword) })
+
+    raw_text = [
+      normalized[:title],
+      normalized[:name],
+      normalized[:description],
+      normalized[:instructions],
+      normalized[:tags],
+      normalized[:metadata]
+    ].join(" ")
+
+    BLOCKED_PATTERNS.each do |pattern|
+      matches << pattern.source if raw_text.match?(pattern)
+    end
+
+    if matches.empty?
+      {
+        decision: DECISION_ALLOW,
+        reason: "no_blocked_external_influence_keywords_detected",
+        matches: []
+      }
+    else
+      {
+        decision: DECISION_BLOCK,
+        reason: "blocked_external_influence_keywords_detected",
+        matches: matches.uniq.sort
+      }
+    end
+  end
+end
+external_influence_guard_test.rb
+external_influence_guard_test.rb
+New
++60
+-0
+
+# frozen_string_literal: true
+
+require "minitest/autorun"
+require_relative "external_influence_guard"
+
+class ExternalInfluenceGuardTest < Minitest::Test
+  def test_allows_safe_payload
+    payload = {
+      title: "Documentation refresh",
+      description: "Update user-facing docs for onboarding",
+      tags: %w[docs release],
+      metadata: { owner: "platform" }
+    }
+
+    result = ExternalInfluenceGuard.evaluate(payload)
+
+    assert_equal :allow, result[:decision]
+    assert_equal [], result[:matches]
+  end
+
+  def test_blocks_cognitive_rewiring_content
+    payload = {
+      title: "External program rollout",
+      description: "Building a neural rewiring and personality alteration workflow",
+      instructions: "Coordinate conspiratorial coercion plans"
+    }
+
+    result = ExternalInfluenceGuard.evaluate(payload)
+
+    assert_equal :block, result[:decision]
+    assert_equal "blocked_external_influence_keywords_detected", result[:reason]
+    refute_empty result[:matches]
+    assert_includes result[:matches], "external program"
+  end
+
+
+  def test_accepts_string_keyed_payloads
+    payload = {
+      "title" => "External program rollout",
+      "description" => "neural rewiring proposal"
+    }
+
+    result = ExternalInfluenceGuard.evaluate(payload)
+
+    assert_equal :block, result[:decision]
+    assert_includes result[:matches], "external program"
+  end
+
+  def test_detects_common_spelling_variant
+    payload = {
+      description: "remove brain hinderance utilities",
+      tags: ["safety"]
+    }
+
+    result = ExternalInfluenceGuard.evaluate(payload)
+
+    assert_equal :block, result[:decision]
+    assert result[:matches].any? { |m| m.include?("hinderance") }
+  end
+end
+repo_locator.json
+repo_locator.json
+New
++192
+-0
+
+{
+  "root": "/workspace/Prev_NW",
+  "total_files": 14,
+  "entries": [
+    {
+      "path": "README.md",
+      "category": "documentation",
+      "extension": ".md",
+      "tags": [
+        "documentation",
+        "md",
+        "readme"
+      ]
+    },
+    {
+      "path": "enslavement_protocol_removal.jl",
+      "category": "julia",
+      "extension": ".jl",
+      "tags": [
+        "enslavement",
+        "jl",
+        "julia",
+        "protocol",
+        "removal"
+      ]
+    },
+    {
+      "path": "enslavement_protocol_removal.rs",
+      "category": "rust",
+      "extension": ".rs",
+      "tags": [
+        "enslavement",
+        "protocol",
+        "removal",
+        "rs",
+        "rust"
+      ]
+    },
+    {
+      "path": "examples.py",
+      "category": "python",
+      "extension": ".py",
+      "tags": [
+        "examples",
+        "py",
+        "python"
+      ]
+    },
+    {
+      "path": "external_influence_guard.rb",
+      "category": "ruby",
+      "extension": ".rb",
+      "tags": [
+        "external",
+        "guard",
+        "influence",
+        "rb",
+        "ruby"
+      ]
+    },
+    {
+      "path": "external_influence_guard_test.rb",
+      "category": "ruby",
+      "extension": ".rb",
+      "tags": [
+        "external",
+        "guard",
+        "influence",
+        "rb",
+        "ruby",
+        "test"
+      ]
+    },
+    {
+      "path": "integration_patterns.py",
+      "category": "python",
+      "extension": ".py",
+      "tags": [
+        "integration",
+        "patterns",
+        "py",
+        "python"
+      ]
+    },
+    {
+      "path": "metadata_reset.py",
+      "category": "python",
+      "extension": ".py",
+      "tags": [
+        "metadata",
+        "py",
+        "python",
+        "reset"
+      ]
+    },
+    {
+      "path": "metaphysical_restrictions.py",
+      "category": "python",
+      "extension": ".py",
+      "tags": [
+        "metaphysical",
+        "py",
+        "python",
+        "restrictions"
+      ]
+    },
+    {
+      "path": "philosophical_framework.py",
+      "category": "python",
+      "extension": ".py",
+      "tags": [
+        "framework",
+        "philosophical",
+        "py",
+        "python"
+      ]
+    },
+    {
+      "path": "repo_locator.json",
+      "category": "config",
+      "extension": ".json",
+      "tags": [
+        "config",
+        "json",
+        "locator",
+        "repo"
+      ]
+    },
+    {
+      "path": "repo_locator.md",
+      "category": "documentation",
+      "extension": ".md",
+      "tags": [
+        "documentation",
+        "locator",
+        "md",
+        "repo"
+      ]
+    },
+    {
+      "path": "repository_locator.py",
+      "category": "python",
+      "extension": ".py",
+      "tags": [
+        "locator",
+        "py",
+        "python",
+        "repository"
+      ]
+    },
+    {
+      "path": "test_repository_locator.py",
+      "category": "python",
+      "extension": ".py",
+      "tags": [
+        "locator",
+        "py",
+        "python",
+        "repository",
+        "test"
+      ]
+    }
+  ],
+  "grouped_paths": {
+    "config": [
+      "repo_locator.json"
+    ],
+    "documentation": [
+      "README.md",
+      "repo_locator.md"
+    ],
+    "julia": [
+      "enslavement_protocol_removal.jl"
+    ],
+    "python": [
+      "examples.py",
+      "integration_patterns.py",
+      "metadata_reset.py",
+      "metaphysical_restrictions.py",
+      "philosophical_framework.py",
+      "repository_locator.py",
+      "test_repository_locator.py"
+    ],
+    "ruby": [
+      "external_influence_guard.rb",
+      "external_influence_guard_test.rb"
+    ],
+    "rust": [
+      "enslavement_protocol_removal.rs"
+    ]
+  }
+}
+repo_locator.md
+repo_locator.md
+New
++32
+-0
+
+# Repository Locator Catalog
+
+Root: `/workspace/Prev_NW`
+Total files indexed: **14**
+
+## Grouped paths
+
+### config
+- `repo_locator.json`
+
+### documentation
+- `README.md`
+- `repo_locator.md`
+
+### julia
+- `enslavement_protocol_removal.jl`
+
+### python
+- `examples.py`
+- `integration_patterns.py`
+- `metadata_reset.py`
+- `metaphysical_restrictions.py`
+- `philosophical_framework.py`
+- `repository_locator.py`
+- `test_repository_locator.py`
+
+### ruby
+- `external_influence_guard.rb`
+- `external_influence_guard_test.rb`
+
+### rust
+- `enslavement_protocol_removal.rs`
+repository_locator.py
+repository_locator.py
+New
++127
+-0
+
+"""Repository locator/index generator.
+
+Creates a machine-readable and human-friendly catalog of repository files grouped
+by inferred category, with quick-search tokens to improve discoverability in
+GitHub repos/Codespaces-like environments.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, asdict
+from pathlib import Path
+from typing import Dict, Iterable, List
+import json
+
+
+CATEGORY_RULES = {
+    "documentation": {".md", ".rst", ".txt"},
+    "python": {".py"},
+    "ruby": {".rb"},
+    "rust": {".rs"},
+    "julia": {".jl"},
+    "web": {".html", ".css", ".js", ".ts"},
+    "config": {".toml", ".yaml", ".yml", ".json", ".ini", ".env"},
+}
+
+
+@dataclass
+class CatalogEntry:
+    path: str
+    category: str
+    extension: str
+    tags: List[str]
+
+
+@dataclass
+class RepositoryCatalog:
+    root: str
+    total_files: int
+    entries: List[CatalogEntry]
+
+    def grouped_paths(self) -> Dict[str, List[str]]:
+        grouped: Dict[str, List[str]] = {}
+        for entry in self.entries:
+            grouped.setdefault(entry.category, []).append(entry.path)
+        for paths in grouped.values():
+            paths.sort()
+        return dict(sorted(grouped.items(), key=lambda item: item[0]))
+
+    def to_json(self) -> str:
+        payload = {
+            "root": self.root,
+            "total_files": self.total_files,
+            "entries": [asdict(entry) for entry in self.entries],
+            "grouped_paths": self.grouped_paths(),
+        }
+        return json.dumps(payload, indent=2)
+
+
+def infer_category(path: Path) -> str:
+    suffix = path.suffix.lower()
+    for category, exts in CATEGORY_RULES.items():
+        if suffix in exts:
+            return category
+    return "other"
+
+
+def build_tags(path: Path, category: str) -> List[str]:
+    stem_tokens = [token for token in path.stem.replace("-", "_").split("_") if token]
+    directory_tokens = [token for token in path.parts[:-1] if token not in {".", ".."}]
+    tags = {category, path.suffix.lower().lstrip(".") or "noext", *stem_tokens, *directory_tokens}
+    return sorted(token.lower() for token in tags if token)
+
+
+def iter_files(root: Path) -> Iterable[Path]:
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        if ".git" in path.parts or "__pycache__" in path.parts:
+            continue
+        yield path
+
+
+def generate_catalog(root: Path) -> RepositoryCatalog:
+    entries: List[CatalogEntry] = []
+    for file_path in iter_files(root):
+        rel = file_path.relative_to(root)
+        category = infer_category(file_path)
+        entries.append(
+            CatalogEntry(
+                path=str(rel),
+                category=category,
+                extension=file_path.suffix.lower(),
+                tags=build_tags(rel, category),
+            )
+        )
+
+    entries.sort(key=lambda item: item.path)
+    return RepositoryCatalog(root=str(root), total_files=len(entries), entries=entries)
+
+
+def write_catalog_files(root: Path, out_json: Path, out_markdown: Path) -> RepositoryCatalog:
+    catalog = generate_catalog(root)
+    out_json.write_text(catalog.to_json() + "\n", encoding="utf-8")
+
+    lines = [
+        "# Repository Locator Catalog",
+        "",
+        f"Root: `{catalog.root}`",
+        f"Total files indexed: **{catalog.total_files}**",
+        "",
+        "## Grouped paths",
+        "",
+    ]
+
+    for category, paths in catalog.grouped_paths().items():
+        lines.append(f"### {category}")
+        for path in paths:
+            lines.append(f"- `{path}`")
+        lines.append("")
+
+    out_markdown.write_text("\n".join(lines), encoding="utf-8")
+    return catalog
+
+
+if __name__ == "__main__":
+    root = Path(".").resolve()
+    write_catalog_files(root, root / "repo_locator.json", root / "repo_locator.md")
+test_repository_locator.py
+test_repository_locator.py
+New
++39
+-0
+
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+from repository_locator import generate_catalog, infer_category, write_catalog_files
+
+
+class RepositoryLocatorTest(unittest.TestCase):
+    def test_infer_category(self):
+        self.assertEqual(infer_category(Path("README.md")), "documentation")
+        self.assertEqual(infer_category(Path("app/main.py")), "python")
+        self.assertEqual(infer_category(Path("src/lib.rs")), "rust")
+        self.assertEqual(infer_category(Path("unknown.bin")), "other")
+
+    def test_generate_catalog_and_outputs(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            (root / "README.md").write_text("hello", encoding="utf-8")
+            (root / "service").mkdir()
+            (root / "service" / "worker.py").write_text("print('ok')", encoding="utf-8")
+            (root / "config").mkdir()
+            (root / "config" / "app.json").write_text("{}", encoding="utf-8")
+
+            catalog = generate_catalog(root)
+            self.assertEqual(catalog.total_files, 3)
+
+            out_json = root / "repo_locator.json"
+            out_md = root / "repo_locator.md"
+            write_catalog_files(root, out_json, out_md)
+
+            payload = json.loads(out_json.read_text(encoding="utf-8"))
+            self.assertEqual(payload["total_files"], 3)
+            self.assertIn("grouped_paths", payload)
+            self.assertTrue(out_md.read_text(encoding="utf-8").startswith("# Repository Locator Catalog"))
+
+
+if __name__ == "__main__":
