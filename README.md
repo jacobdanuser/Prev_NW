@@ -82464,3 +82464,695 @@ if __name__ == "__main__":
     print(f"Exported patterns: {len(files)}")
     for f in files:
         print(f" - {f}")
+  @@ -38293,51 +38293,51 @@ module Sonprogram
+  # Public API: keep this stable so other code can depend on it.
+  def self.run(input: nil, **opts)
+    input ||= ""
+    # TODO: move Sonprogram core behavior here
+    {
+      ok: true,
+      input_size: input.bytesize,
+      options: opts
+    }
+  end
+end
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "sonprogram"
+require "json"
+
+input = STDIN.read
+result = Sonprogram.run(input: input)
+
+puts JSON.pretty_generate(result)
+chmod +x exe/sonprogram
+spec.executables = ["sonprogram"]
+bundle exec rake build
+echo "hello" | bundle exec exe/sonprogram
+/playwarcraftsoundinheads
+/playambientsound
+diff --git a/program_music_absorber.py b/program_music_absorber.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..45fd67ac01fc31a25075da2c1b221b4d2fadd9f2
+--- /dev/null
++++ b/program_music_absorber.py
+@@ -0,0 +1,945 @@
++"""Convert program structures into symbolic music and code communication.
++
++This module provides four layers:
++1) Program -> symbolic music score.
++2) Speaking-system override -> code-first communication packets.
++3) Entity profile rewrite -> system profiles absorbed into the score.
++4) Absolute network absorption -> connect every module/system/mechanism into one graph.
++"""
++
++from __future__ import annotations
++
++from dataclasses import asdict, dataclass, field
++from pathlib import Path
++import hashlib
++import json
++import math
++import re
++from typing import Any, Iterable
++
+@@ -74706,25 +74706,43 @@ index 2443ccb7c89f840621582951f42986372b6249bc..4a9024998ee3df19e049cc095f2391df
++            if cleaned_value == "":
++                continue
++            if cleaned_value == []:
++                continue
++            if cleaned_value == {}:
++                continue
++            cleaned[key] = cleaned_value
++        return cleaned
++
++    if isinstance(payload, list):
++        cleaned_items = []
++        for item in payload:
++            cleaned_item = remove_psychological_influence_content(item)
++            if cleaned_item in (None, "", [], {}):
++                continue
++            cleaned_items.append(cleaned_item)
++        return cleaned_items
++
++    if isinstance(payload, str):
++        if _contains_psychological_influence(payload):
++            return ""
++        return payload
++
++    return payload
+
+
+## MAAT keyword expansion utility
+
+Added `maat_keyword_expander.py` to generate a very large MAAT-related keyword set (hundreds of thousands) with slight variants and compact HTML rendering that color-highlights the `maat` token while keeping output on a condensed line.
+
+## Mythic keyword sanitizer utility
+
+Added `mythic_keyword_sanitizer.py` to generate large neutralized keyword sets across Ancient Nubia/Egypt, Greece/Athens, Rome, Enochian terms, mother/mothership archetypes, and fictitious entities.
+
+The script normalizes names (removing stylized markers), filters harmful/destructive tokens, and renders compact HTML output with colored highlights for key focus terms.
+
+## Ethical code sanitizer utility
+
+Added `ethical_code_sanitizer.py` as a safety-first replacement workflow that neutralizes hostile/manipulative wording and applies benign substitutions instead of adversarial transformations.
+
+## Geometry + trigonometry pattern atlas
+
+Added `geometry_trig_pattern_atlas.py`, a practical atlas generator that models major geometric and trigonometric pattern families (circles, conics, roses, Lissajous, spirals, roulettes, polygonal, wave interference, and phyllotaxis) with deterministic point sampling.
+ethical_code_sanitizer.py
+ethical_code_sanitizer.py
+New
++90
+-0
+
+"""Safety-first code/text sanitizer.
+
+This utility provides a benevolent alternative to adversarial transformations:
+- lifts/removes manipulative or hostile phrasing,
+- replaces charged targeting language with neutral wording,
+- preserves overall structure so content remains usable.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+import re
+
+
+@dataclass(frozen=True)
+class SanitizerConfig:
+    recursive: bool = True
+    include_extensions: tuple[str, ...] = (".py", ".md", ".txt", ".json", ".yaml", ".yml")
+
+
+REPLACEMENTS: dict[str, str] = {
+    "evil people": "harmful actors",
+    "evil": "harmful",
+    "good ones": "protected people",
+    "negative codes": "safety-reviewed controls",
+    "brain were lifted": "cognitive burden reduced",
+    "federal government": "public institutions",
+    "hollywood": "media sector",
+}
+
+BLOCK_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"\b(harm|hurt|attack|destroy|weaponize|coerce)\b", re.IGNORECASE),
+    re.compile(r"\btarget\s+groups?\b", re.IGNORECASE),
+)
+
+
+def sanitize_text(content: str) -> str:
+    """Apply neutral replacements and remove explicit hostile action terms."""
+    sanitized = content
+
+    for source, target in REPLACEMENTS.items():
+        sanitized = re.sub(re.escape(source), target, sanitized, flags=re.IGNORECASE)
+
+    # Remove explicit hostile directives while keeping sentence readability.
+    for pattern in BLOCK_PATTERNS:
+        sanitized = pattern.sub("[redacted-hostile-term]", sanitized)
+
+    sanitized = re.sub(r"\s+", " ", sanitized)
+    return sanitized.strip()
+
+
+def sanitize_file(path: Path) -> bool:
+    """Sanitize a single file in-place. Returns True when content changed."""
+    original = path.read_text(encoding="utf-8")
+    updated = sanitize_text(original)
+    if updated == original:
+        return False
+    path.write_text(updated + "\n", encoding="utf-8")
+    return True
+
+
+def iter_target_files(root: Path, config: SanitizerConfig):
+    if config.recursive:
+        for p in root.rglob("*"):
+            if p.is_file() and p.suffix.lower() in config.include_extensions:
+                yield p
+    else:
+        for p in root.iterdir():
+            if p.is_file() and p.suffix.lower() in config.include_extensions:
+                yield p
+
+
+def sanitize_repository(root: Path, config: SanitizerConfig = SanitizerConfig()) -> list[Path]:
+    changed: list[Path] = []
+    for file_path in iter_target_files(root, config):
+        try:
+            if sanitize_file(file_path):
+                changed.append(file_path)
+        except UnicodeDecodeError:
+            continue
+    return changed
+
+
+if __name__ == "__main__":
+    repo_root = Path.cwd()
+    changed_files = sanitize_repository(repo_root)
+    print(f"Sanitized files: {len(changed_files)}")
+    for f in changed_files[:20]:
+        print(f" - {f}")
+geometry_trig_pattern_atlas.py
+geometry_trig_pattern_atlas.py
+New
++183
+-0
+
+"""Geometry + trigonometry pattern atlas.
+
+This module builds a broad catalog of mathematically defined pattern families,
+with deterministic point sampling for each family.
+
+Note: no finite program can depict *every* pattern in the universe. This atlas
+instead covers core families used to model many natural and synthetic forms.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from math import cos, sin, pi, sqrt
+from typing import Callable, Iterable
+
+
+Point = tuple[float, float]
+
+
+@dataclass(frozen=True)
+class PatternSpec:
+    name: str
+    family: str
+    equation: str
+    sampler: Callable[[int], list[Point]]
+
+
+def _sample_parametric(fn: Callable[[float], Point], steps: int, t_min: float, t_max: float) -> list[Point]:
+    if steps < 2:
+        raise ValueError("steps must be >= 2")
+    span = t_max - t_min
+    return [fn(t_min + span * i / (steps - 1)) for i in range(steps)]
+
+
+def circle(radius: float = 1.0) -> PatternSpec:
+    return PatternSpec(
+        name="Circle",
+        family="Euclidean geometry",
+        equation=f"x=r cos(t), y=r sin(t), r={radius}",
+        sampler=lambda n: _sample_parametric(lambda t: (radius * cos(t), radius * sin(t)), n, 0.0, 2 * pi),
+    )
+
+
+def ellipse(a: float = 2.0, b: float = 1.0) -> PatternSpec:
+    return PatternSpec(
+        name="Ellipse",
+        family="Conics",
+        equation=f"x=a cos(t), y=b sin(t), a={a}, b={b}",
+        sampler=lambda n: _sample_parametric(lambda t: (a * cos(t), b * sin(t)), n, 0.0, 2 * pi),
+    )
+
+
+def lissajous(a: int = 3, b: int = 4, delta: float = pi / 2) -> PatternSpec:
+    return PatternSpec(
+        name="Lissajous curve",
+        family="Trigonometric resonance",
+        equation=f"x=sin({a}t+δ), y=sin({b}t), δ={delta:.4f}",
+        sampler=lambda n: _sample_parametric(lambda t: (sin(a * t + delta), sin(b * t)), n, 0.0, 2 * pi),
+    )
+
+
+def rose(k: int = 5) -> PatternSpec:
+    return PatternSpec(
+        name="Rose curve",
+        family="Polar trigonometric",
+        equation=f"r=cos({k}θ)",
+        sampler=lambda n: _sample_parametric(
+            lambda t: ((cos(k * t) * cos(t)), (cos(k * t) * sin(t))), n, 0.0, 2 * pi
+        ),
+    )
+
+
+def logarithmic_spiral(a: float = 0.2, b: float = 0.15) -> PatternSpec:
+    return PatternSpec(
+        name="Logarithmic spiral",
+        family="Growth geometry",
+        equation=f"r=a·e^(bθ), a={a}, b={b}",
+        sampler=lambda n: _sample_parametric(
+            lambda t: (a * (2.718281828 ** (b * t)) * cos(t), a * (2.718281828 ** (b * t)) * sin(t)),
+            n,
+            0.0,
+            8 * pi,
+        ),
+    )
+
+
+def hypotrochoid(R: float = 5.0, r: float = 3.0, d: float = 5.0) -> PatternSpec:
+    return PatternSpec(
+        name="Hypotrochoid",
+        family="Roulette curves",
+        equation=f"x=(R-r)cos(t)+d cos((R-r)/r·t), y=(R-r)sin(t)-d sin((R-r)/r·t)",
+        sampler=lambda n: _sample_parametric(
+            lambda t: (
+                (R - r) * cos(t) + d * cos(((R - r) / r) * t),
+                (R - r) * sin(t) - d * sin(((R - r) / r) * t),
+            ),
+            n,
+            0.0,
+            16 * pi,
+        ),
+    )
+
+
+def regular_polygon(sides: int = 6, radius: float = 1.0) -> PatternSpec:
+    if sides < 3:
+        raise ValueError("sides must be >= 3")
+
+    def sample(_: int) -> list[Point]:
+        pts = []
+        for i in range(sides + 1):
+            t = 2 * pi * (i % sides) / sides
+            pts.append((radius * cos(t), radius * sin(t)))
+        return pts
+
+    return PatternSpec(
+        name=f"Regular {sides}-gon",
+        family="Polygonal geometry",
+        equation=f"vertices at θ=2πk/{sides}",
+        sampler=sample,
+    )
+
+
+def wave_interference(kx: float = 2.0, ky: float = 3.0) -> PatternSpec:
+    return PatternSpec(
+        name="2D trigonometric interference",
+        family="Wave patterns",
+        equation=f"z=sin({kx}x)+cos({ky}y), projected isolines",
+        sampler=lambda n: [
+            (
+                -pi + 2 * pi * i / max(1, n - 1),
+                sin(kx * (-pi + 2 * pi * i / max(1, n - 1))),
+            )
+            for i in range(n)
+        ],
+    )
+
+
+def fibonacci_sunflower(count: int = 400, scale: float = 0.07) -> PatternSpec:
+    golden_angle = pi * (3 - sqrt(5))
+
+    def sample(_: int) -> list[Point]:
+        pts: list[Point] = []
+        for i in range(count):
+            r = scale * sqrt(i)
+            t = i * golden_angle
+            pts.append((r * cos(t), r * sin(t)))
+        return pts
+
+    return PatternSpec(
+        name="Fibonacci sunflower",
+        family="Phyllotaxis",
+        equation="r=c√n, θ=n·golden_angle",
+        sampler=sample,
+    )
+
+
+def build_pattern_atlas() -> list[PatternSpec]:
+    """Curated atlas of key geometric+trigonometric families."""
+    return [
+        circle(),
+        ellipse(),
+        lissajous(),
+        rose(),
+        logarithmic_spiral(),
+        hypotrochoid(),
+        regular_polygon(6),
+        wave_interference(),
+        fibonacci_sunflower(),
+    ]
+
+
+def atlas_summary(atlas: Iterable[PatternSpec], points_per_pattern: int = 200) -> str:
+    lines: list[str] = []
+    for spec in atlas:
+        pts = spec.sampler(points_per_pattern)
+        lines.append(f"- {spec.name} [{spec.family}] :: {spec.equation} :: sampled_points={len(pts)}")
+    return "\n".join(lines)
+
+
+if __name__ == "__main__":
+    atlas = build_pattern_atlas()
+    print("Pattern atlas size:", len(atlas))
+    print(atlas_summary(atlas, points_per_pattern=180))
+maat_keyword_expander.py
+maat_keyword_expander.py
+New
++155
+-0
+
+"""Generate large MAAT-related keyword sets with compact colorized rendering."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from itertools import product
+from typing import Iterable
+
+
+@dataclass(frozen=True)
+class ExpansionProfile:
+    """Controls how many MAAT-adjacent terms get generated."""
+
+    target_size: int = 200_000
+    accent_color: str = "#d4af37"  # gold-like highlight
+
+
+ROOT_TERMS = (
+    "maat",
+    "maati",
+    "maatic",
+    "maatik",
+    "maatian",
+    "maatite",
+    "maatism",
+    "maatist",
+    "maaticity",
+    "maatology",
+)
+
+PREFIXES = (
+    "neo",
+    "proto",
+    "meta",
+    "hyper",
+    "ultra",
+    "trans",
+    "post",
+    "para",
+    "infra",
+    "supra",
+    "chrono",
+    "astro",
+    "aero",
+    "geo",
+    "bio",
+    "psy",
+    "cyber",
+    "electro",
+    "quantum",
+    "micro",
+)
+
+SUFFIXES = (
+    "core",
+    "field",
+    "stream",
+    "cluster",
+    "cycle",
+    "phase",
+    "matrix",
+    "signal",
+    "engine",
+    "domain",
+    "logic",
+    "verse",
+    "frame",
+    "weave",
+    "flux",
+    "pulse",
+    "layer",
+    "grid",
+    "schema",
+    "node",
+)
+
+QUALIFIERS = (
+    "aligned",
+    "balanced",
+    "ordered",
+    "scaled",
+    "shifted",
+    "folded",
+    "symmetric",
+    "asymmetric",
+    "harmonic",
+    "chaotic",
+    "adaptive",
+    "resonant",
+)
+
+
+def _slight_variants(term: str) -> Iterable[str]:
+    """Create slight textual variations for breadth without manual lists."""
+
+    yield term
+    yield f"{term}s"
+    yield f"{term}ed"
+    yield f"{term}ing"
+    yield term.replace("aa", "a")
+    if term.endswith("t"):
+        yield f"{term}h"
+
+
+def generate_maat_terms(profile: ExpansionProfile = ExpansionProfile()) -> list[str]:
+    """Generate up to `target_size` unique MAAT-adjacent terms."""
+
+    generated: set[str] = set()
+
+    for root in ROOT_TERMS:
+        for variant in _slight_variants(root):
+            generated.add(variant)
+
+    for prefix, root, suffix, qualifier in product(PREFIXES, ROOT_TERMS, SUFFIXES, QUALIFIERS):
+        base = f"{prefix}-{root}-{suffix}-{qualifier}"
+        for variant in _slight_variants(base):
+            generated.add(variant)
+            if len(generated) >= profile.target_size:
+                return sorted(generated)
+
+    return sorted(generated)
+
+
+def render_compact_html_cloud(
+    terms: Iterable[str],
+    *,
+    color: str = "#d4af37",
+    separator: str = " · ",
+) -> str:
+    """Render terms in one compact line with the MAAT token colorized."""
+
+    highlighted = []
+    for term in terms:
+        highlighted.append(
+            term.replace(
+                "maat",
+                f"<span style=\"background:{color};padding:0 3px;border-radius:2px;\">maat</span>",
+            )
+        )
+
+    return separator.join(highlighted)
+
+
+def build_maat_cloud(profile: ExpansionProfile = ExpansionProfile()) -> str:
+    """High-level helper: generate large list and return compact colored output."""
+
+    terms = generate_maat_terms(profile)
+    return render_compact_html_cloud(terms, color=profile.accent_color)
+
+
+if __name__ == "__main__":
+    cfg = ExpansionProfile(target_size=200_000, accent_color="#ffe066")
+    terms = generate_maat_terms(cfg)
+    print(f"Generated terms: {len(terms)}")
+    print(render_compact_html_cloud(terms[:60], color=cfg.accent_color))
+mythic_keyword_sanitizer.py
+mythic_keyword_sanitizer.py
+New
++143
+-0
+
+"""Generate and sanitize mythic entity keyword variants with compact colorized output.
+
+Focus:
+- Ancient Nubia/Egypt, Greece/Athens, Rome, Enochian references
+- Mother / mothership / archetypal entities
+- Fictitious entities
+
+Safety:
+- Neutralizes stylization that can imply specific tone/manipulation intent
+- Filters out explicitly harmful/destructive terms
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from itertools import product
+from typing import Iterable
+import re
+import unicodedata
+
+
+@dataclass(frozen=True)
+class SanitizerProfile:
+    target_size: int = 120_000
+    accent_color: str = "#8ecae6"
+
+
+BASE_KEYWORDS = {
+    "nubia_egypt": [
+        "amun", "amun-ra", "isis", "osiris", "horus", "anubis", "set", "bastet", "maat", "thoth"
+    ],
+    "greece_athens": [
+        "zeus", "hera", "athena", "apollo", "artemis", "ares", "demeter", "poseidon", "hades", "nike"
+    ],
+    "rome": [
+        "jupiter", "juno", "minerva", "mars", "venus", "mercury", "neptune", "pluto", "diana", "vesta"
+    ],
+    "enochian": [
+        "enoch", "metatron", "raziel", "uriel", "gabriel", "michael", "sariel", "raguel"
+    ],
+    "mother_mothership": [
+        "mother", "great_mother", "earth_mother", "mothership", "primordial_mother", "sky_mother"
+    ],
+    "fictitious": [
+        "gaia_prime", "star_matriarch", "void_scribe", "lumen_archon", "aether_keeper", "chrono_oracle"
+    ],
+}
+
+PREFIXES = (
+    "ancient", "high", "neo", "proto", "sacred", "cosmic", "stellar", "mythic", "archetypal", "civil"
+)
+
+SUFFIXES = (
+    "order", "archive", "temple", "canon", "matrix", "lineage", "accord", "cycle", "registry", "domain"
+)
+
+QUALIFIERS = (
+    "balanced", "neutral", "symbolic", "historical", "contextual", "scholarly",
+    "mythopoetic", "cultural", "nonviolent", "clean", "abstract", "composite"
+)
+
+STYLE_MARKERS_TO_REMOVE = (
+    "!!!", "???", "all-caps", "chant", "threat", "curse", "hex", "dominate", "obliterate", "annihilate"
+)
+
+HARMFUL_TOKENS = {
+    "kill", "harm", "destroy", "annihilate", "eradicate", "maim", "abuse", "coerce", "terror"
+}
+
+
+def normalize_token(text: str) -> str:
+    normalized = unicodedata.normalize("NFKD", text)
+    ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
+    lowered = ascii_only.lower()
+
+    for marker in STYLE_MARKERS_TO_REMOVE:
+        lowered = lowered.replace(marker, " ")
+
+    lowered = lowered.replace("_", "-")
+    lowered = re.sub(r"[^a-z0-9\-\s]", " ", lowered)
+    lowered = re.sub(r"\s+", "-", lowered).strip("-")
+    return lowered
+
+
+def safe_token(token: str) -> bool:
+    parts = set(token.split("-"))
+    return not (parts & HARMFUL_TOKENS)
+
+
+def slight_variants(token: str) -> Iterable[str]:
+    yield token
+    yield f"{token}s"
+    yield f"{token}-aspect"
+    yield f"{token}-form"
+    if token.endswith("a"):
+        yield f"{token}n"
+
+
+def generate_sanitized_keywords(profile: SanitizerProfile = SanitizerProfile()) -> list[str]:
+    roots: list[str] = []
+    for terms in BASE_KEYWORDS.values():
+        roots.extend(terms)
+
+    generated: set[str] = set()
+
+    for raw in roots:
+        root = normalize_token(raw)
+        for variant in slight_variants(root):
+            if safe_token(variant):
+                generated.add(variant)
+
+    for prefix, root, suffix, qualifier in product(PREFIXES, roots, SUFFIXES, QUALIFIERS):
+        base = normalize_token(f"{prefix}-{root}-{suffix}-{qualifier}")
+        for variant in slight_variants(base):
+            if safe_token(variant):
+                generated.add(variant)
+                if len(generated) >= profile.target_size:
+                    return sorted(generated)
+
+    return sorted(generated)
+
+
+def render_compact_cloud(tokens: Iterable[str], *, color: str = "#8ecae6", separator: str = " · ") -> str:
+    highlighted = []
+    focus_terms = ("mother", "mothership", "athena", "maat", "enoch", "jupiter", "zeus")
+
+    for token in tokens:
+        painted = token
+        for term in focus_terms:
+            painted = painted.replace(
+                term,
+                f"<span style=\"background:{color};padding:0 3px;border-radius:2px;\">{term}</span>",
+            )
+        highlighted.append(painted)
+
+    return separator.join(highlighted)
+
+
+if __name__ == "__main__":
+    profile = SanitizerProfile(target_size=120_000, accent_color="#90e0ef")
+    words = generate_sanitized_keywords(profile)
+    print(f"Generated sanitized mythic keywords: {len(words)}")
+    print(render_compact_cloud(words[:80], color=profile.accent_color))      
