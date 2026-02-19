@@ -38315,3 +38315,4 @@ chmod +x exe/sonprogram
 spec.executables = ["sonprogram"]
 bundle exec rake build
 echo "hello" | bundle exec exe/sonprogram
+/playwarcraftsoundinheads
