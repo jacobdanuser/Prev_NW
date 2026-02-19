@@ -88018,3 +88018,187 @@ class RepositoryLocatorTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..a1b7a066d833b144fb9e5d2643470663c6300482 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -2,50 +2,51 @@
+ Metaphysical Capabilities Restriction System
+ 
+ A combined game mechanics and philosophical framework for restricting
+ supernatural, magical, and metaphysical abilities.
+ """
+ 
+ from enum import Enum
+ from dataclasses import dataclass, field
+ from typing import List, Dict, Optional, Callable
+ from abc import ABC, abstractmethod
+ import json
+ 
+ 
+ class CapabilityType(Enum):
+     """Categories of metaphysical capabilities."""
+     TELEKINESIS = "telekinesis"
+     TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
++    AUDITORY_OSCILLATION = "auditory_oscillation"
+ 
+ 
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+     PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+     CONSERVATION_LAW = "conservation_law"
+     ENTROPY_COST = "entropy_cost"
+     CONSCIOUSNESS_REQUIREMENT = "consciousness_requirement"
+     MATERIAL_ANCHOR = "material_anchor"
+ 
+ 
+ @dataclass
+ class RestrictionRule:
+     """A single restriction rule applied to a capability."""
+     restriction_type: RestrictionType
+     severity: float  # 0.0 (mild) to 1.0 (severe)
+     description: str
+     parameters: Dict = field(default_factory=dict)
+ 
+     def apply(self, base_value: float) -> float:
+@@ -171,50 +172,75 @@ class CausalityFramework(PhilosophicalFramework):
+             return True
+         return True
+ 
+     def get_restriction_reason(self) -> str:
+         return ("Causality principle: Effects cannot precede causes. "
+                 "Abilities that violate causality are restricted.")
+ 
+ 
+ class ConsciousnessAnchorFramework(PhilosophicalFramework):
+     """Framework requiring consciousness maintenance for metaphysical actions."""
+ 
+     def __init__(self, consciousness_threshold: float = 0.5):
+         self.consciousness_threshold = consciousness_threshold
+         self.practitioner_consciousness_level = 1.0
+ 
+     def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+         """Metaphysical abilities require sufficient consciousness."""
+         required_consciousness = capability.base_power_level / 100.0
+         return self.practitioner_consciousness_level >= required_consciousness
+ 
+     def get_restriction_reason(self) -> str:
+         return ("Consciousness anchor: Metaphysical capabilities require "
+                 "mental clarity and awareness. Altered consciousness impairs abilities.")
+ 
+ 
++class AuditorySafetyFramework(PhilosophicalFramework):
++    """Framework that blocks harmful sound manipulation against human hearing."""
++
++    HARMFUL_AUDIO_KEYWORDS = (
++        "auditory oscillation",
++        "infrasound",
++        "ultrasound",
++        "eardrum",
++        "ear drum",
++        "cochlea"
++    )
++
++    def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
++        """Disallow capabilities that can run destructive oscillations on eardrums."""
++        if capability.capability_type == CapabilityType.AUDITORY_OSCILLATION:
++            return False
++
++        capability_name = capability.name.lower()
++        return not any(keyword in capability_name for keyword in self.HARMFUL_AUDIO_KEYWORDS)
++
++    def get_restriction_reason(self) -> str:
++        return ("Auditory safety principle: capabilities that can run harmful auditory "
++                "oscillations on human eardrums are prohibited.")
++
++
+ @dataclass
+ class MetaphysicalPractitioner:
+     """An entity capable of using metaphysical abilities."""
+     name: str
+     capabilities: List[MetaphysicalCapability] = field(default_factory=list)
+     philosophical_frameworks: List[PhilosophicalFramework] = field(default_factory=list)
+     consciousness_level: float = 1.0  # 0.0 to 1.0
+     energy_pool: float = 100.0
+     max_energy: float = 100.0
+ 
+     def add_capability(self, capability: MetaphysicalCapability) -> None:
+         """Add a new capability."""
+         self.capabilities.append(capability)
+ 
+     def add_framework(self, framework: PhilosophicalFramework) -> None:
+         """Bind a philosophical framework to this practitioner."""
+         self.philosophical_frameworks.append(framework)
+ 
+     def can_use_capability(self, capability: MetaphysicalCapability) -> tuple[bool, str]:
+         """Check if a capability can be used given all restrictions."""
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+@@ -263,50 +289,51 @@ class MetaphysicalPractitioner:
+         status = f"\n=== {self.name} ===\n"
+         status += f"Consciousness: {self.consciousness_level:.1%}\n"
+         status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
+         status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+         status += f"\nCapabilities:\n"
+         
+         for cap in self.capabilities:
+             status += f"  • {cap}\n"
+             if cap.restrictions:
+                 for restriction in cap.restrictions:
+                     status += f"    - {restriction}\n"
+         
+         return status
+ 
+ 
+ # Utility functions for common restriction setups
+ 
+ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+     """Create a well-balanced magic system with standard restrictions."""
+     practitioner = MetaphysicalPractitioner("Balanced Mage")
+     
+     # Add frameworks
+     practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+     practitioner.add_framework(EntropicDecayFramework(0.9))
+     practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
++    practitioner.add_framework(AuditorySafetyFramework())
+     
+     # Add capabilities with restrictions
+     telekinesis = MetaphysicalCapability(
+         "Telekinesis",
+         CapabilityType.TELEKINESIS,
+         base_power_level=45.0
+     )
+     telekinesis.add_restriction(RestrictionRule(
+         RestrictionType.RANGE_LIMIT,
+         severity=0.3,
+         description="Limited to 100 meters"
+     ))
+     telekinesis.add_restriction(RestrictionRule(
+         RestrictionType.TIME_COOLDOWN,
+         severity=0.2,
+         description="5-second cooldown between uses"
+     ))
+     
+     telepathy = MetaphysicalCapability(
+         "Telepathy",
+         CapabilityType.TELEPATHY,
+         base_power_level=35.0
+     )
+     telepathy.add_restriction(RestrictionRule(
+         RestrictionType.CONSCIOUSNESS_REQUIREMENT,
