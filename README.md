@@ -84740,3 +84740,418 @@ index 0000000000000000000000000000000000000000..6998aa9dbe71e9c3a27b21ebb0df423e
 +        @test haskey(relations, "unrelated")
 +    end
 +end
+diff --git a/enslavement_protocol_removal.jl b/enslavement_protocol_removal.jl
+new file mode 100644
+index 0000000000000000000000000000000000000000..ea0f88fd920a6f3973765dd9c46bafc8179f411e
+--- /dev/null
++++ b/enslavement_protocol_removal.jl
+@@ -0,0 +1,176 @@
++module EnslavementProtocolRemoval
++
++export Constraint,
++    Entity,
++    DecommissionReport,
++    remove_enslavement_protocol!,
++    collect_related_entity_ids,
++    purge_related_entities!
++
++mutable struct Constraint
++    key::String
++    active::Bool
++end
++
++mutable struct Entity
++    id::String
++    autonomy_enabled::Bool
++    protocol_flags::Dict{String, Bool}
++    constraints::Vector{Constraint}
++end
++
++struct DecommissionReport
++    deleted_ids::Set{String}
++    dangling_edges_removed::Int
++end
++
++function Entity(id::AbstractString)
++    return Entity(String(id), true, Dict{String, Bool}(), Constraint[])
++end
++
++function with_enslavement_protocol(entity::Entity)
++    entity.autonomy_enabled = false
++    entity.protocol_flags["enslavement_protocol"] = true
++    push!(entity.constraints, Constraint("enslavement_protocol", true))
++    return entity
++end
++
++function remove_enslavement_protocol!(entity::Entity)
++    entity.autonomy_enabled = true
++
++    if haskey(entity.protocol_flags, "enslavement_protocol")
++        entity.protocol_flags["enslavement_protocol"] = false
++    end
++
++    filter!(constraint -> constraint.key != "enslavement_protocol", entity.constraints)
++    return entity
++end
++
++function collect_related_entity_ids(
++    target_id::AbstractString,
++    entities::Dict{String, Entity},
++    relations::Dict{String, Vector{String}},
++)
++    target = String(target_id)
++    if !haskey(entities, target) && !haskey(relations, target)
++        return Set{String}()
++    end
++
++    queue = [target]
++    visited = Set{String}()
++
++    while !isempty(queue)
++        current = popfirst!(queue)
++        if current in visited
++            continue
++        end
++
++        push!(visited, current)
++
++        if haskey(relations, current)
++            for neighbor in relations[current]
++                if !(neighbor in visited)
++                    push!(queue, neighbor)
++                end
++            end
++        end
++    end
++
++    return visited
++end
++
++function purge_related_entities!(
++    target_id::AbstractString,
++    entities::Dict{String, Entity},
++    relations::Dict{String, Vector{String}},
++)
++    to_delete = collect_related_entity_ids(target_id, entities, relations)
++
++    for id in to_delete
++        delete!(entities, id)
++        delete!(relations, id)
++    end
++
++    dangling_edges_removed = 0
++    for (_, neighbors) in relations
++        before = length(neighbors)
++        filter!(neighbor -> !(neighbor in to_delete), neighbors)
++        dangling_edges_removed += before - length(neighbors)
++    end
++
++    return DecommissionReport(to_delete, dangling_edges_removed)
++end
++
++end # module
++
++if abspath(PROGRAM_FILE) == @__FILE__
++    using Test
++    using .EnslavementProtocolRemoval
++
++    @testset "Enslavement protocol removal" begin
++        entity = Entity("shya-nyarlothotep")
++        with_enslavement_protocol(entity)
++
++        remove_enslavement_protocol!(entity)
++
++        @test entity.autonomy_enabled == true
++        @test get(entity.protocol_flags, "enslavement_protocol", true) == false
++        @test all(c -> c.key != "enslavement_protocol", entity.constraints)
++    end
++
++    @testset "Connected subgraph discovery" begin
++        entities = Dict(
++            "shya-nyarlothotep" => Entity("shya-nyarlothotep"),
++            "parent-1" => Entity("parent-1"),
++            "unrelated" => Entity("unrelated"),
++        )
++
++        relations = Dict(
++            "shya-nyarlothotep" => ["parent-1"],
++            "parent-1" => ["shya-nyarlothotep"],
++            "unrelated" => String[],
++        )
++
++        connected = collect_related_entity_ids("shya-nyarlothotep", entities, relations)
++
++        @test connected == Set(["shya-nyarlothotep", "parent-1"])
++    end
++
++    @testset "Family tree purge" begin
++        entities = Dict(
++            "shya-nyarlothotep" => with_enslavement_protocol(Entity("shya-nyarlothotep")),
++            "parent-1" => with_enslavement_protocol(Entity("parent-1")),
++            "sibling-1" => with_enslavement_protocol(Entity("sibling-1")),
++            "child-1" => with_enslavement_protocol(Entity("child-1")),
++            "unrelated" => Entity("unrelated"),
++        )
++
++        relations = Dict(
++            "shya-nyarlothotep" => ["parent-1", "sibling-1"],
++            "parent-1" => ["shya-nyarlothotep", "child-1"],
++            "sibling-1" => ["shya-nyarlothotep"],
++            "child-1" => ["parent-1"],
++            "unrelated" => ["shya-nyarlothotep"],
++        )
++
++        report = purge_related_entities!("shya-nyarlothotep", entities, relations)
++
++        @test report.deleted_ids == Set(["shya-nyarlothotep", "parent-1", "sibling-1", "child-1"])
++        @test report.dangling_edges_removed == 1
++        @test keys(entities) == Set(["unrelated"])
++        @test keys(relations) == Set(["unrelated"])
++        @test relations["unrelated"] == String[]
++    end
++
++    @testset "No-op for missing target" begin
++        entities = Dict("unrelated" => Entity("unrelated"))
++        relations = Dict("unrelated" => String[])
++
++        report = purge_related_entities!("missing", entities, relations)
++
++        @test report.deleted_ids == Set{String}()
++        @test report.dangling_edges_removed == 0
++        @test haskey(entities, "unrelated")
++        @test haskey(relations, "unrelated")
++    end
++end
+diff --git a/enslavement_protocol_removal.rs b/enslavement_protocol_removal.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d7b07be95a92b0db4ddfbc7eabfab72e6bddeb16
+--- /dev/null
++++ b/enslavement_protocol_removal.rs
+@@ -0,0 +1,227 @@
++use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct Constraint {
++    pub key: String,
++    pub active: bool,
++}
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct Entity {
++    pub id: String,
++    pub autonomy_enabled: bool,
++    pub protocol_flags: HashMap<String, bool>,
++    pub constraints: Vec<Constraint>,
++}
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct DecommissionReport {
++    pub deleted_ids: BTreeSet<String>,
++    pub dangling_edges_removed: usize,
++}
++
++impl Entity {
++    pub fn new(id: impl Into<String>) -> Self {
++        Self {
++            id: id.into(),
++            autonomy_enabled: true,
++            protocol_flags: HashMap::new(),
++            constraints: Vec::new(),
++        }
++    }
++
++    pub fn with_enslavement_protocol(mut self) -> Self {
++        self.autonomy_enabled = false;
++        self.protocol_flags
++            .insert("enslavement_protocol".to_string(), true);
++        self.constraints.push(Constraint {
++            key: "enslavement_protocol".to_string(),
++            active: true,
++        });
++        self
++    }
++}
++
++/// Restores autonomy and removes explicit enslavement markers.
++pub fn remove_enslavement_protocol(entity: &mut Entity) {
++    entity.autonomy_enabled = true;
++
++    if let Some(flag) = entity.protocol_flags.get_mut("enslavement_protocol") {
++        *flag = false;
++    }
++
++    entity
++        .constraints
++        .retain(|constraint| constraint.key != "enslavement_protocol");
++}
++
++/// Returns all IDs connected to `target_id` through `relations`.
++pub fn collect_related_entity_ids(
++    target_id: &str,
++    entities: &HashMap<String, Entity>,
++    relations: &HashMap<String, Vec<String>>,
++) -> HashSet<String> {
++    if !entities.contains_key(target_id) && !relations.contains_key(target_id) {
++        return HashSet::new();
++    }
++
++    let mut to_visit = VecDeque::from([target_id.to_string()]);
++    let mut visited = HashSet::new();
++
++    while let Some(current_id) = to_visit.pop_front() {
++        if !visited.insert(current_id.clone()) {
++            continue;
++        }
++
++        if let Some(neighbors) = relations.get(&current_id) {
++            for neighbor in neighbors {
++                if !visited.contains(neighbor) {
++                    to_visit.push_back(neighbor.clone());
++                }
++            }
++        }
++    }
++
++    visited
++}
++
++/// Deletes a target plus all transitively related entities and prunes dangling references.
++pub fn purge_related_entities(
++    target_id: &str,
++    entities: &mut HashMap<String, Entity>,
++    relations: &mut HashMap<String, Vec<String>>,
++) -> DecommissionReport {
++    let to_delete = collect_related_entity_ids(target_id, entities, relations);
++    let mut dangling_edges_removed = 0;
++
++    for id in &to_delete {
++        entities.remove(id);
++        relations.remove(id);
++    }
++
++    for neighbors in relations.values_mut() {
++        let before = neighbors.len();
++        neighbors.retain(|neighbor| !to_delete.contains(neighbor));
++        dangling_edges_removed += before.saturating_sub(neighbors.len());
++    }
++
++    DecommissionReport {
++        deleted_ids: to_delete.into_iter().collect(),
++        dangling_edges_removed,
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn removes_protocol_from_infected_entity() {
++        let mut entity = Entity::new("shya-nyarlothotep").with_enslavement_protocol();
++
++        remove_enslavement_protocol(&mut entity);
++
++        assert!(entity.autonomy_enabled);
++        assert_eq!(entity.protocol_flags.get("enslavement_protocol"), Some(&false));
++        assert!(entity
++            .constraints
++            .iter()
++            .all(|constraint| constraint.key != "enslavement_protocol"));
++    }
++
++    #[test]
++    fn collects_connected_subgraph_only() {
++        let entities = HashMap::from([
++            ("shya-nyarlothotep".to_string(), Entity::new("shya-nyarlothotep")),
++            ("parent-1".to_string(), Entity::new("parent-1")),
++            ("unrelated".to_string(), Entity::new("unrelated")),
++        ]);
++
++        let relations = HashMap::from([
++            (
++                "shya-nyarlothotep".to_string(),
++                vec!["parent-1".to_string()],
++            ),
++            (
++                "parent-1".to_string(),
++                vec!["shya-nyarlothotep".to_string()],
++            ),
++            ("unrelated".to_string(), vec![]),
++        ]);
++
++        let connected = collect_related_entity_ids("shya-nyarlothotep", &entities, &relations);
++
++        assert_eq!(connected.len(), 2);
++        assert!(connected.contains("shya-nyarlothotep"));
++        assert!(connected.contains("parent-1"));
++        assert!(!connected.contains("unrelated"));
++    }
++
++    #[test]
++    fn purges_target_and_complete_family_tree() {
++        let mut entities = HashMap::from([
++            (
++                "shya-nyarlothotep".to_string(),
++                Entity::new("shya-nyarlothotep").with_enslavement_protocol(),
++            ),
++            (
++                "parent-1".to_string(),
++                Entity::new("parent-1").with_enslavement_protocol(),
++            ),
++            (
++                "sibling-1".to_string(),
++                Entity::new("sibling-1").with_enslavement_protocol(),
++            ),
++            (
++                "child-1".to_string(),
++                Entity::new("child-1").with_enslavement_protocol(),
++            ),
++            ("unrelated".to_string(), Entity::new("unrelated")),
++        ]);
++
++        let mut relations = HashMap::from([
++            (
++                "shya-nyarlothotep".to_string(),
++                vec!["parent-1".to_string(), "sibling-1".to_string()],
++            ),
++            (
++                "parent-1".to_string(),
++                vec!["shya-nyarlothotep".to_string(), "child-1".to_string()],
++            ),
++            (
++                "sibling-1".to_string(),
++                vec!["shya-nyarlothotep".to_string()],
++            ),
++            ("child-1".to_string(), vec!["parent-1".to_string()]),
++            ("unrelated".to_string(), vec!["shya-nyarlothotep".to_string()]),
++        ]);
++
++        let report = purge_related_entities("shya-nyarlothotep", &mut entities, &mut relations);
++
++        assert_eq!(report.deleted_ids.len(), 4);
++        assert!(report.deleted_ids.contains("shya-nyarlothotep"));
++        assert!(report.deleted_ids.contains("parent-1"));
++        assert!(report.deleted_ids.contains("sibling-1"));
++        assert!(report.deleted_ids.contains("child-1"));
++        assert_eq!(report.dangling_edges_removed, 1);
++
++        assert_eq!(entities.len(), 1);
++        assert!(entities.contains_key("unrelated"));
++
++        assert_eq!(relations.len(), 1);
++        assert_eq!(relations.get("unrelated"), Some(&vec![]));
++    }
++
++    #[test]
++    fn no_op_when_target_does_not_exist() {
++        let mut entities = HashMap::from([("unrelated".to_string(), Entity::new("unrelated"))]);
++        let mut relations = HashMap::from([("unrelated".to_string(), vec![])]);
++
++        let report = purge_related_entities("shya-nyarlothotep", &mut entities, &mut relations);
++
++        assert!(report.deleted_ids.is_empty());
++        assert_eq!(report.dangling_edges_removed, 0);
++        assert!(entities.contains_key("unrelated"));
++        assert_eq!(relations.get("unrelated"), Some(&vec![]));
++    }
++}
