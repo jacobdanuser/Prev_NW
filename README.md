@@ -32837,3 +32837,319 @@ index 0000000000000000000000000000000000000000..07c321a2a15f2a85cf247a71993ed443
 +    )
 +    print("\nAzure gateway decision:")
 +    print(f"allowed={azure_outcome.allowed} reason={azure_outcome.reason}")
+#!/usr/bin/env node
+/**
+ * Defensive repo audit: find Anthropic/Claude usage, potential secrets, and risky patterns.
+ *
+ * Usage:
+ *   npx tsx audit-anthropic.ts
+ *   npx tsx audit-anthropic.ts --root . --out anthropic-audit.json
+ */
+
+import * as fs from "node:fs";
+import * as path from "node:path";
+import * as crypto from "node:crypto";
+
+type FindingSeverity = "info" | "warn" | "high";
+
+type Finding = {
+  severity: FindingSeverity;
+  rule: string;
+  file: string;
+  line: number;
+  match: string;
+  context?: string;
+};
+
+type Report = {
+  scannedRoot: string;
+  scannedAtISO: string;
+  fileCount: number;
+  findings: Finding[];
+  summary: {
+    info: number;
+    warn: number;
+    high: number;
+    uniqueFilesWithFindings: number;
+  };
+  fingerprints: {
+    // helps you compare runs without storing file contents
+    reportHash: string;
+  };
+};
+
+type Args = {
+  root: string;
+  out: string;
+  maxFileBytes: number;
+};
+
+function parseArgs(): Args {
+  const argv = process.argv.slice(2);
+  const get = (k: string, def?: string) => {
+    const idx = argv.indexOf(k);
+    return idx >= 0 ? argv[idx + 1] : def;
+  };
+
+  const root = path.resolve(get("--root", ".")!);
+  const out = path.resolve(get("--out", "anthropic-audit.json")!);
+  const maxFileBytes = Number(get("--maxFileBytes", "750000")) || 750000; // ~750KB
+
+  return { root, out, maxFileBytes };
+}
+
+const IGNORE_DIRS = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  "out",
+  ".next",
+  ".turbo",
+  ".cache",
+  ".venv",
+  "venv",
+  "__pycache__",
+  ".idea",
+  ".vscode",
+  "coverage",
+]);
+
+const TEXT_EXTENSIONS = new Set([
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".json",
+  ".yaml",
+  ".yml",
+  ".md",
+  ".txt",
+  ".env",
+  ".env.example",
+  ".env.local",
+  ".toml",
+  ".py",
+  ".rb",
+  ".go",
+  ".rs",
+  ".java",
+  ".kt",
+  ".cs",
+  ".php",
+  ".sh",
+  ".bash",
+  ".zsh",
+  ".ps1",
+  ".dockerfile",
+  "Dockerfile",
+]);
+
+function looksTexty(filePath: string): boolean {
+  const base = path.basename(filePath);
+  if (base === "Dockerfile") return true;
+  const ext = path.extname(filePath).toLowerCase();
+  return TEXT_EXTENSIONS.has(ext) || TEXT_EXTENSIONS.has(base);
+}
+
+function walk(dir: string, outFiles: string[]) {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const ent of entries) {
+    const p = path.join(dir, ent.name);
+    if (ent.isDirectory()) {
+      if (!IGNORE_DIRS.has(ent.name)) walk(p, outFiles);
+    } else if (ent.isFile()) {
+      outFiles.push(p);
+    }
+  }
+}
+
+/**
+ * Rules are intentionally defensive:
+ * - We flag "sk-" patterns but do NOT print full tokens; we mask.
+ * - We flag Anthropic endpoint usage and common SDK imports.
+ */
+const RULES: Array<{
+  rule: string;
+  severity: FindingSeverity;
+  pattern: RegExp;
+  redact?: (m: string) => string;
+}> = [
+  // Anthropic/Claude usage
+  { rule: "anthropic-endpoint", severity: "warn", pattern: /\bapi\.anthropic\.com\b/gi },
+  { rule: "anthropic-sdk-import", severity: "warn", pattern: /\bfrom\s+['"]@anthropic-ai\/sdk['"]|\brequire\(['"]@anthropic-ai\/sdk['"]\)/gi },
+  { rule: "claude-mentions", severity: "info", pattern: /\bClaude\b/gi },
+  { rule: "anthropic-mentions", severity: "info", pattern: /\bAnthropic\b/gi },
+
+  // Potential secrets (mask aggressively)
+  {
+    rule: "possible-anthropic-key",
+    severity: "high",
+    // Many Anthropic keys begin with sk- (format can vary); detect sk- then >=16 url-safe chars.
+    pattern: /\bsk-[A-Za-z0-9_\-]{16,}\b/g,
+    redact: (m) => m.slice(0, 6) + "…" + m.slice(-4),
+  },
+  {
+    rule: "api-key-env-vars",
+    severity: "warn",
+    pattern: /\b(ANTHROPIC_API_KEY|CLAUDE_API_KEY|API_KEY)\b/g,
+  },
+
+  // Risky patterns
+  {
+    rule: "hardcoded-authorization-bearer",
+    severity: "high",
+    pattern: /Authorization\s*:\s*['"]Bearer\s+[A-Za-z0-9_\-\.]{10,}['"]/gi,
+    redact: (m) => m.replace(/Bearer\s+([A-Za-z0-9_\-\.]{4})[A-Za-z0-9_\-\.]+/, "Bearer $1…"),
+  },
+  {
+    rule: "fetch-or-http-to-anthropic",
+    severity: "warn",
+    pattern: /\b(fetch|axios|http\.request|https\.request)\b[\s\S]{0,180}api\.anthropic\.com/gi,
+  },
+];
+
+function snippet(line: string, match: string): string {
+  const idx = line.toLowerCase().indexOf(match.toLowerCase());
+  if (idx < 0) return line.slice(0, 240);
+  const start = Math.max(0, idx - 60);
+  const end = Math.min(line.length, idx + match.length + 60);
+  return line.slice(start, end).trim();
+}
+
+function scanFile(filePath: string, maxBytes: number): Finding[] {
+  try {
+    const st = fs.statSync(filePath);
+    if (st.size > maxBytes) return [];
+
+    const buf = fs.readFileSync(filePath);
+    // quick binary check: lots of NULs => skip
+    const nulCount = buf.subarray(0, Math.min(buf.length, 4096)).filter((b) => b === 0).length;
+    if (nulCount > 2) return [];
+
+    const text = buf.toString("utf8");
+    const lines = text.split(/\r?\n/);
+    const findings: Finding[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
+      for (const rule of RULES) {
+        rule.pattern.lastIndex = 0;
+        let m: RegExpExecArray | null;
+
+        while ((m = rule.pattern.exec(line)) !== null) {
+          const raw = m[0];
+          const masked = rule.redact ? rule.redact(raw) : raw;
+
+          findings.push({
+            severity: rule.severity,
+            rule: rule.rule,
+            file: filePath,
+            line: i + 1,
+            match: masked,
+            context: snippet(line, raw),
+          });
+        }
+      }
+    }
+
+    return findings;
+  } catch {
+    return [];
+  }
+}
+
+function hashReport(obj: unknown): string {
+  const h = crypto.createHash("sha256");
+  h.update(JSON.stringify(obj));
+  return h.digest("hex");
+}
+
+function main() {
+  const args = parseArgs();
+
+  const files: string[] = [];
+  walk(args.root, files);
+
+  const textFiles = files.filter((f) => looksTexty(f));
+  const findings: Finding[] = [];
+
+  for (const f of textFiles) {
+    findings.push(...scanFile(f, args.maxFileBytes));
+  }
+
+  const summary = {
+    info: findings.filter((x) => x.severity === "info").length,
+    warn: findings.filter((x) => x.severity === "warn").length,
+    high: findings.filter((x) => x.severity === "high").length,
+    uniqueFilesWithFindings: new Set(findings.map((x) => x.file)).size,
+  };
+
+  const reportBase = {
+    scannedRoot: args.root,
+    scannedAtISO: new Date().toISOString(),
+    fileCount: textFiles.length,
+    findings,
+    summary,
+  };
+
+  const report: Report = {
+    ...reportBase,
+    fingerprints: { reportHash: hashReport(reportBase) },
+  };
+
+  fs.writeFileSync(args.out, JSON.stringify(report, null, 2), "utf8");
+
+  // Human-readable console output
+  const top = (sev: FindingSeverity) => findings.filter((f) => f.severity === sev).slice(0, 10);
+  console.log(`\nAnthropic/Claude audit written to: ${args.out}`);
+  console.log(`Scanned ${textFiles.length} text files. Findings: info=${summary.info}, warn=${summary.warn}, high=${summary.high}\n`);
+
+  for (const sev of ["high", "warn", "info"] as const) {
+    const items = top(sev);
+    if (!items.length) continue;
+    console.log(`== ${sev.toUpperCase()} (showing up to 10) ==`);
+    for (const it of items) {
+      console.log(`${it.file}:${it.line} [${it.rule}] ${it.match}`);
+      if (it.context) console.log(`  ↳ ${it.context}`);
+    }
+    console.log("");
+  }
+
+  if (summary.high > 0) {
+    console.log("⚠️  High-severity findings detected. Treat as potential secret exposure and rotate keys if needed.");
+  } else {
+    console.log("No high-severity secret patterns detected in scanned files.");
+  }
+}
+
+main();
+npm i -D tsx typescript
+npx tsx audit-anthropic.ts --root . --out anthropic-audit.json
+name: Anthropic/Claude Audit
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - run: npm i -D tsx typescript
+
+      - run: npx tsx audit-anthropic.ts --out anthropic-audit.json
+
+      - name: Fail on high severity findings
+        run: |
+          node -e "const r=require('./anthropic-audit.json'); if ((r.summary?.high||0)>0) { console.error('High severity findings:', r.summary.high); process.exit(1); }"
