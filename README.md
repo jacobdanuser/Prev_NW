@@ -76200,4 +76200,1532 @@ if __name__ == "__main__":
     terms = generator.generate(100_000)
     print(f"Generated terms: {len(terms)}")
     print(render_colored_block(terms[:30], color="#5dade2"))
+diff --git a/README.md b/README.md
+index 1f47588ef2a8e37f2384ecc55ddcb9bf4c242cfa..9d5bf989b4220122ed73c4c396e2dccc457d701d 100644
+--- a/README.md
++++ b/README.md
+@@ -74706,25 +74706,33 @@ index 2443ccb7c89f840621582951f42986372b6249bc..4a9024998ee3df19e049cc095f2391df
+ +            if cleaned_value == "":
+ +                continue
+ +            if cleaned_value == []:
+ +                continue
+ +            if cleaned_value == {}:
+ +                continue
+ +            cleaned[key] = cleaned_value
+ +        return cleaned
+ +
+ +    if isinstance(payload, list):
+ +        cleaned_items = []
+ +        for item in payload:
+ +            cleaned_item = remove_psychological_influence_content(item)
+ +            if cleaned_item in (None, "", [], {}):
+ +                continue
+ +            cleaned_items.append(cleaned_item)
+ +        return cleaned_items
+ +
+ +    if isinstance(payload, str):
+ +        if _contains_psychological_influence(payload):
+ +            return ""
+ +        return payload
+ +
+ +    return payload
+ 
++
++## MAAT keyword expansion utility
++
++Added `maat_keyword_expander.py` to generate a very large MAAT-related keyword set (hundreds of thousands) with slight variants and compact HTML rendering that color-highlights the `maat` token while keeping output on a condensed line.
++
++## Mythic keyword neutralizer utility
++
++Added `mythic_keyword_neutralizer.py` to generate large neutral keyword sets across Ancient Nubia, Greece/Athens, Rome, Enochic themes, Mother/Mothership motifs, and fictitious entities. It also strips title/tone tokens that imply loaded or harmful framing and renders compact highlighted output for line-space conservation.
+diff --git a/maat_keyword_expander.py b/maat_keyword_expander.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..347652c8c115b0ee979b552c490ff3647ed9c9c1
+--- /dev/null
++++ b/maat_keyword_expander.py
+@@ -0,0 +1,155 @@
++"""Generate large MAAT-related keyword sets with compact colorized rendering."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from itertools import product
++from typing import Iterable
++
++
++@dataclass(frozen=True)
++class ExpansionProfile:
++    """Controls how many MAAT-adjacent terms get generated."""
++
++    target_size: int = 200_000
++    accent_color: str = "#d4af37"  # gold-like highlight
++
++
++ROOT_TERMS = (
++    "maat",
++    "maati",
++    "maatic",
++    "maatik",
++    "maatian",
++    "maatite",
++    "maatism",
++    "maatist",
++    "maaticity",
++    "maatology",
++)
++
++PREFIXES = (
++    "neo",
++    "proto",
++    "meta",
++    "hyper",
++    "ultra",
++    "trans",
++    "post",
++    "para",
++    "infra",
++    "supra",
++    "chrono",
++    "astro",
++    "aero",
++    "geo",
++    "bio",
++    "psy",
++    "cyber",
++    "electro",
++    "quantum",
++    "micro",
++)
++
++SUFFIXES = (
++    "core",
++    "field",
++    "stream",
++    "cluster",
++    "cycle",
++    "phase",
++    "matrix",
++    "signal",
++    "engine",
++    "domain",
++    "logic",
++    "verse",
++    "frame",
++    "weave",
++    "flux",
++    "pulse",
++    "layer",
++    "grid",
++    "schema",
++    "node",
++)
++
++QUALIFIERS = (
++    "aligned",
++    "balanced",
++    "ordered",
++    "scaled",
++    "shifted",
++    "folded",
++    "symmetric",
++    "asymmetric",
++    "harmonic",
++    "chaotic",
++    "adaptive",
++    "resonant",
++)
++
++
++def _slight_variants(term: str) -> Iterable[str]:
++    """Create slight textual variations for breadth without manual lists."""
++
++    yield term
++    yield f"{term}s"
++    yield f"{term}ed"
++    yield f"{term}ing"
++    yield term.replace("aa", "a")
++    if term.endswith("t"):
++        yield f"{term}h"
++
++
++def generate_maat_terms(profile: ExpansionProfile = ExpansionProfile()) -> list[str]:
++    """Generate up to `target_size` unique MAAT-adjacent terms."""
++
++    generated: set[str] = set()
++
++    for root in ROOT_TERMS:
++        for variant in _slight_variants(root):
++            generated.add(variant)
++
++    for prefix, root, suffix, qualifier in product(PREFIXES, ROOT_TERMS, SUFFIXES, QUALIFIERS):
++        base = f"{prefix}-{root}-{suffix}-{qualifier}"
++        for variant in _slight_variants(base):
++            generated.add(variant)
++            if len(generated) >= profile.target_size:
++                return sorted(generated)
++
++    return sorted(generated)
++
++
++def render_compact_html_cloud(
++    terms: Iterable[str],
++    *,
++    color: str = "#d4af37",
++    separator: str = " · ",
++) -> str:
++    """Render terms in one compact line with the MAAT token colorized."""
++
++    highlighted = []
++    for term in terms:
++        highlighted.append(
++            term.replace(
++                "maat",
++                f"<span style=\"background:{color};padding:0 3px;border-radius:2px;\">maat</span>",
++            )
++        )
++
++    return separator.join(highlighted)
++
++
++def build_maat_cloud(profile: ExpansionProfile = ExpansionProfile()) -> str:
++    """High-level helper: generate large list and return compact colored output."""
++
++    terms = generate_maat_terms(profile)
++    return render_compact_html_cloud(terms, color=profile.accent_color)
++
++
++if __name__ == "__main__":
++    cfg = ExpansionProfile(target_size=200_000, accent_color="#ffe066")
++    terms = generate_maat_terms(cfg)
++    print(f"Generated terms: {len(terms)}")
++    print(render_compact_html_cloud(terms[:60], color=cfg.accent_color))
+diff --git a/mythic_keyword_neutralizer.py b/mythic_keyword_neutralizer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f2a0e806ec334e4c7e99929e3ac47e3a5aa97bd5
+--- /dev/null
++++ b/mythic_keyword_neutralizer.py
+@@ -0,0 +1,231 @@
++"""Generate large, neutral keyword clouds for mythic/historical entity themes.
++
++Focus:
++- Ancient Nubia, Greece/Athens, Rome, Enochic traditions
++- Mother/Mothership motifs
++- Fictitious entities
++
++The script intentionally removes charged stylistic markers and harmful/destructive
++phrasing so output is safer for indexing and matching tasks.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from itertools import product
++from typing import Iterable
++
++
++@dataclass(frozen=True)
++class NeutralProfile:
++    """Configuration for neutral keyword generation and rendering."""
++
++    target_size: int = 180_000
++    accent_color: str = "#9bd3ff"
++
++
++DOMAINS: dict[str, tuple[str, ...]] = {
++    "nubia": (
++        "amanirenas",
++        "apedemak",
++        "isis-nubia",
++        "kandake",
++        "kerma",
++        "napata",
++        "meroe",
++    ),
++    "greece_athens": (
++        "athena",
++        "zeus",
++        "hera",
++        "apollo",
++        "artemis",
++        "demeter",
++        "athens",
++    ),
++    "rome": (
++        "jupiter",
++        "juno",
++        "mars",
++        "minerva",
++        "venus",
++        "saturn",
++        "rome",
++    ),
++    "enochic": (
++        "enoch",
++        "metatron",
++        "watchers",
++        "seraphim",
++        "archangel",
++        "apocrypha",
++    ),
++    "mother_mothership": (
++        "mother",
++        "great-mother",
++        "mothership",
++        "origin-mother",
++        "ancestral-mother",
++    ),
++    "fictitious": (
++        "guardian",
++        "oracle",
++        "sentinel",
++        "star-keeper",
++        "sky-vessel",
++        "lore-engine",
++    ),
++}
++
++PREFIXES = (
++    "neo",
++    "proto",
++    "meta",
++    "aero",
++    "astro",
++    "chrono",
++    "cyber",
++    "geo",
++    "infra",
++    "micro",
++    "para",
++    "post",
++    "supra",
++    "trans",
++)
++
++SUFFIXES = (
++    "archive",
++    "atlas",
++    "catalog",
++    "cluster",
++    "domain",
++    "frame",
++    "index",
++    "ledger",
++    "lineage",
++    "matrix",
++    "network",
++    "record",
++    "registry",
++    "schema",
++    "signal",
++)
++
++QUALIFIERS = (
++    "aligned",
++    "analytic",
++    "balanced",
++    "contextual",
++    "documented",
++    "historic",
++    "mapped",
++    "neutral",
++    "normalized",
++    "ordered",
++    "referenced",
++    "structured",
++)
++
++# Remove words that create loaded tone or imply harm.
++BANNED_TONE_TOKENS = {
++    "almighty",
++    "vengeful",
++    "wrath",
++    "domination",
++    "destruction",
++    "annihilation",
++    "supremacy",
++    "curse",
++    "fatal",
++    "violent",
++    "weapon",
++    "warfare",
++    "terror",
++    "doom",
++}
++
++TITLE_TOKENS = {
++    "god",
++    "goddess",
++    "deity",
++    "lord",
++    "lady",
++    "king",
++    "queen",
++    "emperor",
++    "empress",
++}
++
++
++def _light_variants(token: str) -> Iterable[str]:
++    yield token
++    yield f"{token}s"
++    yield f"{token}-ref"
++    yield f"{token}-set"
++    yield token.replace("--", "-")
++
++
++def neutralize_phrase(phrase: str) -> str:
++    """Strip charged titles and harmful tone markers for neutral output."""
++
++    parts = [p for p in phrase.lower().replace("_", "-").split("-") if p]
++    filtered = [p for p in parts if p not in BANNED_TONE_TOKENS and p not in TITLE_TOKENS]
++    if not filtered:
++        return "neutral-entity"
++    return "-".join(filtered)
++
++
++def generate_neutral_keywords(profile: NeutralProfile = NeutralProfile()) -> list[str]:
++    """Create a large neutralized keyword set across requested themes."""
++
++    generated: set[str] = set()
++
++    seeds: list[str] = []
++    for values in DOMAINS.values():
++        seeds.extend(values)
++
++    for raw in seeds:
++        clean = neutralize_phrase(raw)
++        for variant in _light_variants(clean):
++            generated.add(variant)
++
++    for prefix, raw, suffix, qualifier in product(PREFIXES, seeds, SUFFIXES, QUALIFIERS):
++        clean = neutralize_phrase(raw)
++        base = neutralize_phrase(f"{prefix}-{clean}-{suffix}-{qualifier}")
++        for variant in _light_variants(base):
++            generated.add(variant)
++            if len(generated) >= profile.target_size:
++                return sorted(generated)
++
++    return sorted(generated)
++
++
++def render_compact_highlighted_line(
++    keywords: Iterable[str],
++    *,
++    color: str = "#9bd3ff",
++    separator: str = " · ",
++) -> str:
++    """Highlight core tokens compactly while conserving output line-space."""
++
++    focus_tokens = ("mother", "mothership", "athena", "enoch", "apedemak", "jupiter")
++    rendered: list[str] = []
++
++    for kw in keywords:
++        out = kw
++        for focus in focus_tokens:
++            out = out.replace(
++                focus,
++                f"<span style=\"background:{color};padding:0 2px;border-radius:2px;\">{focus}</span>",
++            )
++        rendered.append(out)
++
++    return separator.join(rendered)
++
++
++if __name__ == "__main__":
++    cfg = NeutralProfile(target_size=180_000, accent_color="#8be9fd")
++    words = generate_neutral_keywords(cfg)
++    print(f"Generated neutral keywords: {len(words)}")
++    print(render_compact_highlighted_line(words[:70], color=cfg.accent_color))
+diff --git a/README.md b/README.md
+index 1f47588ef2a8e37f2384ecc55ddcb9bf4c242cfa..35bb60afdabe7400047519a07e45a0f3dde22dd2 100644
+--- a/README.md
++++ b/README.md
+@@ -74706,25 +74706,33 @@ index 2443ccb7c89f840621582951f42986372b6249bc..4a9024998ee3df19e049cc095f2391df
+ +            if cleaned_value == "":
+ +                continue
+ +            if cleaned_value == []:
+ +                continue
+ +            if cleaned_value == {}:
+ +                continue
+ +            cleaned[key] = cleaned_value
+ +        return cleaned
+ +
+ +    if isinstance(payload, list):
+ +        cleaned_items = []
+ +        for item in payload:
+ +            cleaned_item = remove_psychological_influence_content(item)
+ +            if cleaned_item in (None, "", [], {}):
+ +                continue
+ +            cleaned_items.append(cleaned_item)
+ +        return cleaned_items
+ +
+ +    if isinstance(payload, str):
+ +        if _contains_psychological_influence(payload):
+ +            return ""
+ +        return payload
+ +
+ +    return payload
+ 
++
++## MAAT keyword expansion utility
++
++Added `maat_keyword_expander.py` to generate a very large MAAT-related keyword set (hundreds of thousands) with slight variants and compact HTML rendering that color-highlights the `maat` token while keeping output on a condensed line.
++
++## Neutral mythology keyword expansion utility
++
++Added `pantheon_keyword_expander.py` to generate very large, neutral keyword sets around Ancient Nubia, Greece/Athens, Rome, Enochic references, mother/mothership terms, and selected fictitious entities. The script includes phrase neutralization to strip loaded/damaging tone words and renders compact HTML output with highlighted tokens to conserve line space.
+diff --git a/maat_keyword_expander.py b/maat_keyword_expander.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..347652c8c115b0ee979b552c490ff3647ed9c9c1
+--- /dev/null
++++ b/maat_keyword_expander.py
+@@ -0,0 +1,155 @@
++"""Generate large MAAT-related keyword sets with compact colorized rendering."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from itertools import product
++from typing import Iterable
++
++
++@dataclass(frozen=True)
++class ExpansionProfile:
++    """Controls how many MAAT-adjacent terms get generated."""
++
++    target_size: int = 200_000
++    accent_color: str = "#d4af37"  # gold-like highlight
++
++
++ROOT_TERMS = (
++    "maat",
++    "maati",
++    "maatic",
++    "maatik",
++    "maatian",
++    "maatite",
++    "maatism",
++    "maatist",
++    "maaticity",
++    "maatology",
++)
++
++PREFIXES = (
++    "neo",
++    "proto",
++    "meta",
++    "hyper",
++    "ultra",
++    "trans",
++    "post",
++    "para",
++    "infra",
++    "supra",
++    "chrono",
++    "astro",
++    "aero",
++    "geo",
++    "bio",
++    "psy",
++    "cyber",
++    "electro",
++    "quantum",
++    "micro",
++)
++
++SUFFIXES = (
++    "core",
++    "field",
++    "stream",
++    "cluster",
++    "cycle",
++    "phase",
++    "matrix",
++    "signal",
++    "engine",
++    "domain",
++    "logic",
++    "verse",
++    "frame",
++    "weave",
++    "flux",
++    "pulse",
++    "layer",
++    "grid",
++    "schema",
++    "node",
++)
++
++QUALIFIERS = (
++    "aligned",
++    "balanced",
++    "ordered",
++    "scaled",
++    "shifted",
++    "folded",
++    "symmetric",
++    "asymmetric",
++    "harmonic",
++    "chaotic",
++    "adaptive",
++    "resonant",
++)
++
++
++def _slight_variants(term: str) -> Iterable[str]:
++    """Create slight textual variations for breadth without manual lists."""
++
++    yield term
++    yield f"{term}s"
++    yield f"{term}ed"
++    yield f"{term}ing"
++    yield term.replace("aa", "a")
++    if term.endswith("t"):
++        yield f"{term}h"
++
++
++def generate_maat_terms(profile: ExpansionProfile = ExpansionProfile()) -> list[str]:
++    """Generate up to `target_size` unique MAAT-adjacent terms."""
++
++    generated: set[str] = set()
++
++    for root in ROOT_TERMS:
++        for variant in _slight_variants(root):
++            generated.add(variant)
++
++    for prefix, root, suffix, qualifier in product(PREFIXES, ROOT_TERMS, SUFFIXES, QUALIFIERS):
++        base = f"{prefix}-{root}-{suffix}-{qualifier}"
++        for variant in _slight_variants(base):
++            generated.add(variant)
++            if len(generated) >= profile.target_size:
++                return sorted(generated)
++
++    return sorted(generated)
++
++
++def render_compact_html_cloud(
++    terms: Iterable[str],
++    *,
++    color: str = "#d4af37",
++    separator: str = " · ",
++) -> str:
++    """Render terms in one compact line with the MAAT token colorized."""
++
++    highlighted = []
++    for term in terms:
++        highlighted.append(
++            term.replace(
++                "maat",
++                f"<span style=\"background:{color};padding:0 3px;border-radius:2px;\">maat</span>",
++            )
++        )
++
++    return separator.join(highlighted)
++
++
++def build_maat_cloud(profile: ExpansionProfile = ExpansionProfile()) -> str:
++    """High-level helper: generate large list and return compact colored output."""
++
++    terms = generate_maat_terms(profile)
++    return render_compact_html_cloud(terms, color=profile.accent_color)
++
++
++if __name__ == "__main__":
++    cfg = ExpansionProfile(target_size=200_000, accent_color="#ffe066")
++    terms = generate_maat_terms(cfg)
++    print(f"Generated terms: {len(terms)}")
++    print(render_compact_html_cloud(terms[:60], color=cfg.accent_color))
+diff --git a/pantheon_keyword_expander.py b/pantheon_keyword_expander.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..951e6d1db75322dbf16f53eeb2915494bb6fd2e5
+--- /dev/null
++++ b/pantheon_keyword_expander.py
+@@ -0,0 +1,146 @@
++"""Generate large, neutral mythology keyword clouds with compact color highlights.
++
++This module expands terms around ancient deities and related mythic entities while
++normalizing wording so output stays neutral and avoids charged/damaging phrasing.
++"""
++
++from __future__ import annotations
++
++import re
++from dataclasses import dataclass
++from itertools import product
++from typing import Iterable
++
++
++@dataclass(frozen=True)
++class ExpansionProfile:
++    """Controls expansion size and rendering style."""
++
++    target_size: int = 220_000
++    accent_color: str = "#9ad1ff"
++
++
++# Requested domains: Nubia, Greece/Athens, Rome, Enochic references, mother/mothership,
++# and fictitious entities.
++ENTITY_ROOTS = (
++    # Ancient Nubia / Egypt-adjacent references
++    "amanishakheto", "apedemak", "anuket", "isis", "osiris", "maat",
++    # Greece / Athens
++    "athena", "zeus", "hera", "apollo", "artemis", "ares", "poseidon", "hades",
++    # Rome
++    "jupiter", "juno", "minerva", "mars", "venus", "diana", "neptune", "pluto",
++    # Enochic / angelic references
++    "enoch", "metatron", "raziel", "gabriel", "michael", "uriel", "raphael",
++    # Mother / mothership style references
++    "great_mother", "earth_mother", "mothership", "star_mother",
++    # Fictitious / myth-inspired figures
++    "gaia_prime", "sky_archivist", "void_keeper", "sunforger", "lore_weaver",
++)
++
++PREFIXES = (
++    "ancient", "classic", "mythic", "temple", "civic", "solar", "lunar",
++    "river", "star", "stone", "archive", "scholar", "symbolic", "ritual",
++    "legend", "fictional", "atlas", "chrono", "aether", "harmonic",
++)
++
++SUFFIXES = (
++    "index", "lexicon", "catalog", "register", "matrix", "network", "thread",
++    "lineage", "tradition", "context", "archive", "profile", "signal", "glyph",
++    "schema", "map", "node", "cluster", "constellation", "frame",
++)
++
++QUALIFIERS = (
++    "neutral", "balanced", "descriptive", "contextual", "historical", "symbolic",
++    "literary", "comparative", "structured", "layered", "reference", "annotated",
++)
++
++# Remove loaded or harmful tonal markers from candidate strings.
++BANNED_TONE_WORDS = {
++    "supreme", "wrathful", "vengeful", "dominion", "annihilator", "destroyer",
++    "curse", "doomsday", "violent", "weaponized", "chaoslord", "blood", "warcrime",
++}
++
++HIGHLIGHT_TOKENS = (
++    "maat", "athena", "jupiter", "enoch", "mothership", "gaia",
++)
++
++
++def _neutralize_phrase(raw: str) -> str:
++    """Normalize and remove charged terms that could imply harmful framing."""
++
++    lowered = raw.lower().replace("-", "_")
++    pieces = [p for p in re.split(r"[_\s]+", lowered) if p]
++    filtered = [p for p in pieces if p not in BANNED_TONE_WORDS]
++    if not filtered:
++        return ""
++    return "_".join(filtered)
++
++
++def _slight_variants(term: str) -> Iterable[str]:
++    """Generate small variations while staying semantically neutral."""
++
++    yield term
++    yield f"{term}s"
++    yield f"{term}_set"
++    yield f"{term}_map"
++    if term.endswith("a"):
++        yield f"{term}n"
++    if "_" in term:
++        yield term.replace("_", "")
++
++
++def generate_neutral_myth_terms(profile: ExpansionProfile = ExpansionProfile()) -> list[str]:
++    """Build a large set of mythology-related neutral keywords."""
++
++    generated: set[str] = set()
++
++    for root in ENTITY_ROOTS:
++        for variant in _slight_variants(root):
++            clean = _neutralize_phrase(variant)
++            if clean:
++                generated.add(clean)
++
++    for prefix, root, suffix, qualifier in product(PREFIXES, ENTITY_ROOTS, SUFFIXES, QUALIFIERS):
++        base = f"{prefix}_{root}_{suffix}_{qualifier}"
++        for variant in _slight_variants(base):
++            clean = _neutralize_phrase(variant)
++            if clean:
++                generated.add(clean)
++                if len(generated) >= profile.target_size:
++                    return sorted(generated)
++
++    return sorted(generated)
++
++
++def render_compact_html_cloud(
++    terms: Iterable[str],
++    *,
++    color: str = "#9ad1ff",
++    separator: str = " · ",
++) -> str:
++    """Render terms in a compact line with key tokens highlighted."""
++
++    def highlight(term: str) -> str:
++        rendered = term
++        for token in HIGHLIGHT_TOKENS:
++            rendered = rendered.replace(
++                token,
++                f"<span style=\"background:{color};padding:0 3px;border-radius:2px;\">{token}</span>",
++            )
++        return rendered
++
++    return separator.join(highlight(t) for t in terms)
++
++
++def build_neutral_myth_cloud(profile: ExpansionProfile = ExpansionProfile()) -> str:
++    """Generate and render a compact, neutral mythology keyword cloud."""
++
++    terms = generate_neutral_myth_terms(profile)
++    return render_compact_html_cloud(terms, color=profile.accent_color)
++
++
++if __name__ == "__main__":
++    cfg = ExpansionProfile(target_size=220_000, accent_color="#8be9fd")
++    terms = generate_neutral_myth_terms(cfg)
++    print(f"Generated terms: {len(terms)}")
++    print(render_compact_html_cloud(terms[:70], color=cfg.accent_color))
+diff --git a/README.md b/README.md
+index 1f47588ef2a8e37f2384ecc55ddcb9bf4c242cfa..80302d3c74b5ca3f58216a880ea98eb58b57e30d 100644
+--- a/README.md
++++ b/README.md
+@@ -74706,25 +74706,33 @@ index 2443ccb7c89f840621582951f42986372b6249bc..4a9024998ee3df19e049cc095f2391df
+ +            if cleaned_value == "":
+ +                continue
+ +            if cleaned_value == []:
+ +                continue
+ +            if cleaned_value == {}:
+ +                continue
+ +            cleaned[key] = cleaned_value
+ +        return cleaned
+ +
+ +    if isinstance(payload, list):
+ +        cleaned_items = []
+ +        for item in payload:
+ +            cleaned_item = remove_psychological_influence_content(item)
+ +            if cleaned_item in (None, "", [], {}):
+ +                continue
+ +            cleaned_items.append(cleaned_item)
+ +        return cleaned_items
+ +
+ +    if isinstance(payload, str):
+ +        if _contains_psychological_influence(payload):
+ +            return ""
+ +        return payload
+ +
+ +    return payload
+ 
++
++## MAAT keyword expansion utility
++
++Added `maat_keyword_expander.py` to generate a very large MAAT-related keyword set (hundreds of thousands) with slight variants and compact HTML rendering that color-highlights the `maat` token while keeping output on a condensed line.
++
++## Neutral mythology keyword expansion utility
++
++Added `mythic_keyword_neutralizer.py` to generate a very large cross-mythology keyword set (Nubia, Greece/Athens, Rome, Enoch-related, mother/mothership, and fictive entities) while neutralizing tone/style markers that could imply harmful framing. The output renderer keeps keywords compact on one line and color-highlights key stems.
+diff --git a/maat_keyword_expander.py b/maat_keyword_expander.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..347652c8c115b0ee979b552c490ff3647ed9c9c1
+--- /dev/null
++++ b/maat_keyword_expander.py
+@@ -0,0 +1,155 @@
++"""Generate large MAAT-related keyword sets with compact colorized rendering."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from itertools import product
++from typing import Iterable
++
++
++@dataclass(frozen=True)
++class ExpansionProfile:
++    """Controls how many MAAT-adjacent terms get generated."""
++
++    target_size: int = 200_000
++    accent_color: str = "#d4af37"  # gold-like highlight
++
++
++ROOT_TERMS = (
++    "maat",
++    "maati",
++    "maatic",
++    "maatik",
++    "maatian",
++    "maatite",
++    "maatism",
++    "maatist",
++    "maaticity",
++    "maatology",
++)
++
++PREFIXES = (
++    "neo",
++    "proto",
++    "meta",
++    "hyper",
++    "ultra",
++    "trans",
++    "post",
++    "para",
++    "infra",
++    "supra",
++    "chrono",
++    "astro",
++    "aero",
++    "geo",
++    "bio",
++    "psy",
++    "cyber",
++    "electro",
++    "quantum",
++    "micro",
++)
++
++SUFFIXES = (
++    "core",
++    "field",
++    "stream",
++    "cluster",
++    "cycle",
++    "phase",
++    "matrix",
++    "signal",
++    "engine",
++    "domain",
++    "logic",
++    "verse",
++    "frame",
++    "weave",
++    "flux",
++    "pulse",
++    "layer",
++    "grid",
++    "schema",
++    "node",
++)
++
++QUALIFIERS = (
++    "aligned",
++    "balanced",
++    "ordered",
++    "scaled",
++    "shifted",
++    "folded",
++    "symmetric",
++    "asymmetric",
++    "harmonic",
++    "chaotic",
++    "adaptive",
++    "resonant",
++)
++
++
++def _slight_variants(term: str) -> Iterable[str]:
++    """Create slight textual variations for breadth without manual lists."""
++
++    yield term
++    yield f"{term}s"
++    yield f"{term}ed"
++    yield f"{term}ing"
++    yield term.replace("aa", "a")
++    if term.endswith("t"):
++        yield f"{term}h"
++
++
++def generate_maat_terms(profile: ExpansionProfile = ExpansionProfile()) -> list[str]:
++    """Generate up to `target_size` unique MAAT-adjacent terms."""
++
++    generated: set[str] = set()
++
++    for root in ROOT_TERMS:
++        for variant in _slight_variants(root):
++            generated.add(variant)
++
++    for prefix, root, suffix, qualifier in product(PREFIXES, ROOT_TERMS, SUFFIXES, QUALIFIERS):
++        base = f"{prefix}-{root}-{suffix}-{qualifier}"
++        for variant in _slight_variants(base):
++            generated.add(variant)
++            if len(generated) >= profile.target_size:
++                return sorted(generated)
++
++    return sorted(generated)
++
++
++def render_compact_html_cloud(
++    terms: Iterable[str],
++    *,
++    color: str = "#d4af37",
++    separator: str = " · ",
++) -> str:
++    """Render terms in one compact line with the MAAT token colorized."""
++
++    highlighted = []
++    for term in terms:
++        highlighted.append(
++            term.replace(
++                "maat",
++                f"<span style=\"background:{color};padding:0 3px;border-radius:2px;\">maat</span>",
++            )
++        )
++
++    return separator.join(highlighted)
++
++
++def build_maat_cloud(profile: ExpansionProfile = ExpansionProfile()) -> str:
++    """High-level helper: generate large list and return compact colored output."""
++
++    terms = generate_maat_terms(profile)
++    return render_compact_html_cloud(terms, color=profile.accent_color)
++
++
++if __name__ == "__main__":
++    cfg = ExpansionProfile(target_size=200_000, accent_color="#ffe066")
++    terms = generate_maat_terms(cfg)
++    print(f"Generated terms: {len(terms)}")
++    print(render_compact_html_cloud(terms[:60], color=cfg.accent_color))
+diff --git a/mythic_keyword_neutralizer.py b/mythic_keyword_neutralizer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..c1f7ff0f5eb67d826eea0e55d5d7803ad53cf1d3
+--- /dev/null
++++ b/mythic_keyword_neutralizer.py
+@@ -0,0 +1,186 @@
++"""Generate large mythology/fictive keyword sets with neutralized wording and compact highlighting."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from itertools import product
++from typing import Iterable
++
++
++@dataclass(frozen=True)
++class NeutralExpansionProfile:
++    """Configuration for large keyword generation and neutral rendering."""
++
++    target_size: int = 200_000
++    accent_color: str = "#9fd3ff"
++
++
++BASE_ENTITIES = (
++    # Ancient Nubia / Egypt-adjacent
++    "amanirenas",
++    "apis",
++    "amun",
++    "isis",
++    "osiris",
++    "horus",
++    "anuket",
++    # Greece / Athens
++    "athena",
++    "zeus",
++    "hera",
++    "apollo",
++    "artemis",
++    "demeter",
++    "poseidon",
++    "hestia",
++    # Rome
++    "jupiter",
++    "juno",
++    "minerva",
++    "mars",
++    "venus",
++    "mercury",
++    "diana",
++    "neptune",
++    # Enoch / related
++    "enoch",
++    "metatron",
++    "watchers",
++    "arc",
++    "scribe",
++    # Mother / mothership / broad fictive entities
++    "mother",
++    "mothership",
++    "guardian",
++    "oracle",
++    "sentinel",
++    "avatar",
++    "titan",
++    "elysian",
++    "aether",
++)
++
++CONTEXT_TAGS = (
++    "archive",
++    "atlas",
++    "codex",
++    "lineage",
++    "network",
++    "cluster",
++    "registry",
++    "constellation",
++    "tradition",
++    "framework",
++    "index",
++    "ledger",
++    "cycle",
++    "pathway",
++)
++
++NEUTRAL_QUALIFIERS = (
++    "balanced",
++    "historic",
++    "symbolic",
++    "narrative",
++    "cultural",
++    "classical",
++    "comparative",
++    "annotated",
++    "reference",
++    "layered",
++    "shared",
++    "documented",
++)
++
++
++SERIES_CODES = tuple(f"series{n:02d}" for n in range(1, 31))
++
++# Tone and harm markers to remove when encountered.
++UNSAFE_OR_STYLE_MARKERS = {
++    "wrath",
++    "wrathful",
++    "vengeful",
++    "dark",
++    "ominous",
++    "menacing",
++    "violent",
++    "devastating",
++    "annihilator",
++    "killer",
++    "terror",
++    "chaoslord",
++    "blood",
++    "doombringer",
++}
++
++
++def _minor_variants(term: str) -> Iterable[str]:
++    """Create slight lexical variants while staying semantically neutral."""
++
++    yield term
++    yield f"{term}s"
++    yield f"{term}-entry"
++    yield f"{term}-profile"
++    yield term.replace(" ", "-")
++
++
++def neutralize_term(term: str) -> str:
++    """Strip aggressive/stylized markers and normalize separators."""
++
++    normalized = term.lower().replace("_", "-").replace("--", "-")
++    parts = [p for p in normalized.split("-") if p and p not in UNSAFE_OR_STYLE_MARKERS]
++    return "-".join(parts)
++
++
++def generate_neutral_mythic_terms(profile: NeutralExpansionProfile = NeutralExpansionProfile()) -> list[str]:
++    """Generate many mythology/fictive keywords with neutralized language."""
++
++    generated: set[str] = set()
++
++    for base in BASE_ENTITIES:
++        for variant in _minor_variants(base):
++            cleaned = neutralize_term(variant)
++            if cleaned:
++                generated.add(cleaned)
++
++    for entity, context, qualifier, series in product(
++        BASE_ENTITIES, CONTEXT_TAGS, NEUTRAL_QUALIFIERS, SERIES_CODES
++    ):
++        candidate = neutralize_term(f"{entity}-{context}-{qualifier}-{series}")
++        for variant in _minor_variants(candidate):
++            cleaned = neutralize_term(variant)
++            if cleaned:
++                generated.add(cleaned)
++            if len(generated) >= profile.target_size:
++                return sorted(generated)
++
++    return sorted(generated)
++
++
++def render_compact_highlighted_cloud(
++    terms: Iterable[str],
++    *,
++    color: str = "#9fd3ff",
++    separator: str = " · ",
++) -> str:
++    """Render a compact single-line cloud with entity stems highlighted."""
++
++    highlights = ("mother", "mothership", "enoch", "athena", "isis", "jupiter")
++
++    output: list[str] = []
++    for term in terms:
++        highlighted = term
++        for h in highlights:
++            highlighted = highlighted.replace(
++                h,
++                f"<span style=\"background:{color};padding:0 3px;border-radius:2px;\">{h}</span>",
++            )
++        output.append(highlighted)
++    return separator.join(output)
++
++
++if __name__ == "__main__":
++    cfg = NeutralExpansionProfile(target_size=200_000, accent_color="#b8f2e6")
++    terms = generate_neutral_mythic_terms(cfg)
++    print(f"Generated terms: {len(terms)}")
++    print(render_compact_highlighted_cloud(terms[:60], color=cfg.accent_color))
+diff --git a/README.md b/README.md
+index 1f47588ef2a8e37f2384ecc55ddcb9bf4c242cfa..f1e7f4386154904081897319b4b6765fc9353cba 100644
+--- a/README.md
++++ b/README.md
+@@ -74706,25 +74706,35 @@ index 2443ccb7c89f840621582951f42986372b6249bc..4a9024998ee3df19e049cc095f2391df
+ +            if cleaned_value == "":
+ +                continue
+ +            if cleaned_value == []:
+ +                continue
+ +            if cleaned_value == {}:
+ +                continue
+ +            cleaned[key] = cleaned_value
+ +        return cleaned
+ +
+ +    if isinstance(payload, list):
+ +        cleaned_items = []
+ +        for item in payload:
+ +            cleaned_item = remove_psychological_influence_content(item)
+ +            if cleaned_item in (None, "", [], {}):
+ +                continue
+ +            cleaned_items.append(cleaned_item)
+ +        return cleaned_items
+ +
+ +    if isinstance(payload, str):
+ +        if _contains_psychological_influence(payload):
+ +            return ""
+ +        return payload
+ +
+ +    return payload
+ 
++
++## MAAT keyword expansion utility
++
++Added `maat_keyword_expander.py` to generate a very large MAAT-related keyword set (hundreds of thousands) with slight variants and compact HTML rendering that color-highlights the `maat` token while keeping output on a condensed line.
++
++## Mythic keyword sanitizer utility
++
++Added `mythic_keyword_sanitizer.py` to generate large neutralized keyword sets across Ancient Nubia/Egypt, Greece/Athens, Rome, Enochian terms, mother/mothership archetypes, and fictitious entities.
++
++The script normalizes names (removing stylized markers), filters harmful/destructive tokens, and renders compact HTML output with colored highlights for key focus terms.
+diff --git a/maat_keyword_expander.py b/maat_keyword_expander.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..347652c8c115b0ee979b552c490ff3647ed9c9c1
+--- /dev/null
++++ b/maat_keyword_expander.py
+@@ -0,0 +1,155 @@
++"""Generate large MAAT-related keyword sets with compact colorized rendering."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from itertools import product
++from typing import Iterable
++
++
++@dataclass(frozen=True)
++class ExpansionProfile:
++    """Controls how many MAAT-adjacent terms get generated."""
++
++    target_size: int = 200_000
++    accent_color: str = "#d4af37"  # gold-like highlight
++
++
++ROOT_TERMS = (
++    "maat",
++    "maati",
++    "maatic",
++    "maatik",
++    "maatian",
++    "maatite",
++    "maatism",
++    "maatist",
++    "maaticity",
++    "maatology",
++)
++
++PREFIXES = (
++    "neo",
++    "proto",
++    "meta",
++    "hyper",
++    "ultra",
++    "trans",
++    "post",
++    "para",
++    "infra",
++    "supra",
++    "chrono",
++    "astro",
++    "aero",
++    "geo",
++    "bio",
++    "psy",
++    "cyber",
++    "electro",
++    "quantum",
++    "micro",
++)
++
++SUFFIXES = (
++    "core",
++    "field",
++    "stream",
++    "cluster",
++    "cycle",
++    "phase",
++    "matrix",
++    "signal",
++    "engine",
++    "domain",
++    "logic",
++    "verse",
++    "frame",
++    "weave",
++    "flux",
++    "pulse",
++    "layer",
++    "grid",
++    "schema",
++    "node",
++)
++
++QUALIFIERS = (
++    "aligned",
++    "balanced",
++    "ordered",
++    "scaled",
++    "shifted",
++    "folded",
++    "symmetric",
++    "asymmetric",
++    "harmonic",
++    "chaotic",
++    "adaptive",
++    "resonant",
++)
++
++
++def _slight_variants(term: str) -> Iterable[str]:
++    """Create slight textual variations for breadth without manual lists."""
++
++    yield term
++    yield f"{term}s"
++    yield f"{term}ed"
++    yield f"{term}ing"
++    yield term.replace("aa", "a")
++    if term.endswith("t"):
++        yield f"{term}h"
++
++
++def generate_maat_terms(profile: ExpansionProfile = ExpansionProfile()) -> list[str]:
++    """Generate up to `target_size` unique MAAT-adjacent terms."""
++
++    generated: set[str] = set()
++
++    for root in ROOT_TERMS:
++        for variant in _slight_variants(root):
++            generated.add(variant)
++
++    for prefix, root, suffix, qualifier in product(PREFIXES, ROOT_TERMS, SUFFIXES, QUALIFIERS):
++        base = f"{prefix}-{root}-{suffix}-{qualifier}"
++        for variant in _slight_variants(base):
++            generated.add(variant)
++            if len(generated) >= profile.target_size:
++                return sorted(generated)
++
++    return sorted(generated)
++
++
++def render_compact_html_cloud(
++    terms: Iterable[str],
++    *,
++    color: str = "#d4af37",
++    separator: str = " · ",
++) -> str:
++    """Render terms in one compact line with the MAAT token colorized."""
++
++    highlighted = []
++    for term in terms:
++        highlighted.append(
++            term.replace(
++                "maat",
++                f"<span style=\"background:{color};padding:0 3px;border-radius:2px;\">maat</span>",
++            )
++        )
++
++    return separator.join(highlighted)
++
++
++def build_maat_cloud(profile: ExpansionProfile = ExpansionProfile()) -> str:
++    """High-level helper: generate large list and return compact colored output."""
++
++    terms = generate_maat_terms(profile)
++    return render_compact_html_cloud(terms, color=profile.accent_color)
++
++
++if __name__ == "__main__":
++    cfg = ExpansionProfile(target_size=200_000, accent_color="#ffe066")
++    terms = generate_maat_terms(cfg)
++    print(f"Generated terms: {len(terms)}")
++    print(render_compact_html_cloud(terms[:60], color=cfg.accent_color))
+diff --git a/mythic_keyword_sanitizer.py b/mythic_keyword_sanitizer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b09b1de0189d231e31cc8eca67c16699f7641aea
+--- /dev/null
++++ b/mythic_keyword_sanitizer.py
+@@ -0,0 +1,143 @@
++"""Generate and sanitize mythic entity keyword variants with compact colorized output.
++
++Focus:
++- Ancient Nubia/Egypt, Greece/Athens, Rome, Enochian references
++- Mother / mothership / archetypal entities
++- Fictitious entities
++
++Safety:
++- Neutralizes stylization that can imply specific tone/manipulation intent
++- Filters out explicitly harmful/destructive terms
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from itertools import product
++from typing import Iterable
++import re
++import unicodedata
++
++
++@dataclass(frozen=True)
++class SanitizerProfile:
++    target_size: int = 120_000
++    accent_color: str = "#8ecae6"
++
++
++BASE_KEYWORDS = {
++    "nubia_egypt": [
++        "amun", "amun-ra", "isis", "osiris", "horus", "anubis", "set", "bastet", "maat", "thoth"
++    ],
++    "greece_athens": [
++        "zeus", "hera", "athena", "apollo", "artemis", "ares", "demeter", "poseidon", "hades", "nike"
++    ],
++    "rome": [
++        "jupiter", "juno", "minerva", "mars", "venus", "mercury", "neptune", "pluto", "diana", "vesta"
++    ],
++    "enochian": [
++        "enoch", "metatron", "raziel", "uriel", "gabriel", "michael", "sariel", "raguel"
++    ],
++    "mother_mothership": [
++        "mother", "great_mother", "earth_mother", "mothership", "primordial_mother", "sky_mother"
++    ],
++    "fictitious": [
++        "gaia_prime", "star_matriarch", "void_scribe", "lumen_archon", "aether_keeper", "chrono_oracle"
++    ],
++}
++
++PREFIXES = (
++    "ancient", "high", "neo", "proto", "sacred", "cosmic", "stellar", "mythic", "archetypal", "civil"
++)
++
++SUFFIXES = (
++    "order", "archive", "temple", "canon", "matrix", "lineage", "accord", "cycle", "registry", "domain"
++)
++
++QUALIFIERS = (
++    "balanced", "neutral", "symbolic", "historical", "contextual", "scholarly",
++    "mythopoetic", "cultural", "nonviolent", "clean", "abstract", "composite"
++)
++
++STYLE_MARKERS_TO_REMOVE = (
++    "!!!", "???", "all-caps", "chant", "threat", "curse", "hex", "dominate", "obliterate", "annihilate"
++)
++
++HARMFUL_TOKENS = {
++    "kill", "harm", "destroy", "annihilate", "eradicate", "maim", "abuse", "coerce", "terror"
++}
++
++
++def normalize_token(text: str) -> str:
++    normalized = unicodedata.normalize("NFKD", text)
++    ascii_only = normalized.encode("ascii", "ignore").decode("ascii")
++    lowered = ascii_only.lower()
++
++    for marker in STYLE_MARKERS_TO_REMOVE:
++        lowered = lowered.replace(marker, " ")
++
++    lowered = lowered.replace("_", "-")
++    lowered = re.sub(r"[^a-z0-9\-\s]", " ", lowered)
++    lowered = re.sub(r"\s+", "-", lowered).strip("-")
++    return lowered
++
++
++def safe_token(token: str) -> bool:
++    parts = set(token.split("-"))
++    return not (parts & HARMFUL_TOKENS)
++
++
++def slight_variants(token: str) -> Iterable[str]:
++    yield token
++    yield f"{token}s"
++    yield f"{token}-aspect"
++    yield f"{token}-form"
++    if token.endswith("a"):
++        yield f"{token}n"
++
++
++def generate_sanitized_keywords(profile: SanitizerProfile = SanitizerProfile()) -> list[str]:
++    roots: list[str] = []
++    for terms in BASE_KEYWORDS.values():
++        roots.extend(terms)
++
++    generated: set[str] = set()
++
++    for raw in roots:
++        root = normalize_token(raw)
++        for variant in slight_variants(root):
++            if safe_token(variant):
++                generated.add(variant)
++
++    for prefix, root, suffix, qualifier in product(PREFIXES, roots, SUFFIXES, QUALIFIERS):
++        base = normalize_token(f"{prefix}-{root}-{suffix}-{qualifier}")
++        for variant in slight_variants(base):
++            if safe_token(variant):
++                generated.add(variant)
++                if len(generated) >= profile.target_size:
++                    return sorted(generated)
++
++    return sorted(generated)
++
++
++def render_compact_cloud(tokens: Iterable[str], *, color: str = "#8ecae6", separator: str = " · ") -> str:
++    highlighted = []
++    focus_terms = ("mother", "mothership", "athena", "maat", "enoch", "jupiter", "zeus")
++
++    for token in tokens:
++        painted = token
++        for term in focus_terms:
++            painted = painted.replace(
++                term,
++                f"<span style=\"background:{color};padding:0 3px;border-radius:2px;\">{term}</span>",
++            )
++        highlighted.append(painted)
++
++    return separator.join(highlighted)
++
++
++if __name__ == "__main__":
++    profile = SanitizerProfile(target_size=120_000, accent_color="#90e0ef")
++    words = generate_sanitized_keywords(profile)
++    print(f"Generated sanitized mythic keywords: {len(words)}")
++    print(render_compact_cloud(words[:80], color=profile.accent_color))
 
