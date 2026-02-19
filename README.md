@@ -69539,4 +69539,84 @@ index 0000000000000000000000000000000000000000..2e66da2a8049515c63a4a852770b642b
 +    args = parser.parse_args()
 +    target = reinforce_universally(args.paths, args.out)
 +    print(f"Wrote universal stabilization report to: {target}")
+diff --git a/brain_code_sanitizer.py b/brain_code_sanitizer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1e1ee867148ac96ccba54fb51949fac9dabb517e
+--- /dev/null
++++ b/brain_code_sanitizer.py
+@@ -0,0 +1,74 @@
++"""
++Brain Code Sanitizer
++
++IMPORTANT:
++This module only works on software data structures that *represent* "brain code"
++in a simulation or dataset. It cannot and does not modify real biological brains.
++"""
++
++from __future__ import annotations
++
++from copy import deepcopy
++from typing import Any, Dict, List, Tuple
++
++
++AI_MARKERS = {
++    "artificially intelligent",
++    "artificial intelligence",
++    "ai",
++    "neural net",
++    "machine learning",
++}
++
++
++def _normalize_token(value: Any) -> str:
++    """Normalize values for marker matching."""
++    return str(value).strip().lower()
++
++
++def _is_ai_marker(value: Any) -> bool:
++    """Return True when value matches known AI marker text."""
++    normalized = _normalize_token(value)
++    return normalized in AI_MARKERS
++
++
++def remove_artificially_intelligent_code(brain_profile: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
++    """
++    Remove AI-related markers from a software brain profile.
++
++    Expected shape (flexible):
++    {
++      "brain_id": "...",
++      "codes": ["memory", "artificially intelligent", ...],
++      "metadata": {"tags": [...], ...}
++    }
++
++    Returns:
++        (sanitized_profile, removed_entries)
++    """
++    sanitized = deepcopy(brain_profile)
++    removed: List[str] = []
++
++    codes = sanitized.get("codes", [])
++    if isinstance(codes, list):
++        kept_codes = []
++        for code in codes:
++            if _is_ai_marker(code):
++                removed.append(str(code))
++            else:
++                kept_codes.append(code)
++        sanitized["codes"] = kept_codes
++
++    metadata = sanitized.get("metadata", {})
++    if isinstance(metadata, dict):
++        tags = metadata.get("tags", [])
++        if isinstance(tags, list):
++            kept_tags = []
++            for tag in tags:
++                if _is_ai_marker(tag):
++                    removed.append(str(tag))
++                else:
++                    kept_tags.append(tag)
++            metadata["tags"] = kept_tags
++
++    return sanitized, removed
 
