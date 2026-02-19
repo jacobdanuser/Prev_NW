@@ -28935,3 +28935,242 @@ function safeJsonParse(s: any): Record<string, unknown> {
   if (typeof s !== "string" || !s.trim()) return {};
   try { return JSON.parse(s); } catch { return { _raw: s }; }
 }
+// providers/azure.ts
+import type { LLMClient, Message, LLMResult, ToolCall } from "../types";
+
+export class AzureOpenAIClient implements LLMClient {
+  constructor(
+    private endpoint: string,
+    private deployment: string,
+    private apiKey: string,
+    private apiVersion: string
+  ) {}
+
+  async call(messages: Message[], options: Record<string, unknown> = {}): Promise<LLMResult> {
+    const url = `${this.endpoint}/openai/deployments/${this.deployment}/chat/completions?api-version=${this.apiVersion}`;
+
+    const body: any = {
+      messages,
+      temperature: options.temperature ?? 0.2,
+      max_tokens: options.max_tokens ?? 800,
+      // tools/tool_choice go here if you use tool calling
+    };
+
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "api-key": this.apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    if (!resp.ok) throw new Error(`Azure OpenAI HTTP ${resp.status}: ${await resp.text()}`);
+    const json: any = await resp.json();
+
+    const text = json?.choices?.[0]?.message?.content ?? "";
+    const toolCallsRaw = json?.choices?.[0]?.message?.tool_calls;
+    const toolCalls: ToolCall[] = Array.isArray(toolCallsRaw)
+      ? toolCallsRaw.map((c: any) => ({
+          name: String(c?.function?.name ?? ""),
+          args: safeJsonParse(c?.function?.arguments),
+        }))
+      : [];
+
+    const annotations: Record<string, unknown> = {};
+    if (json?.prompt_filter_results) annotations.content_filter = json.prompt_filter_results;
+
+    return { text, toolCalls, annotations };
+  }
+}
+
+function safeJsonParse(s: any): Record<string, unknown> {
+  if (typeof s !== "string" || !s.trim()) return {};
+  try { return JSON.parse(s); } catch { return { _raw: s }; }
+}
+name: Secure CI
+
+on:
+  pull_request:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout (no persisted credentials)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install (locked)
+        run: npm ci
+
+      - name: Secret scan (gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --no-git --redact --verbose
+
+      - name: Dependency audit
+        run: |
+          npm audit --audit-level=high || true
+          npx audit-ci --high || true
+
+      - name: Lint + Typecheck
+        run: |
+          npm run lint
+          npm run typecheck
+
+      - name: Semgrep (SAST)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/ci
+
+      - name: Block unpinned GitHub Actions
+        run: node scripts/check-actions-pinned.mjs
+
+      - name: Block risky install scripts (optional strict)
+        run: node scripts/check-npm-scripts.mjs
+
+  codeql:
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+      - uses: github/codeql-action/analyze@v3
+import fs from "fs";
+import path from "path";
+
+const workflowsDir = path.join(process.cwd(), ".github", "workflows");
+const files = fs.existsSync(workflowsDir) ? fs.readdirSync(workflowsDir) : [];
+const offenders = [];
+
+for (const f of files) {
+  if (!f.endsWith(".yml") && !f.endsWith(".yaml")) continue;
+  const full = path.join(workflowsDir, f);
+  const text = fs.readFileSync(full, "utf8");
+
+  // Flag any uses: org/repo@vX or @main or @master (not pinned to a full SHA)
+  const re = /^\s*uses:\s*([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)@([^\s#]+)\s*$/gmi;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const ref = m[2];
+    const isFullSha = /^[0-9a-f]{40}$/i.test(ref);
+    if (!isFullSha) offenders.push({ file: f, action: m[1], ref });
+  }
+}
+
+if (offenders.length) {
+  console.error("❌ Unpinned GitHub Actions detected. Pin actions to a full commit SHA (40 hex).");
+  for (const o of offenders) console.error(` - ${o.file}: uses ${o.action}@${o.ref}`);
+  process.exit(1);
+}
+
+console.log("✅ All actions are pinned to SHAs.");
+import fs from "fs";
+
+const pkgPath = "package.json";
+if (!fs.existsSync(pkgPath)) {
+  console.log("ℹ️ No package.json found; skipping.");
+  process.exit(0);
+}
+
+const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+const scripts = pkg.scripts || {};
+
+const blocked = ["preinstall", "install", "postinstall"];
+const found = blocked.filter((k) => scripts[k]);
+
+if (found.length) {
+  console.error("❌ Blocked npm lifecycle scripts found (risk of supply-chain execution):");
+  for (const k of found) console.error(` - ${k}: ${scripts[k]}`);
+  console.error("Remove them, or explicitly allowlist with a comment + review policy.");
+  process.exit(1);
+}
+
+console.log("✅ No risky lifecycle scripts found.");
+* @hjacobdanuser
+.github/workflows/ @jacobdanuser
+scripts/ @jacobdanuser
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels: [ "dependencies" ]
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels: [ "ci" ]
+import fs from "fs";
+import { execSync } from "child_process";
+
+const PATTERNS = [
+  /\bsk-[a-zA-Z0-9]{16,}\b/g,
+  /\bAKIA[0-9A-Z]{16}\b/g, // AWS access key pattern
+  /-----BEGIN (?:RSA|EC|OPENSSH) PRIVATE KEY-----/g,
+  /\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*["']?[^"'\s]{8,}/gi,
+];
+
+function getStaged() {
+  const out = execSync("git diff --cached --name-only", { encoding: "utf8" });
+  return out.split("\n").map((s) => s.trim()).filter(Boolean);
+}
+
+const files = getStaged();
+const offenders = [];
+
+for (const f of files) {
+  if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) continue;
+  const text = fs.readFileSync(f, "utf8");
+  for (const re of PATTERNS) {
+    if (re.test(text)) {
+      offenders.push({ file: f, pattern: re.source });
+      break;
+    }
+  }
+}
+
+if (offenders.length) {
+  console.error("❌ Potential secret detected in staged files:");
+  for (const o of offenders) console.error(` - ${o.file}`);
+  console.error("Remove secrets and use environment variables / secret managers.");
+  process.exit(1);
+}
+
+console.log("✅ No obvious secrets detected.");
+npm i -D husky
+npx husky init
+node scripts/secret-scan.mjs
+{
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "audit-ci": "^7.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.0.0"
+  }
+}
