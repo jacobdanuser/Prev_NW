@@ -83156,3 +83156,337 @@ if __name__ == "__main__":
     words = generate_sanitized_keywords(profile)
     print(f"Generated sanitized mythic keywords: {len(words)}")
     print(render_compact_cloud(words[:80], color=profile.accent_color))      
+    # db/migrate/20260219000100_create_users_and_roles.rb
+class CreateUsersAndRoles < ActiveRecord::Migration[7.1]
+  def change
+    create_table :users do |t|
+      t.string :email, null: false
+      t.string :name
+      t.string :provider # e.g. "entra_id"
+      t.string :uid      # external subject id
+      t.timestamps
+    end
+    add_index :users, :email, unique: true
+    add_index :users, [:provider, :uid], unique: true
+
+    create_table :roles do |t|
+      t.string :name, null: false # "admin", "security_admin", "auditor"
+      t.timestamps
+    end
+    add_index :roles, :name, unique: true
+
+    create_table :user_roles do |t|
+      t.references :user, null: false, foreign_key: true
+      t.references :role, null: false, foreign_key: true
+      t.timestamps
+    end
+    add_index :user_roles, [:user_id, :role_id], unique: true
+  end
+end
+# db/migrate/20260219000200_create_audit_logs_and_requests.rb
+class CreateAuditLogsAndRequests < ActiveRecord::Migration[7.1]
+  def change
+    create_table :audit_logs do |t|
+      t.references :actor, null: false, foreign_key: { to_table: :users }
+      t.string :action, null: false             # "policy.change", "teams.access.request"
+      t.string :target_type
+      t.string :target_id
+      t.jsonb :metadata, null: false, default: {}
+      t.inet :ip
+      t.string :user_agent
+      t.timestamps
+    end
+    add_index :audit_logs, :action
+    add_index :audit_logs, :created_at
+
+    create_table :access_requests do |t|
+      t.references :requester, null: false, foreign_key: { to_table: :users }
+      t.string :system, null: false            # "teams", "device", "vpn", etc.
+      t.string :external_subject, null: false  # Entra user id or email
+      t.string :desired_state, null: false     # "grant", "revoke", "reset_mfa"
+      t.string :status, null: false, default: "pending" # pending/approved/denied/applied/failed
+      t.jsonb :context, null: false, default: {}
+      t.timestamps
+    end
+    add_index :access_requests, :status
+  end
+end
+# app/models/user.rb
+class User < ApplicationRecord
+  has_many :user_roles, dependent: :destroy
+  has_many :roles, through: :user_roles
+
+  def has_role?(role_name)
+    roles.exists?(name: role_name)
+  end
+end
+
+# app/models/role.rb
+class Role < ApplicationRecord
+  has_many :user_roles, dependent: :destroy
+  has_many :users, through: :user_roles
+end
+
+# app/models/user_role.rb
+class UserRole < ApplicationRecord
+  belongs_to :user
+  belongs_to :role
+end
+
+# app/models/audit_log.rb
+class AuditLog < ApplicationRecord
+  belongs_to :actor, class_name: "User"
+end
+
+# app/models/access_request.rb
+class AccessRequest < ApplicationRecord
+  belongs_to :requester, class_name: "User"
+
+  STATUSES = %w[pending approved denied applied failed].freeze
+  validates :status, inclusion: { in: STATUSES }
+end
+# app/policies/application_policy.rb
+class ApplicationPolicy
+  attr_reader :user, :record
+  def initialize(user, record)
+    @user = user
+    @record = record
+  end
+
+  def admin?
+    user&.has_role?("admin") || user&.has_role?("security_admin")
+  end
+end
+
+# app/policies/access_request_policy.rb
+class AccessRequestPolicy < ApplicationPolicy
+  def index? = admin?
+  def show?  = admin?
+  def create? = admin?
+  def approve? = admin?
+  def deny? = admin?
+  def apply? = admin?
+end
+# app/controllers/concerns/auditable.rb
+module Auditable
+  extend ActiveSupport::Concern
+
+  def audit!(action:, target: nil, metadata: {})
+    AuditLog.create!(
+      actor: current_user,
+      action: action,
+      target_type: target&.class&.name,
+      target_id: target&.id&.to_s,
+      metadata: metadata,
+      ip: request.remote_ip,
+      user_agent: request.user_agent
+    )
+  end
+end
+# app/controllers/access_requests_controller.rb
+class AccessRequestsController < ApplicationController
+  include Auditable
+
+  before_action :require_admin!
+  before_action :set_request, only: %i[show approve deny apply]
+
+  def index
+    @requests = AccessRequest.order(created_at: :desc).limit(200)
+  end
+
+  def show; end
+
+  def create
+    req = AccessRequest.create!(
+      requester: current_user,
+      system: params.require(:system),
+      external_subject: params.require(:external_subject), # Entra object id or email
+      desired_state: params.require(:desired_state),       # grant/revoke/reset_mfa
+      context: params.fetch(:context, {}).permit!.to_h
+    )
+    audit!(action: "access_request.create", target: req, metadata: req.context)
+    redirect_to req
+  end
+
+  def approve
+    @request.update!(status: "approved")
+    audit!(action: "access_request.approve", target: @request)
+    redirect_to @request
+  end
+
+  def deny
+    @request.update!(status: "denied")
+    audit!(action: "access_request.deny", target: @request)
+    redirect_to @request
+  end
+
+  def apply
+    # This is where you call your *authorized* integrations (e.g., Microsoft Graph)
+    AccessRequestApplier.new(@request, actor: current_user).call
+    redirect_to @request
+  end
+
+  private
+
+  def require_admin!
+    unless current_user&.has_role?("admin") || current_user&.has_role?("security_admin")
+      head :forbidden
+    end
+  end
+
+  def set_request
+    @request = AccessRequest.find(params[:id])
+  end
+end
+# app/controllers/access_requests_controller.rb
+class AccessRequestsController < ApplicationController
+  include Auditable
+
+  before_action :require_admin!
+  before_action :set_request, only: %i[show approve deny apply]
+
+  def index
+    @requests = AccessRequest.order(created_at: :desc).limit(200)
+  end
+
+  def show; end
+
+  def create
+    req = AccessRequest.create!(
+      requester: current_user,
+      system: params.require(:system),
+      external_subject: params.require(:external_subject), # Entra object id or email
+      desired_state: params.require(:desired_state),       # grant/revoke/reset_mfa
+      context: params.fetch(:context, {}).permit!.to_h
+    )
+    audit!(action: "access_request.create", target: req, metadata: req.context)
+    redirect_to req
+  end
+
+  def approve
+    @request.update!(status: "approved")
+    audit!(action: "access_request.approve", target: @request)
+    redirect_to @request
+  end
+
+  def deny
+    @request.update!(status: "denied")
+    audit!(action: "access_request.deny", target: @request)
+    redirect_to @request
+  end
+
+  def apply
+    # This is where you call your *authorized* integrations (e.g., Microsoft Graph)
+    AccessRequestApplier.new(@request, actor: current_user).call
+    redirect_to @request
+  end
+
+  private
+
+  def require_admin!
+    unless current_user&.has_role?("admin") || current_user&.has_role?("security_admin")
+      head :forbidden
+    end
+  end
+
+  def set_request
+    @request = AccessRequest.find(params[:id])
+  end
+end
+# app/controllers/access_requests_controller.rb
+class AccessRequestsController < ApplicationController
+  include Auditable
+
+  before_action :require_admin!
+  before_action :set_request, only: %i[show approve deny apply]
+
+  def index
+    @requests = AccessRequest.order(created_at: :desc).limit(200)
+  end
+
+  def show; end
+
+  def create
+    req = AccessRequest.create!(
+      requester: current_user,
+      system: params.require(:system),
+      external_subject: params.require(:external_subject), # Entra object id or email
+      desired_state: params.require(:desired_state),       # grant/revoke/reset_mfa
+      context: params.fetch(:context, {}).permit!.to_h
+    )
+    audit!(action: "access_request.create", target: req, metadata: req.context)
+    redirect_to req
+  end
+
+  def approve
+    @request.update!(status: "approved")
+    audit!(action: "access_request.approve", target: @request)
+    redirect_to @request
+  end
+
+  def deny
+    @request.update!(status: "denied")
+    audit!(action: "access_request.deny", target: @request)
+    redirect_to @request
+  end
+
+  def apply
+    # This is where you call your *authorized* integrations (e.g., Microsoft Graph)
+    AccessRequestApplier.new(@request, actor: current_user).call
+    redirect_to @request
+  end
+
+  private
+
+  def require_admin!
+    unless current_user&.has_role?("admin") || current_user&.has_role?("security_admin")
+      head :forbidden
+    end
+  end
+
+  def set_request
+    @request = AccessRequest.find(params[:id])
+  end
+end
+# app/services/access_request_applier.rb
+class AccessRequestApplier
+  def initialize(request, actor:)
+    @request = request
+    @actor = actor
+  end
+
+  def call
+    raise "Not approved" unless @request.status == "approved"
+
+    case @request.system
+    when "teams"
+      apply_teams_change!
+    else
+      raise "Unsupported system: #{@request.system}"
+    end
+
+    @request.update!(status: "applied")
+  rescue => e
+    @request.update!(status: "failed", context: @request.context.merge(error: e.message))
+    raise
+  end
+
+  private
+
+  def apply_teams_change!
+    # Implement using Microsoft Graph with *your tenant admin consent*
+    # Example: change group membership that gates Teams access, or enforce policy via Entra groups.
+    # This code intentionally does NOT include exploit/bypass logic.
+    graph = MicrosoftGraphClient.new
+    subject = @request.external_subject
+
+    case @request.desired_state
+    when "grant"
+      graph.add_user_to_group!(user: subject, group_id: ENV.fetch("TEAMS_ACCESS_GROUP_ID"))
+    when "revoke"
+      graph.remove_user_from_group!(user: subject, group_id: ENV.fetch("TEAMS_ACCESS_GROUP_ID"))
+    else
+      raise "Unsupported desired_state: #{@request.desired_state}"
+    end
+  end
+end
