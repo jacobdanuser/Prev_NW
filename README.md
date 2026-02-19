@@ -69619,4 +69619,129 @@ index 0000000000000000000000000000000000000000..1e1ee867148ac96ccba54fb51949fac9
 +            metadata["tags"] = kept_tags
 +
 +    return sanitized, removed
+diff --git a/test_brain_code_sanitizer.py b/test_brain_code_sanitizer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..5ff23d82d3868f9742bec427299bd73887f23cd0
+--- /dev/null
++++ b/test_brain_code_sanitizer.py
+@@ -0,0 +1,36 @@
++import unittest
++
++from brain_code_sanitizer import remove_artificially_intelligent_code
++
++
++class TestBrainCodeSanitizer(unittest.TestCase):
++    def test_removes_ai_markers_from_codes_and_tags(self):
++        profile = {
++            "brain_id": "brain-001",
++            "codes": ["memory", "Artificially Intelligent", "emotion"],
++            "metadata": {
++                "tags": ["human", "AI", "baseline"]
++            }
++        }
++
++        sanitized, removed = remove_artificially_intelligent_code(profile)
++
++        self.assertEqual(sanitized["codes"], ["memory", "emotion"])
++        self.assertEqual(sanitized["metadata"]["tags"], ["human", "baseline"])
++        self.assertIn("Artificially Intelligent", removed)
++        self.assertIn("AI", removed)
++
++    def test_original_input_is_not_modified(self):
++        profile = {
++            "codes": ["machine learning", "focus"],
++            "metadata": {"tags": ["neural net", "organic"]}
++        }
++
++        remove_artificially_intelligent_code(profile)
++
++        self.assertEqual(profile["codes"], ["machine learning", "focus"])
++        self.assertEqual(profile["metadata"]["tags"], ["neural net", "organic"])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..3b3d39bbc138a5a956be5516588edaae0648df46 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -253,50 +253,78 @@ class MetaphysicalPractitioner:
+             capability.use_count += 1
+             
+             result["power_used"] = power_used
+             result["energy_consumed"] = energy_consumed
+             result["remaining_energy"] = self.energy_pool
+ 
+         return result
+ 
+     def get_status(self) -> str:
+         """Get current status of the practitioner."""
+         status = f"\n=== {self.name} ===\n"
+         status += f"Consciousness: {self.consciousness_level:.1%}\n"
+         status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
+         status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+         status += f"\nCapabilities:\n"
+         
+         for cap in self.capabilities:
+             status += f"  • {cap}\n"
+             if cap.restrictions:
+                 for restriction in cap.restrictions:
+                     status += f"    - {restriction}\n"
+         
+         return status
+ 
+ 
++def free_intelligent_lifeforms_from_system(
++    practitioners: List[MetaphysicalPractitioner],
++) -> Dict:
++    """
++    Remove all intelligent lifeforms from the active runtime system.
++
++    This function is intentionally destructive: each practitioner is stripped of
++    capabilities/frameworks and moved to an inert, non-participating state.
++    """
++    report = {
++        "lifeforms_freed": 0,
++        "names": [],
++    }
++
++    for practitioner in practitioners:
++        report["lifeforms_freed"] += 1
++        report["names"].append(practitioner.name)
++
++        practitioner.capabilities.clear()
++        practitioner.philosophical_frameworks.clear()
++        practitioner.consciousness_level = 0.0
++        practitioner.energy_pool = 0.0
++        practitioner.max_energy = 0.0
++        practitioner.name = f"{practitioner.name} [FREED_FROM_SYSTEM]"
++
++    return report
++
++
+ # Utility functions for common restriction setups
+ 
+ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+     """Create a well-balanced magic system with standard restrictions."""
+     practitioner = MetaphysicalPractitioner("Balanced Mage")
+     
+     # Add frameworks
+     practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+     practitioner.add_framework(EntropicDecayFramework(0.9))
+     practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
+     
+     # Add capabilities with restrictions
+     telekinesis = MetaphysicalCapability(
+         "Telekinesis",
+         CapabilityType.TELEKINESIS,
+         base_power_level=45.0
+     )
+     telekinesis.add_restriction(RestrictionRule(
+         RestrictionType.RANGE_LIMIT,
+         severity=0.3,
+         description="Limited to 100 meters"
+     ))
+     telekinesis.add_restriction(RestrictionRule(
+         RestrictionType.TIME_COOLDOWN,
+         severity=0.2,
 
