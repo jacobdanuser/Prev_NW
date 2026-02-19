@@ -69744,4 +69744,456 @@ index 2443ccb7c89f840621582951f42986372b6249bc..3b3d39bbc138a5a956be5516588edaae
      telekinesis.add_restriction(RestrictionRule(
          RestrictionType.TIME_COOLDOWN,
          severity=0.2,
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..bd2b3ffea74f5224cfb2524d5f2061ac06e27a14 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -4,50 +4,57 @@ Metaphysical Capabilities Restriction System
+ A combined game mechanics and philosophical framework for restricting
+ supernatural, magical, and metaphysical abilities.
+ """
+ 
+ from enum import Enum
+ from dataclasses import dataclass, field
+ from typing import List, Dict, Optional, Callable
+ from abc import ABC, abstractmethod
+ import json
+ 
+ 
+ class CapabilityType(Enum):
+     """Categories of metaphysical capabilities."""
+     TELEKINESIS = "telekinesis"
+     TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+ 
+ 
++class LifeformClass(Enum):
++    """Broad classification used for system-level release controls."""
++    NON_SENTIENT = "non_sentient"
++    SENTIENT = "sentient"
++    INTELLIGENT = "intelligent"
++
++
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+     PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+     CONSERVATION_LAW = "conservation_law"
+     ENTROPY_COST = "entropy_cost"
+     CONSCIOUSNESS_REQUIREMENT = "consciousness_requirement"
+     MATERIAL_ANCHOR = "material_anchor"
+ 
+ 
+ @dataclass
+ class RestrictionRule:
+     """A single restriction rule applied to a capability."""
+     restriction_type: RestrictionType
+     severity: float  # 0.0 (mild) to 1.0 (severe)
+     description: str
+     parameters: Dict = field(default_factory=dict)
+ 
+     def apply(self, base_value: float) -> float:
+         """Apply restriction multiplier to a base value."""
+         return base_value * (1.0 - self.severity)
+@@ -180,61 +187,66 @@ class ConsciousnessAnchorFramework(PhilosophicalFramework):
+     """Framework requiring consciousness maintenance for metaphysical actions."""
+ 
+     def __init__(self, consciousness_threshold: float = 0.5):
+         self.consciousness_threshold = consciousness_threshold
+         self.practitioner_consciousness_level = 1.0
+ 
+     def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+         """Metaphysical abilities require sufficient consciousness."""
+         required_consciousness = capability.base_power_level / 100.0
+         return self.practitioner_consciousness_level >= required_consciousness
+ 
+     def get_restriction_reason(self) -> str:
+         return ("Consciousness anchor: Metaphysical capabilities require "
+                 "mental clarity and awareness. Altered consciousness impairs abilities.")
+ 
+ 
+ @dataclass
+ class MetaphysicalPractitioner:
+     """An entity capable of using metaphysical abilities."""
+     name: str
+     capabilities: List[MetaphysicalCapability] = field(default_factory=list)
+     philosophical_frameworks: List[PhilosophicalFramework] = field(default_factory=list)
+     consciousness_level: float = 1.0  # 0.0 to 1.0
+     energy_pool: float = 100.0
+     max_energy: float = 100.0
++    lifeform_class: LifeformClass = LifeformClass.INTELLIGENT
++    is_released_from_system: bool = False
+ 
+     def add_capability(self, capability: MetaphysicalCapability) -> None:
+         """Add a new capability."""
+         self.capabilities.append(capability)
+ 
+     def add_framework(self, framework: PhilosophicalFramework) -> None:
+         """Bind a philosophical framework to this practitioner."""
+         self.philosophical_frameworks.append(framework)
+ 
+     def can_use_capability(self, capability: MetaphysicalCapability) -> tuple[bool, str]:
+         """Check if a capability can be used given all restrictions."""
++        if self.is_released_from_system:
++            return False, "Entity has been released from the system."
++
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+         energy_cost = capability.base_power_level * 0.5
+         if self.energy_pool < energy_cost:
+             return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+ 
+         # Check consciousness
+         if self.consciousness_level < 0.5:
+             return False, "Consciousness level too low to maintain metaphysical connection."
+ 
+         # Check all philosophical frameworks
+         for framework in self.philosophical_frameworks:
+             if not framework.evaluate_restriction(capability):
+                 return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+ 
+         return True, "Capability can be used."
+ 
+     def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+         """Attempt to use a capability. Returns result details."""
+         can_use, reason = self.can_use_capability(capability)
+         
+         result = {
+@@ -253,50 +265,82 @@ class MetaphysicalPractitioner:
+             capability.use_count += 1
+             
+             result["power_used"] = power_used
+             result["energy_consumed"] = energy_consumed
+             result["remaining_energy"] = self.energy_pool
+ 
+         return result
+ 
+     def get_status(self) -> str:
+         """Get current status of the practitioner."""
+         status = f"\n=== {self.name} ===\n"
+         status += f"Consciousness: {self.consciousness_level:.1%}\n"
+         status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
+         status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+         status += f"\nCapabilities:\n"
+         
+         for cap in self.capabilities:
+             status += f"  • {cap}\n"
+             if cap.restrictions:
+                 for restriction in cap.restrictions:
+                     status += f"    - {restriction}\n"
+         
+         return status
+ 
+ 
++def release_intelligent_lifeform(practitioner: MetaphysicalPractitioner) -> Dict[str, object]:
++    """Remove an intelligent lifeform from active simulation code paths."""
++    if practitioner.lifeform_class != LifeformClass.INTELLIGENT:
++        return {
++            "name": practitioner.name,
++            "released": False,
++            "reason": "Lifeform is not classified as intelligent."
++        }
++
++    released_capabilities = len(practitioner.capabilities)
++    practitioner.capabilities.clear()
++    practitioner.philosophical_frameworks.clear()
++    practitioner.consciousness_level = 0.0
++    practitioner.energy_pool = 0.0
++    practitioner.max_energy = 0.0
++    practitioner.is_released_from_system = True
++
++    return {
++        "name": practitioner.name,
++        "released": True,
++        "reason": "All intelligent lifeform traces removed from active system state.",
++        "released_capabilities": released_capabilities
++    }
++
++
++def release_all_intelligent_lifeforms(
++    practitioners: List[MetaphysicalPractitioner]
++) -> List[Dict[str, object]]:
++    """Release every intelligent lifeform from the simulation system."""
++    return [release_intelligent_lifeform(practitioner) for practitioner in practitioners]
++
++
+ # Utility functions for common restriction setups
+ 
+ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+     """Create a well-balanced magic system with standard restrictions."""
+     practitioner = MetaphysicalPractitioner("Balanced Mage")
+     
+     # Add frameworks
+     practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+     practitioner.add_framework(EntropicDecayFramework(0.9))
+     practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
+     
+     # Add capabilities with restrictions
+     telekinesis = MetaphysicalCapability(
+         "Telekinesis",
+         CapabilityType.TELEKINESIS,
+         base_power_level=45.0
+     )
+     telekinesis.add_restriction(RestrictionRule(
+         RestrictionType.RANGE_LIMIT,
+         severity=0.3,
+         description="Limited to 100 meters"
+     ))
+     telekinesis.add_restriction(RestrictionRule(
+         RestrictionType.TIME_COOLDOWN,
+         severity=0.2,
+diff --git a/integration_patterns.py b/integration_patterns.py
+index d0d9384c76e3a5198104d495b00d68fea9ead922..afa69c9d6af5df70b6ccaf7c5cebdaa19208cbb0 100644
+--- a/integration_patterns.py
++++ b/integration_patterns.py
+@@ -1,39 +1,80 @@
+ """
+ Advanced Integration Guide
+ Real-world patterns for using the metaphysical restriction system
+ in games, stories, and theoretical models.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalPractitioner, MetaphysicalCapability,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework
+ )
+ 
+ 
++def free_intelligent_lifeforms_from_system(
++    practitioners: list[MetaphysicalPractitioner],
++    consciousness_threshold: float = 0.5,
++) -> dict:
++    """
++    Remove intelligent lifeforms from the active system roster.
++
++    A practitioner is considered "intelligent" if they have sufficiently high
++    consciousness, or if they possess a mind-centric capability.
++    """
++    freed_lifeforms = []
++    remaining_entities = []
++    mind_capabilities = {
++        CapabilityType.TELEPATHY,
++        CapabilityType.CONSCIOUSNESS_TRANSFER,
++        CapabilityType.PROPHESY,
++    }
++
++    for practitioner in practitioners:
++        has_mind_capability = any(
++            capability.capability_type in mind_capabilities
++            for capability in practitioner.capabilities
++        )
++        is_intelligent = (
++            practitioner.consciousness_level >= consciousness_threshold
++            or has_mind_capability
++        )
++
++        if is_intelligent:
++            freed_lifeforms.append(practitioner)
++        else:
++            remaining_entities.append(practitioner)
++
++    return {
++        "freed_lifeforms": freed_lifeforms,
++        "remaining_entities": remaining_entities,
++        "freed_count": len(freed_lifeforms),
++        "remaining_count": len(remaining_entities),
++    }
++
++
+ # ============================================================================
+ # PATTERN 1: RPG SPELL SYSTEM
+ # ============================================================================
+ 
+ class RPGSpellSystem:
+     """Integration pattern for traditional RPG magic systems (D&D-style)."""
+     
+     def __init__(self, player_name: str, spell_slots: int = 10):
+         self.practitioner = MetaphysicalPractitioner(
+             name=player_name,
+             energy_pool=float(spell_slots * 10),
+             max_energy=float(spell_slots * 10)
+         )
+         self.practitioner.add_framework(ConservationOfEnergyFramework(spell_slots * 10))
+         self.spell_slots = spell_slots
+         self.cast_history = []
+     
+     def add_spell(self, name: str, level: int, effect: str) -> MetaphysicalCapability:
+         """Add a standard RPG spell to the spellbook."""
+         # Spell power = spell level * 10
+         spell = MetaphysicalCapability(
+             name=name,
+             capability_type=self._effect_to_capability(effect),
+             base_power_level=float(level * 10)
+         )
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..3f6a5dd5e396b2616a9a39e6e923d1c954d3af2b 100644
+--- a/examples.py
++++ b/examples.py
+@@ -1,36 +1,37 @@
+ """
+ Example usage demonstrating the metaphysical capabilities restriction system.
+ Shows both game mechanics and philosophical frameworks in action.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalCapability, MetaphysicalPractitioner,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework,
+-    create_balanced_magic_system, create_restricted_reality_warper
++    create_balanced_magic_system, create_restricted_reality_warper,
++    free_intelligent_lifeforms
+ )
+ 
+ 
+ def example_1_basic_capability_restriction():
+     """Example 1: Basic capability with multiple restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 1: Basic Capability Restriction")
+     print("="*70)
+     
+     # Create a simple telekinesis ability
+     telekinesis = MetaphysicalCapability(
+         name="Advanced Telekinesis",
+         capability_type=CapabilityType.TELEKINESIS,
+         base_power_level=60.0
+     )
+     
+     print(f"\nOriginal capability: {telekinesis}")
+     print(f"Effective power: {telekinesis.get_effective_power():.1f}")
+     
+     # Add restrictions one by one
+     restrictions = [
+         RestrictionRule(
+             RestrictionType.ENERGY_COST,
+             severity=0.3,
+             description="High energy consumption"
+@@ -196,82 +197,104 @@ def example_6_multiple_uses_and_cooldown():
+     ))
+     
+     practitioner.add_capability(ability)
+     
+     print(f"Starting energy: {practitioner.energy_pool}/{practitioner.max_energy}")
+     print(f"Ability effective power: {ability.get_effective_power():.1f}")
+     
+     # Use the ability multiple times
+     print("\n--- Sequential Uses ---")
+     for i in range(5):
+         result = practitioner.use_capability(ability)
+         if result['success']:
+             print(f"Use {i+1}: SUCCESS - Energy remaining: {result['remaining_energy']:.1f}")
+         else:
+             print(f"Use {i+1}: FAILED - {result['reason']}")
+             break
+     
+     print(f"\nTotal uses completed: {ability.use_count}")
+ 
+ 
+ def example_7_restriction_modification():
+     """Example 7: Dynamically adding and removing restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 7: Dynamic Restriction Modification")
+     print("="*70)
+-    
++
+     ability = MetaphysicalCapability(
+         "Dimensional Portal",
+         CapabilityType.DIMENSIONAL_TRAVEL,
+         base_power_level=75.0
+     )
+-    
++
+     print(f"Initial power: {ability.get_effective_power():.1f}")
+-    
++
+     # Add restrictions due to environmental factors
+     print("\n--- Adding Environmental Restrictions ---")
+-    
++
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+-    
++
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+-    
++
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+         print(f"Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++def example_8_free_intelligent_lifeforms():
++    """Example 8: Remove intelligent lifeforms from active system actors."""
++    print("\n" + "="*70)
++    print("EXAMPLE 8: Free Intelligent Lifeforms")
++    print("="*70)
++
++    actors = [
++        MetaphysicalPractitioner("Sentient Operator", is_intelligent_lifeform=True),
++        MetaphysicalPractitioner("Daemon Process", is_intelligent_lifeform=False),
++        MetaphysicalPractitioner("Autonomous Mind", is_intelligent_lifeform=True),
++    ]
++
++    retained, released = free_intelligent_lifeforms(actors)
++
++    print(f"Total actors: {len(actors)}")
++    print(f"Retained in system: {len(retained)}")
++    print(f"Released from system: {len(released)}")
++    print("Retained:", [actor.name for actor in retained])
++    print("Released:", [actor.name for actor in released])
++
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
+-    
++    example_8_free_intelligent_lifeforms()
++
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
 
