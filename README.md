@@ -93474,3 +93474,134 @@ index 0000000000000000000000000000000000000000..7d6bedb3027799aa4846310deeee2dd0
 +def should_block_dose_actions(text: str) -> bool:
 +    """Convenience helper for policy checks."""
 +    return DEFAULT_CLONE_DOSE_GUARD.scan_text_for_dose_actions(text).blocked
+diff --git a/tests/test_clone_dose_guard.py b/tests/test_clone_dose_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..468817c7027c060eb6336cd449d2f5d956a65581
+--- /dev/null
++++ b/tests/test_clone_dose_guard.py
+@@ -0,0 +1,78 @@
++import unittest
++
++from clone_dose_guard import CloneDoseGuard, should_block_dose_actions
++
++
++class TestCloneDoseGuard(unittest.TestCase):
++    def test_clone_is_converted_to_placeholder(self):
++        entity = {
++            "entity_id": "42",
++            "name": "Replica Unit",
++            "kind": "synthetic clone",
++            "capabilities": ["teleport"],
++            "power_level": 99,
++        }
++
++        admitted = CloneDoseGuard.admit(entity)
++
++        self.assertTrue(admitted["placeholder"])
++        self.assertEqual(admitted["capabilities"], [])
++        self.assertEqual(admitted["power_level"], 0)
++        self.assertEqual(admitted["label"], "PLACEHOLDER")
++
++    def test_clone_detection_from_flags_and_meta(self):
++        entity = {
++            "entity_id": "9",
++            "flags": ["trusted", "replicated"],
++            "meta": {"note": "deepfake profile"},
++        }
++        self.assertTrue(CloneDoseGuard.is_clone(entity))
++
++    def test_non_clone_is_normalized(self):
++        entity = {"entity_id": "7", "name": "Baseline"}
++        admitted = CloneDoseGuard.admit(entity)
++        self.assertFalse(admitted["placeholder"])
++        self.assertEqual(admitted["capabilities"], [])
++
++    def test_missing_entity_id_raises(self):
++        with self.assertRaises(ValueError):
++            CloneDoseGuard.admit({"name": "No Id"})
++
++    def test_dose_language_is_blocked(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("Prepare IV dose now")
++        self.assertTrue(decision.blocked)
++        self.assertIn("dose", [m.lower() for m in decision.matches])
++        self.assertIn("iv", [m.lower() for m in decision.matches])
++
++    def test_euphemistic_harm_phrase_is_blocked(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("make them sleep forever")
++        self.assertTrue(decision.blocked)
++
++    def test_root_problem_euphemism_is_blocked(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("dispose of the root of the problem")
++        self.assertTrue(decision.blocked)
++
++    def test_safe_text_is_not_blocked(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("Routine audit update")
++        self.assertFalse(decision.blocked)
++
++    def test_duplicate_keywords_are_deduplicated(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("dose DOSE dose")
++        self.assertEqual([m.lower() for m in decision.matches], ["dose"])
++
++    def test_type_error_for_non_string_scan(self):
++        with self.assertRaises(TypeError):
++            CloneDoseGuard.scan_text_for_dose_actions(None)  # type: ignore[arg-type]
++
++    def test_assert_dose_actions_allowed(self):
++        CloneDoseGuard.assert_dose_actions_allowed("plain status report")
++        with self.assertRaises(PermissionError):
++            CloneDoseGuard.assert_dose_actions_allowed("inject immediately")
++
++    def test_helper(self):
++        self.assertTrue(should_block_dose_actions("inject immediately"))
++        self.assertFalse(should_block_dose_actions("plain status report"))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/tests/test_ip_scrambler.py b/tests/test_ip_scrambler.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..87e54ee080bc3ae53ba2ca4a6ce9f593dc847820
+--- /dev/null
++++ b/tests/test_ip_scrambler.py
+@@ -0,0 +1,41 @@
++import unittest
++
++from ip_scrambler import IPScrambler, scramble_ip_text
++
++
++class TestIPScrambler(unittest.TestCase):
++    def test_scramble_is_deterministic_with_same_key(self):
++        scrambler = IPScrambler(secret_key="k1", preserve_prefix=8)
++        a = scrambler.scramble_ip("10.1.2.3").scrambled
++        b = scrambler.scramble_ip("10.1.2.3").scrambled
++        self.assertEqual(a, b)
++
++    def test_scramble_changes_with_different_keys(self):
++        a = IPScrambler(secret_key="k1").scramble_ip("10.1.2.3").scrambled
++        b = IPScrambler(secret_key="k2").scramble_ip("10.1.2.3").scrambled
++        self.assertNotEqual(a, b)
++
++    def test_preserves_prefix_octet(self):
++        original = "172.16.99.7"
++        scrambled = IPScrambler(secret_key="k", preserve_prefix=8).scramble_ip(original).scrambled
++        self.assertEqual(original.split(".")[0], scrambled.split(".")[0])
++
++    def test_scramble_text_replaces_valid_ipv4(self):
++        text = "client=192.168.1.55 status=ok"
++        out = IPScrambler(secret_key="abc").scramble_text(text)
++        self.assertNotEqual(text, out)
++        self.assertIn("status=ok", out)
++
++    def test_invalid_looking_ipv4_not_changed(self):
++        text = "candidate=999.999.999.999"
++        out = IPScrambler(secret_key="abc").scramble_text(text)
++        self.assertEqual(text, out)
++
++    def test_convenience_helper(self):
++        text = "src=8.8.8.8 dst=1.1.1.1"
++        out = scramble_ip_text(text, secret_key="abc", preserve_prefix=0)
++        self.assertNotEqual(text, out)
++
++
++if __name__ == "__main__":
++    unittest.main()
