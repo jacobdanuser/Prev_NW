@@ -71186,4 +71186,156 @@ index 0000000000000000000000000000000000000000..4209115e288db7a8d3e5e8bb93fb4d32
 +
 +if __name__ == "__main__":
 +    unittest.main()
+diff --git a/neural_interface_safeguard.py b/neural_interface_safeguard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6a9de81fde044eecd635bc5794331fc4d05d533d
+--- /dev/null
++++ b/neural_interface_safeguard.py
+@@ -0,0 +1,146 @@
++"""Professional system transforms for Kardash and Efron pipelines.
++
++This module defines two independent system programs with deterministic
++"hindrance" transforms that reduce each configured program to a compact line of
++numeric/hash/mathematical/tonal/splice signatures.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from hashlib import sha256
++from typing import Dict, Iterable, List
++
++
++class SystemProgramError(ValueError):
++    """Raised when a system program configuration is invalid."""
++
++
++SYSTEM_TYPES = {"kardash", "efron"}
++ALLOWED_POLICY_TIERS = {"baseline", "hardened", "strict"}
++
++
++@dataclass(frozen=True)
++class ProgramLine:
++    """A single reduced signature line for an individual program."""
++
++    numbers: List[int] = field(default_factory=list)
++    hashes: List[str] = field(default_factory=list)
++    equations: List[str] = field(default_factory=list)
++    tonal_dynamics: List[str] = field(default_factory=list)
++    splicing: List[str] = field(default_factory=list)
++
++
++@dataclass(frozen=True)
++class IndividualSystemProgram:
++    """Independent transformed program for a single system."""
++
++    system_id: str
++    system_type: str
++    policy_tier: str
++    hindered: bool
++    keyword_matrix: List[str] = field(default_factory=list)
++    line: ProgramLine = field(default_factory=ProgramLine)
++
++
++def _normalize_words(items: Iterable[object]) -> List[str]:
++    return [str(item).strip().lower() for item in items if str(item).strip()]
++
++
++def _hash_token(system_id: str, token: str, index: int) -> str:
++    base = f"{system_id}|{token}|{index}".encode("utf-8")
++    return sha256(base).hexdigest()[:16]
++
++
++def _build_signature_line(system_id: str, keywords: List[str]) -> ProgramLine:
++    numbers = [(sum(ord(c) for c in kw) + (i + 1) * 13) % 997 for i, kw in enumerate(keywords)]
++    hashes = [_hash_token(system_id, kw, i) for i, kw in enumerate(keywords)]
++    equations = [f"f{i}(x)={(n % 11) + 1}x+{(n % 7)}" for i, n in enumerate(numbers)]
++    tonal_dynamics = [f"tone:{(n % 12):02d}|phase:{(n % 5)}|amp:{(n % 9)}" for n in numbers]
++    splicing = [f"splice:{h[:4]}-{h[4:8]}-{h[8:12]}" for h in hashes]
++    return ProgramLine(
++        numbers=numbers,
++        hashes=hashes,
++        equations=equations,
++        tonal_dynamics=tonal_dynamics,
++        splicing=splicing,
++    )
++
++
++def rewrite_individual_system(spec: Dict[str, object]) -> IndividualSystemProgram:
++    """Rewrite one system (Kardash or Efron) into a hindered individual program."""
++
++    system_id = str(spec.get("system_id", "")).strip()
++    if not system_id:
++        raise SystemProgramError("system_id is required")
++
++    system_type = str(spec.get("system_type", "")).strip().lower()
++    if system_type not in SYSTEM_TYPES:
++        raise SystemProgramError(f"system_type must be one of: {', '.join(sorted(SYSTEM_TYPES))}")
++
++    policy_tier = str(spec.get("policy_tier", "hardened")).strip().lower()
++    if policy_tier not in ALLOWED_POLICY_TIERS:
++        raise SystemProgramError(
++            f"policy_tier must be one of: {', '.join(sorted(ALLOWED_POLICY_TIERS))}"
++        )
++
++    base_keywords = _normalize_words(
++        spec.get(
++            "keywords",
++            [
++                "line_of_numbers",
++                "hashes",
++                "mathematical_equations",
++                "tonal_dynamics",
++                "splicing",
++            ],
++        )
++    )
++    if not base_keywords:
++        raise SystemProgramError("keywords cannot be empty")
++
++    # Discreet logical hindrance: inject stabilizer terms and enforce deterministic reduction.
++    matrix = sorted(set(base_keywords + ["reduction", "deterministic", "individual_program"]))
++    line = _build_signature_line(system_id, matrix)
++
++    return IndividualSystemProgram(
++        system_id=system_id,
++        system_type=system_type,
++        policy_tier=policy_tier,
++        hindered=True,
++        keyword_matrix=matrix,
++        line=line,
++    )
++
++
++def rewrite_system_family(specs: List[Dict[str, object]]) -> List[IndividualSystemProgram]:
++    """Rewrite multiple systems into separate independent programs."""
++
++    programs = [rewrite_individual_system(spec) for spec in specs]
++
++    ids = [program.system_id for program in programs]
++    if len(ids) != len(set(ids)):
++        raise SystemProgramError("system_id values must be unique across family rewrite")
++
++    return programs
++
++
++def assert_hindered(program: IndividualSystemProgram) -> None:
++    """Assert that a transformed program is fully hindered and line-complete."""
++
++    if not program.hindered:
++        raise SystemProgramError("program is not hindered")
++
++    line = program.line
++    if not (line.numbers and line.hashes and line.equations and line.tonal_dynamics and line.splicing):
++        raise SystemProgramError("program line is incomplete")
++
++
++__all__ = [
++    "SystemProgramError",
++    "ProgramLine",
++    "IndividualSystemProgram",
++    "rewrite_individual_system",
++    "rewrite_system_family",
++    "assert_hindered",
++]
 
