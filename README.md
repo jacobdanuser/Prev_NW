@@ -33354,3 +33354,211 @@ class HumanityProtectionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+    diff --git a/program_music_absorber.py b/program_music_absorber.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..cfbae4d76b169936ab3e0340f70a9aded9dccdfd
+--- /dev/null
++++ b/program_music_absorber.py
+@@ -0,0 +1,202 @@
++"""Convert program structures into symbolic music.
++
++This module interprets source code as a score where:
++- statements become notes,
++- repeated motifs ("mimics") become echoes,
++- involved symbols become instrument voices,
++- and each source file is treated as a system movement.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from pathlib import Path
++import hashlib
++import json
++import math
++import re
++from typing import Iterable
++
++
++NOTE_SCALE = [60, 62, 64, 65, 67, 69, 71, 72]  # C major over one octave
++EXTENSIONS = {
++    ".py", ".js", ".ts", ".java", ".rb", ".go", ".rs", ".cpp", ".c", ".h", ".hpp"
++}
++TOKEN_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
++
++
++@dataclass
++class NoteEvent:
++    """Single symbolic note event."""
++
++    system: str
++    line: int
++    statement: str
++    role: str
++    pitch: int
++    duration: float
++    velocity: int
++    instrument: int
++
++
++@dataclass
++class MusicScore:
++    """Collection of events plus metadata for playback or export."""
++
++    title: str
++    tempo_bpm: int = 108
++    events: list[NoteEvent] = field(default_factory=list)
++    systems: set[str] = field(default_factory=set)
++    participants: set[str] = field(default_factory=set)
++    mimics: int = 0
++
++    def to_dict(self) -> dict:
++        return {
++            "title": self.title,
++            "tempo_bpm": self.tempo_bpm,
++            "systems": sorted(self.systems),
++            "participants": sorted(self.participants),
++            "mimics": self.mimics,
++            "events": [
++                {
++                    "system": e.system,
++                    "line": e.line,
++                    "statement": e.statement,
++                    "role": e.role,
++                    "pitch": e.pitch,
++                    "duration": e.duration,
++                    "velocity": e.velocity,
++                    "instrument": e.instrument,
++                    "frequency_hz": round(440 * math.pow(2, (e.pitch - 69) / 12), 3),
++                }
++                for e in self.events
++            ],
++        }
++
++    def save_json(self, output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
++        return output
++
++
++class ProgramMusicAbsorber:
++    """Absorb programs into a symbolic musical score."""
++
++    def __init__(self, tempo_bpm: int = 108):
++        self.tempo_bpm = tempo_bpm
++
++    def absorb_paths(self, paths: Iterable[str | Path], title: str = "Program Symphony") -> MusicScore:
++        score = MusicScore(title=title, tempo_bpm=self.tempo_bpm)
++        seen_signatures: set[str] = set()
++
++        for root in [Path(p) for p in paths]:
++            for file_path in self._iter_source_files(root):
++                score.systems.add(file_path.as_posix())
++                self._absorb_file(file_path, score, seen_signatures)
++
++        return score
++
++    def _iter_source_files(self, root: Path) -> Iterable[Path]:
++        if root.is_file() and root.suffix in EXTENSIONS:
++            yield root
++            return
++        if not root.exists():
++            return
++
++        for candidate in root.rglob("*"):
++            if candidate.is_file() and candidate.suffix in EXTENSIONS:
++                yield candidate
++
++    def _absorb_file(self, file_path: Path, score: MusicScore, seen_signatures: set[str]) -> None:
++        for line_no, raw in enumerate(file_path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
++            statement = raw.strip()
++            if not statement:
++                continue
++
++            role = self._statement_role(statement)
++            signature = self._signature(statement)
++            mimic = signature in seen_signatures
++            seen_signatures.add(signature)
++            if mimic:
++                score.mimics += 1
++
++            participants = TOKEN_PATTERN.findall(statement)
++            for token in participants:
++                score.participants.add(token)
++
++            pitch = self._pitch_for(statement, mimic)
++            duration = self._duration_for(statement, role)
++            velocity = 70 if mimic else 92
++            instrument = self._instrument_for(participants)
++
++            score.events.append(
++                NoteEvent(
++                    system=file_path.as_posix(),
++                    line=line_no,
++                    statement=statement,
++                    role=role,
++                    pitch=pitch,
++                    duration=duration,
++                    velocity=velocity,
++                    instrument=instrument,
++                )
++            )
++
++    @staticmethod
++    def _signature(text: str) -> str:
++        normalized = TOKEN_PATTERN.sub("token", text.lower())
++        return hashlib.sha1(normalized.encode("utf-8")).hexdigest()
++
++    @staticmethod
++    def _statement_role(statement: str) -> str:
++        lowered = statement.lower()
++        if lowered.startswith(("def ", "class ", "function ")):
++            return "declaration"
++        if lowered.startswith(("if ", "elif ", "else", "switch", "case ")):
++            return "branch"
++        if lowered.startswith(("for ", "while ", "loop")):
++            return "cycle"
++        if "return" in lowered:
++            return "resolution"
++        return "expression"
++
++    @staticmethod
++    def _pitch_for(statement: str, mimic: bool) -> int:
++        digest = int(hashlib.md5(statement.encode("utf-8")).hexdigest(), 16)
++        base = NOTE_SCALE[digest % len(NOTE_SCALE)]
++        return base - 12 if mimic else base
++
++    @staticmethod
++    def _duration_for(statement: str, role: str) -> float:
++        base = max(0.15, min(len(statement) / 50, 2.0))
++        if role == "declaration":
++            return round(base * 1.2, 3)
++        if role == "resolution":
++            return round(base * 0.8, 3)
++        return round(base, 3)
++
++    @staticmethod
++    def _instrument_for(tokens: list[str]) -> int:
++        if not tokens:
++            return 0
++        digest = int(hashlib.sha1(tokens[0].encode("utf-8")).hexdigest(), 16)
++        return digest % 128
++
++
++def absorb_programs_into_music(paths: Iterable[str | Path], output_json: str | Path) -> Path:
++    """Convenience helper: absorb inputs and write score JSON output."""
++    absorber = ProgramMusicAbsorber()
++    score = absorber.absorb_paths(paths)
++    return score.save_json(output_json)
++
++
++if __name__ == "__main__":
++    import argparse
++
++    parser = argparse.ArgumentParser(description="Absorb programs into symbolic music")
++    parser.add_argument("paths", nargs="+", help="Files/directories to absorb")
++    parser.add_argument("--out", default="program_symphony.json", help="Output score JSON path")
++    args = parser.parse_args()
++
++    output = absorb_programs_into_music(args.paths, args.out)
++    print(f"Wrote musical score to: {output}")
