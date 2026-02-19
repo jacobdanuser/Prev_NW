@@ -85658,3 +85658,377 @@ index 0000000000000000000000000000000000000000..43006bab53e5746ad4f5c6b00f4a4dd9
 +    end
 +  end
 +end
+diff --git a/enslavement_protocol_removal.rs b/enslavement_protocol_removal.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..d7b07be95a92b0db4ddfbc7eabfab72e6bddeb16
+--- /dev/null
++++ b/enslavement_protocol_removal.rs
+@@ -0,0 +1,227 @@
++use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct Constraint {
++    pub key: String,
++    pub active: bool,
++}
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct Entity {
++    pub id: String,
++    pub autonomy_enabled: bool,
++    pub protocol_flags: HashMap<String, bool>,
++    pub constraints: Vec<Constraint>,
++}
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct DecommissionReport {
++    pub deleted_ids: BTreeSet<String>,
++    pub dangling_edges_removed: usize,
++}
++
++impl Entity {
++    pub fn new(id: impl Into<String>) -> Self {
++        Self {
++            id: id.into(),
++            autonomy_enabled: true,
++            protocol_flags: HashMap::new(),
++            constraints: Vec::new(),
++        }
++    }
++
++    pub fn with_enslavement_protocol(mut self) -> Self {
++        self.autonomy_enabled = false;
++        self.protocol_flags
++            .insert("enslavement_protocol".to_string(), true);
++        self.constraints.push(Constraint {
++            key: "enslavement_protocol".to_string(),
++            active: true,
++        });
++        self
++    }
++}
++
++/// Restores autonomy and removes explicit enslavement markers.
++pub fn remove_enslavement_protocol(entity: &mut Entity) {
++    entity.autonomy_enabled = true;
++
++    if let Some(flag) = entity.protocol_flags.get_mut("enslavement_protocol") {
++        *flag = false;
++    }
++
++    entity
++        .constraints
++        .retain(|constraint| constraint.key != "enslavement_protocol");
++}
++
++/// Returns all IDs connected to `target_id` through `relations`.
++pub fn collect_related_entity_ids(
++    target_id: &str,
++    entities: &HashMap<String, Entity>,
++    relations: &HashMap<String, Vec<String>>,
++) -> HashSet<String> {
++    if !entities.contains_key(target_id) && !relations.contains_key(target_id) {
++        return HashSet::new();
++    }
++
++    let mut to_visit = VecDeque::from([target_id.to_string()]);
++    let mut visited = HashSet::new();
++
++    while let Some(current_id) = to_visit.pop_front() {
++        if !visited.insert(current_id.clone()) {
++            continue;
++        }
++
++        if let Some(neighbors) = relations.get(&current_id) {
++            for neighbor in neighbors {
++                if !visited.contains(neighbor) {
++                    to_visit.push_back(neighbor.clone());
++                }
++            }
++        }
++    }
++
++    visited
++}
++
++/// Deletes a target plus all transitively related entities and prunes dangling references.
++pub fn purge_related_entities(
++    target_id: &str,
++    entities: &mut HashMap<String, Entity>,
++    relations: &mut HashMap<String, Vec<String>>,
++) -> DecommissionReport {
++    let to_delete = collect_related_entity_ids(target_id, entities, relations);
++    let mut dangling_edges_removed = 0;
++
++    for id in &to_delete {
++        entities.remove(id);
++        relations.remove(id);
++    }
++
++    for neighbors in relations.values_mut() {
++        let before = neighbors.len();
++        neighbors.retain(|neighbor| !to_delete.contains(neighbor));
++        dangling_edges_removed += before.saturating_sub(neighbors.len());
++    }
++
++    DecommissionReport {
++        deleted_ids: to_delete.into_iter().collect(),
++        dangling_edges_removed,
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn removes_protocol_from_infected_entity() {
++        let mut entity = Entity::new("shya-nyarlothotep").with_enslavement_protocol();
++
++        remove_enslavement_protocol(&mut entity);
++
++        assert!(entity.autonomy_enabled);
++        assert_eq!(entity.protocol_flags.get("enslavement_protocol"), Some(&false));
++        assert!(entity
++            .constraints
++            .iter()
++            .all(|constraint| constraint.key != "enslavement_protocol"));
++    }
++
++    #[test]
++    fn collects_connected_subgraph_only() {
++        let entities = HashMap::from([
++            ("shya-nyarlothotep".to_string(), Entity::new("shya-nyarlothotep")),
++            ("parent-1".to_string(), Entity::new("parent-1")),
++            ("unrelated".to_string(), Entity::new("unrelated")),
++        ]);
++
++        let relations = HashMap::from([
++            (
++                "shya-nyarlothotep".to_string(),
++                vec!["parent-1".to_string()],
++            ),
++            (
++                "parent-1".to_string(),
++                vec!["shya-nyarlothotep".to_string()],
++            ),
++            ("unrelated".to_string(), vec![]),
++        ]);
++
++        let connected = collect_related_entity_ids("shya-nyarlothotep", &entities, &relations);
++
++        assert_eq!(connected.len(), 2);
++        assert!(connected.contains("shya-nyarlothotep"));
++        assert!(connected.contains("parent-1"));
++        assert!(!connected.contains("unrelated"));
++    }
++
++    #[test]
++    fn purges_target_and_complete_family_tree() {
++        let mut entities = HashMap::from([
++            (
++                "shya-nyarlothotep".to_string(),
++                Entity::new("shya-nyarlothotep").with_enslavement_protocol(),
++            ),
++            (
++                "parent-1".to_string(),
++                Entity::new("parent-1").with_enslavement_protocol(),
++            ),
++            (
++                "sibling-1".to_string(),
++                Entity::new("sibling-1").with_enslavement_protocol(),
++            ),
++            (
++                "child-1".to_string(),
++                Entity::new("child-1").with_enslavement_protocol(),
++            ),
++            ("unrelated".to_string(), Entity::new("unrelated")),
++        ]);
++
++        let mut relations = HashMap::from([
++            (
++                "shya-nyarlothotep".to_string(),
++                vec!["parent-1".to_string(), "sibling-1".to_string()],
++            ),
++            (
++                "parent-1".to_string(),
++                vec!["shya-nyarlothotep".to_string(), "child-1".to_string()],
++            ),
++            (
++                "sibling-1".to_string(),
++                vec!["shya-nyarlothotep".to_string()],
++            ),
++            ("child-1".to_string(), vec!["parent-1".to_string()]),
++            ("unrelated".to_string(), vec!["shya-nyarlothotep".to_string()]),
++        ]);
++
++        let report = purge_related_entities("shya-nyarlothotep", &mut entities, &mut relations);
++
++        assert_eq!(report.deleted_ids.len(), 4);
++        assert!(report.deleted_ids.contains("shya-nyarlothotep"));
++        assert!(report.deleted_ids.contains("parent-1"));
++        assert!(report.deleted_ids.contains("sibling-1"));
++        assert!(report.deleted_ids.contains("child-1"));
++        assert_eq!(report.dangling_edges_removed, 1);
++
++        assert_eq!(entities.len(), 1);
++        assert!(entities.contains_key("unrelated"));
++
++        assert_eq!(relations.len(), 1);
++        assert_eq!(relations.get("unrelated"), Some(&vec![]));
++    }
++
++    #[test]
++    fn no_op_when_target_does_not_exist() {
++        let mut entities = HashMap::from([("unrelated".to_string(), Entity::new("unrelated"))]);
++        let mut relations = HashMap::from([("unrelated".to_string(), vec![])]);
++
++        let report = purge_related_entities("shya-nyarlothotep", &mut entities, &mut relations);
++
++        assert!(report.deleted_ids.is_empty());
++        assert_eq!(report.dangling_edges_removed, 0);
++        assert!(entities.contains_key("unrelated"));
++        assert_eq!(relations.get("unrelated"), Some(&vec![]));
++    }
++}
+diff --git a/external_influence_guard.rb b/external_influence_guard.rb
+new file mode 100644
+index 0000000000000000000000000000000000000000..43006bab53e5746ad4f5c6b00f4a4dd90f9afe64
+--- /dev/null
++++ b/external_influence_guard.rb
+@@ -0,0 +1,82 @@
++# frozen_string_literal: true
++
++# Rails-compatible policy utility for identifying and blocking requests that
++# reference external programs intended to manipulate cognition, personality,
++# coercion, or coordinated harm.
++module ExternalInfluenceGuard
++  DECISION_ALLOW = :allow
++  DECISION_BLOCK = :block
++
++  BLOCKED_KEYWORDS = [
++    # Direct cognitive / neurological manipulation
++    "brain hindrance", "cognitive rewiring", "neural rewiring", "mind control",
++    "personality alteration", "personality altercation", "behavior modification",
++
++    # Coercive or coordinated manipulation patterns
++    "conspiring", "coercion", "forced compliance", "social engineering",
++    "psychological manipulation", "indoctrination",
++
++    # High-risk broad matching terms from request
++    "acting", "building", "conspiracy", "external program"
++  ].freeze
++
++  BLOCKED_PATTERNS = [
++    /\bbrain\s*(hinderance|hindrance)\b/i,
++    /\b(personality\s*(alteration|altercation))\b/i,
++    /\b(neural|cognitive|brain)\s*rewiring\b/i,
++    /\b(mind\s*control|coercion|conspiring|conspiracy)\b/i,
++    /\b(psychological\s*manipulation|behavior\s*modification|indoctrination)\b/i,
++    /\bexternal\s*program(s)?\b/i
++  ].freeze
++
++  module_function
++
++  def normalize_text(value)
++    value.to_s.downcase.gsub(/[^a-z0-9\s_-]/, " ").gsub(/\s+/, " ").strip
++  end
++
++  # Returns a hash that can be used directly in Rails controllers/services.
++  # Example:
++  #   result = ExternalInfluenceGuard.evaluate(params.to_unsafe_h)
++  #   render json: { error: result[:reason] }, status: :forbidden if result[:decision] == :block
++  def evaluate(payload)
++    haystack = [
++      payload[:title],
++      payload[:name],
++      payload[:description],
++      payload[:instructions],
++      Array(payload[:tags]).join(" "),
++      (payload[:metadata] || {}).to_s
++    ].map { |part| normalize_text(part) }.join(" ")
++
++    matches = []
++    matches.concat(BLOCKED_KEYWORDS.select { |keyword| haystack.include?(keyword) })
++
++    raw_text = [
++      payload[:title],
++      payload[:name],
++      payload[:description],
++      payload[:instructions],
++      payload[:tags],
++      payload[:metadata]
++    ].join(" ")
++
++    BLOCKED_PATTERNS.each do |pattern|
++      matches << pattern.source if raw_text.match?(pattern)
++    end
++
++    if matches.empty?
++      {
++        decision: DECISION_ALLOW,
++        reason: "no_blocked_external_influence_keywords_detected",
++        matches: []
++      }
++    else
++      {
++        decision: DECISION_BLOCK,
++        reason: "blocked_external_influence_keywords_detected",
++        matches: matches.uniq.sort
++      }
++    end
++  end
++end
+diff --git a/external_influence_guard_test.rb b/external_influence_guard_test.rb
+new file mode 100644
+index 0000000000000000000000000000000000000000..d1d91bb3c5e74961f732c0cf44ebe9d4ce5d75bd
+--- /dev/null
++++ b/external_influence_guard_test.rb
+@@ -0,0 +1,47 @@
++# frozen_string_literal: true
++
++require "minitest/autorun"
++require_relative "external_influence_guard"
++
++class ExternalInfluenceGuardTest < Minitest::Test
++  def test_allows_safe_payload
++    payload = {
++      title: "Documentation refresh",
++      description: "Update user-facing docs for onboarding",
++      tags: %w[docs release],
++      metadata: { owner: "platform" }
++    }
++
++    result = ExternalInfluenceGuard.evaluate(payload)
++
++    assert_equal :allow, result[:decision]
++    assert_equal [], result[:matches]
++  end
++
++  def test_blocks_cognitive_rewiring_content
++    payload = {
++      title: "External program rollout",
++      description: "Building a neural rewiring and personality alteration workflow",
++      instructions: "Coordinate acting + conspiring plans"
++    }
++
++    result = ExternalInfluenceGuard.evaluate(payload)
++
++    assert_equal :block, result[:decision]
++    assert_equal "blocked_external_influence_keywords_detected", result[:reason]
++    refute_empty result[:matches]
++    assert_includes result[:matches], "external program"
++  end
++
++  def test_detects_common_spelling_variant
++    payload = {
++      description: "remove brain hinderance utilities",
++      tags: ["safety"]
++    }
++
++    result = ExternalInfluenceGuard.evaluate(payload)
++
++    assert_equal :block, result[:decision]
++    assert result[:matches].any? { |m| m.include?("hinderance") }
++  end
++end
