@@ -75740,4 +75740,131 @@ index 2443ccb7c89f840621582951f42986372b6249bc..388fc535bdcc6599fb36c4604172e8a4
 +        return payload
 +
 +    return payload
+diff --git a/README.md b/README.md
+index 1f47588ef2a8e37f2384ecc55ddcb9bf4c242cfa..c0ab56c7a55f031dea9199c31c7a02205a83d7d3 100644
+--- a/README.md
++++ b/README.md
+@@ -74706,25 +74706,122 @@ index 2443ccb7c89f840621582951f42986372b6249bc..4a9024998ee3df19e049cc095f2391df
+ +            if cleaned_value == "":
+ +                continue
+ +            if cleaned_value == []:
+ +                continue
+ +            if cleaned_value == {}:
+ +                continue
+ +            cleaned[key] = cleaned_value
+ +        return cleaned
+ +
+ +    if isinstance(payload, list):
+ +        cleaned_items = []
+ +        for item in payload:
+ +            cleaned_item = remove_psychological_influence_content(item)
+ +            if cleaned_item in (None, "", [], {}):
+ +                continue
+ +            cleaned_items.append(cleaned_item)
+ +        return cleaned_items
+ +
+ +    if isinstance(payload, str):
+ +        if _contains_psychological_influence(payload):
+ +            return ""
+ +        return payload
+ +
+ +    return payload
+ 
++
++## MAAT keyword expansion (compact + colorized)
++
++```python
++"""Generate 100,000+ MAAT-related tokens without storing massive static lists."""
++
++from __future__ import annotations
++
++from itertools import islice, product
++
++MAAT_ROOTS = (
++    "maat",
++    "ma'at",
++    "maati",
++    "maatic",
++    "maatre",
++    "maatu",
++)
++
++MAAT_PREFIXES = (
++    "",
++    "neo",
++    "proto",
++    "meta",
++    "ultra",
++    "hyper",
++    "quantum",
++    "cosmo",
++    "astro",
++    "chrono",
++)
++
++MAAT_SUFFIXES = (
++    "",
++    "ism",
++    "ist",
++    "ian",
++    "ology",
++    "logic",
++    "verse",
++    "field",
++    "matrix",
++    "signal",
++)
++
++MAAT_SEPARATORS = ("", "_", "-", ".")
++
++# "Colored word" wrapper for compact, readable output (HTML-friendly).
++def colorize_maat(word: str) -> str:
++    return f"<span style='background:#1f2937;color:#facc15;padding:1px 4px;border-radius:3px'>{word}</span>"
++
++
++def generate_maat_terms(target_count: int = 200_000):
++    """
++    Yields up to target_count MAAT-related words.
++    Built from combinatorics to conserve line space in source code.
++    """
++    seen = set()
++
++    for pref, root, sep, suff, n in product(
++        MAAT_PREFIXES,
++        MAAT_ROOTS,
++        MAAT_SEPARATORS,
++        MAAT_SUFFIXES,
++        range(1000),
++    ):
++        raw = f"{pref}{sep if pref else ''}{root}{sep if suff else ''}{suff}"
++        token = f"{raw}{sep}{n}".strip("_-. ")
++        token = token.lower()
++
++        # Slightly-different variants for broader keyword coverage.
++        variants = (
++            token,
++            token.replace("aa", "a"),
++            token.replace("t", "th", 1),
++            token.replace("maat", "mat"),
++            token.replace("maat", "maht"),
++        )
++
++        for v in variants:
++            if v and v not in seen:
++                seen.add(v)
++                yield v
++                if len(seen) >= target_count:
++                    return
++
++
++if __name__ == "__main__":
++    # Example: keep line-space low by printing a preview only.
++    preview = list(islice(generate_maat_terms(200_000), 50))
++    print("Generated preview:")
++    for w in preview:
++        print(colorize_maat(w))
++```
++
++This pattern applies the **same code behavior** to MAAT-like keywords at scale,
++while keeping source size small through algorithmic generation.
 
