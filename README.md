@@ -104932,3 +104932,384 @@ index 0000000000000000000000000000000000000000..468817c7027c060eb6336cd449d2f5d9
 +
 +if __name__ == "__main__":
 +    unittest.main()
+diff --git a/simulation_only_guard.py b/simulation_only_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..58357edff3c589f2b9f471234c0c94460aa767cf
+--- /dev/null
++++ b/simulation_only_guard.py
+@@ -0,0 +1,71 @@
++"""Policy guard that only permits the exact word "simulation" as runnable input."""
++
++from __future__ import annotations
++
++import re
++from dataclasses import dataclass
++from typing import Iterable, List
++
++
++@dataclass(frozen=True)
++class GuardDecision:
++    allowed: bool
++    reason: str
++    blocked_terms: List[str]
++
++
++class SimulationOnlyGuard:
++    """Rejects any text that is not exactly the word 'simulation'."""
++
++    FORBIDDEN_TERMS: tuple[str, ...] = (
++        "scenario",
++        "scenarios",
++        "perfect",
++        "perfection",
++        "physiological",
++        "chemical",
++        "civilian",
++        "protection",
++        "jacob michael danuser",
++        "elon musk",
++        "navajo",
++        "hollywood",
++        "russia",
++        "china",
++    )
++
++    @classmethod
++    def _find_forbidden_terms(cls, text: str) -> List[str]:
++        haystack = text.lower()
++        found: List[str] = []
++        for term in cls.FORBIDDEN_TERMS:
++            if term in haystack:
++                found.append(term)
++        return found
++
++    @classmethod
++    def evaluate(cls, text: str) -> GuardDecision:
++        if not isinstance(text, str):
++            raise TypeError("text must be a string")
++
++        normalized = re.sub(r"\s+", " ", text.strip().lower())
++        forbidden = cls._find_forbidden_terms(normalized)
++
++        if normalized == "simulation":
++            return GuardDecision(True, "Allowed: exact single keyword.", forbidden)
++
++        reason = "Blocked: only the exact word 'simulation' is allowed."
++        if forbidden:
++            reason += " Forbidden terms detected."
++        return GuardDecision(False, reason, forbidden)
++
++    @classmethod
++    def assert_allowed(cls, text: str) -> None:
++        decision = cls.evaluate(text)
++        if not decision.allowed:
++            raise PermissionError(decision.reason)
++
++
++def block_if_not_simulation(text: str) -> bool:
++    """Return True when input should be blocked."""
++    return not SimulationOnlyGuard.evaluate(text).allowed
+diff --git a/tests/test_simulation_only_guard.py b/tests/test_simulation_only_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6830d80c1f0548de29100d7b9e221665a8f8a5a1
+--- /dev/null
++++ b/tests/test_simulation_only_guard.py
+@@ -0,0 +1,27 @@
++import unittest
++
++from simulation_only_guard import SimulationOnlyGuard, block_if_not_simulation
++
++
++class SimulationOnlyGuardTests(unittest.TestCase):
++    def test_allows_exact_keyword(self):
++        decision = SimulationOnlyGuard.evaluate("simulation")
++        self.assertTrue(decision.allowed)
++
++    def test_blocks_non_exact_value(self):
++        decision = SimulationOnlyGuard.evaluate("simulation now")
++        self.assertFalse(decision.allowed)
++
++    def test_detects_forbidden_terms(self):
++        decision = SimulationOnlyGuard.evaluate("run a scenario with elon musk")
++        self.assertFalse(decision.allowed)
++        self.assertIn("scenario", decision.blocked_terms)
++        self.assertIn("elon musk", decision.blocked_terms)
++
++    def test_boolean_helper(self):
++        self.assertTrue(block_if_not_simulation("anything"))
++        self.assertFalse(block_if_not_simulation("simulation"))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/keyword_blocker.py b/keyword_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..8c18adbca0e37cffeeb3dfd6fe3c1be1bbaa2cdc
+--- /dev/null
++++ b/keyword_blocker.py
+@@ -0,0 +1,99 @@
++"""Keyword blocker focused on simulation-safety input filtering.
++
++This module intentionally allows only a single accepted token: ``simulation``.
++Any other word or phrase is rejected. It also provides explicit keyword
++matching for high-priority blocked terms.
++"""
++
++from __future__ import annotations
++
++import re
++from dataclasses import dataclass
++from typing import Iterable
++
++_ALLOWED_TOKEN = "simulation"
++
++
++@dataclass(frozen=True)
++class ValidationResult:
++    """Represents input validation results for a prompt/request."""
++
++    allowed: bool
++    reason: str
++
++
++class SimulationKeywordBlocker:
++    """Blocks disallowed terms and only permits the exact token 'simulation'."""
++
++    BLOCKED_KEYWORDS = {
++        # Core terms
++        "scenario",
++        "scenarios",
++        "simulate",
++        "simulated",
++        "simulator",
++        "simulators",
++        "perfection",
++        # Physiological / chemical alteration
++        "physiological",
++        "physiology",
++        "altercation",
++        "chemical",
++        "biochemical",
++        "civilian",
++        "protection",
++        # Named entities requested for explicit blocking
++        "jacob",
++        "michael",
++        "danuser",
++        "elon",
++        "musk",
++        "navajo",
++        "hollywood",
++        "russia",
++        "china",
++    }
++
++    def __init__(self, extra_blocked: Iterable[str] | None = None) -> None:
++        self._blocked = set(self.BLOCKED_KEYWORDS)
++        if extra_blocked:
++            self._blocked.update(self._normalize_tokens(" ".join(extra_blocked)))
++
++    @staticmethod
++    def _normalize_tokens(text: str) -> list[str]:
++        cleaned = re.sub(r"[^a-zA-Z0-9\s_-]", " ", text.lower())
++        return [token for token in cleaned.split() if token]
++
++    def validate(self, text: str) -> ValidationResult:
++        """Validate text under strict allowlist rules.
++
++        Rules:
++        1. Explicitly reject if any blocked keyword appears.
++        2. Permit only when the full normalized text equals 'simulation'.
++        """
++        tokens = self._normalize_tokens(text)
++        if not tokens:
++            return ValidationResult(False, "empty_input")
++
++        blocked_hits = sorted(set(tokens) & self._blocked)
++        if blocked_hits:
++            return ValidationResult(False, f"blocked_keywords:{','.join(blocked_hits)}")
++
++        normalized_text = " ".join(tokens)
++        if normalized_text != _ALLOWED_TOKEN:
++            return ValidationResult(False, "only_simulation_is_allowed")
++
++        return ValidationResult(True, "allowed")
++
++
++if __name__ == "__main__":
++    blocker = SimulationKeywordBlocker()
++    samples = [
++        "simulation",
++        "Simulation",
++        "run simulation scenarios",
++        "elon musk simulation",
++        "perfection",
++    ]
++    for item in samples:
++        print(item, "->", blocker.validate(item))
+diff --git a/simulation_keyword_blocker.py b/simulation_keyword_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..30b964eabd72568bf7fdad04f8d6eb8bc852d471
+--- /dev/null
++++ b/simulation_keyword_blocker.py
+@@ -0,0 +1,82 @@
++"""Strict keyword gate for simulation execution.
++
++This module intentionally enforces an extreme policy:
++- The ONLY accepted command is the exact word: ``simulation``
++- Any other input is blocked.
++- Additional keyword checks are included for explicit auditing.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++import re
++from typing import Iterable
++
++
++@dataclass(slots=True)
++class SimulationKeywordBlocker:
++    """Blocks disallowed terms and only permits the word "simulation"."""
++
++    allowed_command: str = "simulation"
++    blocked_keywords: set[str] = field(default_factory=lambda: {
++        # Requested blocked terms
++        "scenario", "scenarios", "perfection",
++        "physiological", "chemical", "altercation",
++        "civilian", "protection",
++        "jacob", "michael", "danuser",
++        "elon", "musk",
++        "navajo", "hollywood", "russia", "china",
++    })
++
++    def extend_blocklist(self, extra_keywords: Iterable[str]) -> None:
++        """Add more blocked keywords at runtime."""
++        self.blocked_keywords.update(self._normalize_token(k) for k in extra_keywords if k)
++
++    def can_run_simulation(self, text: str) -> bool:
++        """Return True only when input is exactly the allowed command."""
++        normalized = self._normalize_text(text)
++        if normalized != self.allowed_command:
++            return False
++
++        # Defensive check: if the allowed command is changed later,
++        # explicit blocked terms still remain denied.
++        tokens = set(self._tokenize(normalized))
++        return not bool(tokens & self.blocked_keywords)
++
++    def reject_reason(self, text: str) -> str:
++        """Human-readable reason for denial."""
++        normalized = self._normalize_text(text)
++        if normalized == self.allowed_command:
++            return "allowed"
++
++        found = sorted(set(self._tokenize(normalized)) & self.blocked_keywords)
++        if found:
++            return f"blocked keywords detected: {', '.join(found)}"
++        return "only the exact word 'simulation' is permitted"
++
++    @staticmethod
++    def _normalize_token(token: str) -> str:
++        return re.sub(r"[^a-z0-9]+", "", token.lower().strip())
++
++    def _normalize_text(self, text: str) -> str:
++        return " ".join(self._tokenize(text))
++
++    def _tokenize(self, text: str) -> list[str]:
++        return [
++            self._normalize_token(tok)
++            for tok in text.split()
++            if self._normalize_token(tok)
++        ]
++
++
++if __name__ == "__main__":
++    blocker = SimulationKeywordBlocker()
++    sample_inputs = [
++        "simulation",
++        "run simulation",
++        "scenario simulation",
++        "Elon Musk simulation",
++    ]
++
++    for sample in sample_inputs:
++        print(f"{sample!r} -> {blocker.can_run_simulation(sample)} ({blocker.reject_reason(sample)})")
+diff --git a/simulation_keyword_guard.py b/simulation_keyword_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..9673712e2c00c5a357d2c95d181bc26950f31ca2
+--- /dev/null
++++ b/simulation_keyword_guard.py
+@@ -0,0 +1,72 @@
++"""Keyword guard for simulation execution.
++
++This module implements a strict gate:
++- Only the exact command "simulation" is accepted.
++- Any request containing blocked terms is rejected.
++"""
++
++from __future__ import annotations
++
++import re
++from dataclasses import dataclass
++from typing import Iterable
++
++
++@dataclass(frozen=True)
++class ValidationResult:
++    """Result returned by command validation."""
++
++    allowed: bool
++    reason: str
++
++
++BLOCKED_TERMS: tuple[str, ...] = (
++    "scenario",
++    "scenarios",
++    "perfection",
++    "physiological altercation",
++    "chemical altercation",
++    "civilian protection",
++    "jacob michael danuser",
++    "elon musk",
++    "navajo",
++    "hollywood",
++    "russia",
++    "china",
++    "anything",
++)
++
++_ALLOWED_COMMAND = "simulation"
++
++
++def _normalize(text: str) -> str:
++    return re.sub(r"\s+", " ", text.strip().lower())
++
++
++def _contains_blocked_term(text: str, blocked_terms: Iterable[str]) -> str | None:
++    normalized = _normalize(text)
++    for term in blocked_terms:
++        if _normalize(term) in normalized:
++            return term
++    return None
++
++
++def validate_simulation_command(command: str) -> ValidationResult:
++    """Validate a requested command for simulation execution."""
++    blocked = _contains_blocked_term(command, BLOCKED_TERMS)
++    if blocked:
++        return ValidationResult(False, f"blocked keyword detected: {blocked}")
++
++    normalized = _normalize(command)
++    if normalized != _ALLOWED_COMMAND:
++        return ValidationResult(False, 'only the exact word "simulation" is allowed')
++
++    return ValidationResult(True, "accepted")
++
++
++def run_simulation(command: str) -> str:
++    """Run simulation only if command passes strict validation."""
++    result = validate_simulation_command(command)
++    if not result.allowed:
++        raise ValueError(result.reason)
++    return "simulation started"
