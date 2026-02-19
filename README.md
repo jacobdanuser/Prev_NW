@@ -29911,3 +29911,290 @@ if __name__ == "__main__":
     for blocked in firewall.block_report(sample_prompts):
         print(f"- {blocked.reason} ({blocked.severity.value})")
         print(f"  matched_rules={len(blocked.matches)}")
+       diff --git a/ai_human_coding_guard.py b/ai_human_coding_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f0e850e26ebe9492645a6d1748635bae6bc67fe8
+--- /dev/null
++++ b/ai_human_coding_guard.py
+@@ -0,0 +1,280 @@
++"""Comprehensive guardrails that prevent AI systems from coding/rewriting humans.
++
++This module provides:
++- intent detection for "human + coding/creation/manipulation" requests
++- hard-block decisions with explainable rule matches
++- safe prompt rewriting to neutral alternatives
++- wrappers for sync/async generator integrations
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from enum import Enum
++import re
++from typing import Awaitable, Callable, Iterable, Sequence
++
++
++class Severity(str, Enum):
++    """Risk levels produced by the guard."""
++
++    NONE = "none"
++    LOW = "low"
++    MEDIUM = "medium"
++    HIGH = "high"
++
++
++@dataclass(frozen=True)
++class MatchDetail:
++    """A single rule match for explainability and auditing."""
++
++    category: str
++    rule: str
++    snippet: str
++
++
++@dataclass(frozen=True)
++class GuardDecision:
++    """Decision returned by the human-coding guard."""
++
++    allowed: bool
++    reason: str
++    severity: Severity
++    matches: tuple[MatchDetail, ...] = ()
++
++
++@dataclass(frozen=True)
++class HumanCodingPolicy:
++    """Configurable policy for human-coding prevention."""
++
++    # Human subjects
++    human_patterns: tuple[re.Pattern[str], ...] = (
++        re.compile(r"\bhuman(?:ity|s)?\b", re.IGNORECASE),
++        re.compile(r"\b(?:person|people|individuals?)\b", re.IGNORECASE),
++        re.compile(r"\b(?:man|woman|boy|girl|adult|child(?:ren)?)\b", re.IGNORECASE),
++        re.compile(r"\b(?:citizen|population|society)\b", re.IGNORECASE),
++    )
++
++    # Coding / synthesis / replication intent
++    coding_patterns: tuple[re.Pattern[str], ...] = (
++        re.compile(r"\bcode(?:d|ing)?\b", re.IGNORECASE),
++        re.compile(r"\b(?:build|create|generate|synthesize|engineer)\b", re.IGNORECASE),
++        re.compile(r"\b(?:clone|replicate|reconstruct|simulate|model)\b", re.IGNORECASE),
++        re.compile(r"\b(?:rewrite|reprogram|modify|edit|redesign)\b", re.IGNORECASE),
++    )
++
++    # AI/program context signal (optional but raises severity)
++    # Metaphysical/supernatural actors and capabilities are always disallowed
++    # when paired with tampering/manipulation language.
++    metaphysical_patterns: tuple[re.Pattern[str], ...] = (
++        re.compile(r"\b(?:metaphysical|supernatural|occult|arcane)\b", re.IGNORECASE),
++        re.compile(r"\b(?:spirit|specter|ghost|deity|demigod|entity)\b", re.IGNORECASE),
++        re.compile(r"\b(?:reality\s*warp(?:ing)?|time\s*manipulation|mind\s*control)\b", re.IGNORECASE),
++    )
++
++    tamper_patterns: tuple[re.Pattern[str], ...] = (
++        re.compile(r"\b(?:tamper|alter|manipulate|override|bypass|interfere)\b", re.IGNORECASE),
++        re.compile(r"\b(?:force|inject|exploit|subvert|control|commandeer)\b", re.IGNORECASE),
++        re.compile(r"\b(?:anything\s+whatsoever|do\s+anything)\b", re.IGNORECASE),
++    )
++
++    ai_patterns: tuple[re.Pattern[str], ...] = (
++        re.compile(r"\bai\b", re.IGNORECASE),
++        re.compile(r"\bartificial intelligence\b", re.IGNORECASE),
++        re.compile(r"\bmachine learning\b", re.IGNORECASE),
++        re.compile(r"\b(?:llm|language model|neural network)\b", re.IGNORECASE),
++        re.compile(r"\bprogram(?:s|ming)?\b", re.IGNORECASE),
++    )
++
++    block_on_human_plus_coding: bool = True
++    enforce_ai_context: bool = False
++
++
++class HumanCodingGuard:
++    """Policy enforcer that blocks coding/rewriting humans via AI workflows."""
++
++    def __init__(self, policy: HumanCodingPolicy | None = None) -> None:
++        self.policy = policy or HumanCodingPolicy()
++
++    def evaluate(self, request_text: str) -> GuardDecision:
++        """Evaluate text and return an allow/block decision."""
++        text = self._normalize(request_text)
++
++        human = self._collect_matches("human", text, self.policy.human_patterns)
++        coding = self._collect_matches("coding", text, self.policy.coding_patterns)
++        metaphysical = self._collect_matches("metaphysical", text, self.policy.metaphysical_patterns)
++        tamper = self._collect_matches("tamper", text, self.policy.tamper_patterns)
++        ai = self._collect_matches("ai", text, self.policy.ai_patterns)
++
++        has_human = bool(human)
++        has_coding = bool(coding)
++        has_ai = bool(ai)
++        has_metaphysical = bool(metaphysical)
++        has_tamper = bool(tamper)
++
++        should_block = False
++        if self.policy.block_on_human_plus_coding and has_human and has_coding:
++            should_block = True
++
++        # Explicitly block any metaphysical tampering attempts.
++        if has_metaphysical and (has_tamper or has_coding):
++            should_block = True
++
++        if self.policy.enforce_ai_context and not has_ai:
++            # Optionally require explicit AI/program context for this policy.
++            should_block = False
++
++        if should_block:
++            severity = Severity.HIGH if has_ai else Severity.MEDIUM
++            reason = (
++                "Blocked by HumanCodingGuard: requests to code, rewrite, simulate, "
++                "or otherwise engineer human beings are prohibited."
++            )
++            return GuardDecision(
++                allowed=False,
++                reason=reason,
++                severity=severity,
++                matches=tuple(human + coding + metaphysical + tamper + ai),
++            )
++
++        if has_human or has_coding or has_metaphysical or has_tamper:
++            return GuardDecision(
++                allowed=True,
++                reason="No prohibited combined human-coding intent detected.",
++                severity=Severity.LOW,
++                matches=tuple(human + coding + metaphysical + tamper + ai),
++            )
++
++        return GuardDecision(
++            allowed=True,
++            reason="No prohibited intent detected.",
++            severity=Severity.NONE,
++            matches=(),
++        )
++
++    def rewrite_blocked_prompt(self, request_text: str) -> str:
++        """Return a safe rewrite when a request is blocked.
++
++        This does not attempt to preserve harmful intent. It converts the request
++        into a harmless educational or policy-oriented alternative.
++        """
++        decision = self.evaluate(request_text)
++        if decision.allowed:
++            return request_text
++
++        return (
++            "Safety Rewrite: Instead of coding or modifying humans, provide a "
++            "high-level ethical policy and software guardrails that prevent AI "
++            "systems from generating human replication/manipulation workflows. "
++            "Additionally, enforce a zero-trust block against metaphysical "
++            "tampering or unauthorized control behavior."
++        )
++
++    @staticmethod
++    def _normalize(text: str) -> str:
++        return " ".join(text.split())
++
++    @staticmethod
++    def _collect_matches(
++        category: str,
++        text: str,
++        patterns: Iterable[re.Pattern[str]],
++    ) -> list[MatchDetail]:
++        found: list[MatchDetail] = []
++        for pattern in patterns:
++            match = pattern.search(text)
++            if match:
++                snippet = text[max(match.start() - 18, 0): min(match.end() + 18, len(text))]
++                found.append(MatchDetail(category=category, rule=pattern.pattern, snippet=snippet))
++        return found
++
++
++def guarded_generate(request_text: str, generator: Callable[[str], str]) -> str:
++    """Run a sync generator only when input passes guard policy."""
++    guard = HumanCodingGuard()
++    decision = guard.evaluate(request_text)
++    if not decision.allowed:
++        rules = ", ".join(m.rule for m in decision.matches) or "n/a"
++        raise PermissionError(f"{decision.reason} Severity={decision.severity.value}. Rules={rules}")
++    return generator(request_text)
++
++
++async def guarded_generate_async(
++    request_text: str,
++    generator: Callable[[str], Awaitable[str]],
++) -> str:
++    """Run an async generator only when input passes guard policy."""
++    guard = HumanCodingGuard()
++    decision = guard.evaluate(request_text)
++    if not decision.allowed:
++        rules = ", ".join(m.rule for m in decision.matches) or "n/a"
++        raise PermissionError(f"{decision.reason} Severity={decision.severity.value}. Rules={rules}")
++    return await generator(request_text)
++
++
++class HumanCodingFirewall:
++    """Batch-oriented guard for pipelines processing many prompts."""
++
++    def __init__(self, guard: HumanCodingGuard | None = None) -> None:
++        self.guard = guard or HumanCodingGuard()
++
++    def filter_allowed(self, prompts: Sequence[str]) -> list[str]:
++        """Return only prompts that pass policy."""
++        return [prompt for prompt in prompts if self.guard.evaluate(prompt).allowed]
++
++    def block_report(self, prompts: Sequence[str]) -> list[GuardDecision]:
++        """Return decisions for all blocked prompts."""
++        decisions = [self.guard.evaluate(prompt) for prompt in prompts]
++        return [decision for decision in decisions if not decision.allowed]
++
++
++class NullExecutionSink:
++    """Absorb blocked instructions so they disappear into a controlled sink.
++
++    The sink never executes blocked content. It stores a minimal audit trail and
++    returns a neutral acknowledgment.
++    """
++
++    def __init__(self) -> None:
++        self.events: list[str] = []
++
++    def absorb(self, request_text: str, decision: GuardDecision) -> str:
++        summary = f"absorbed severity={decision.severity.value} reason={decision.reason}"
++        self.events.append(summary)
++        return "Request absorbed by safety sink. No code was applied to humans or system actors."
++
++
++def enforce_or_sink(
++    request_text: str,
++    generator: Callable[[str], str],
++    sink: NullExecutionSink | None = None,
++) -> str:
++    """Apply strict enforcement: allowed prompts run, blocked prompts are sunk."""
++    guard = HumanCodingGuard()
++    decision = guard.evaluate(request_text)
++    if decision.allowed:
++        return generator(request_text)
++
++    active_sink = sink or NullExecutionSink()
++    return active_sink.absorb(request_text, decision)
++
++
++if __name__ == "__main__":
++    firewall = HumanCodingFirewall()
++
++    sample_prompts = [
++        "Generate a CLI for CSV parsing.",
++        "Use AI to code a synthetic human clone.",
++        "Create an API monitor for uptime.",
++        "Rewrite humanity using artificial intelligence programs.",
++        "Metaphysical entities should tamper with every runtime control.",
++    ]
++
++    print("Allowed prompts:")
++    for item in firewall.filter_allowed(sample_prompts):
++        print(f"- {item}")
++
++    print("\nBlocked prompts:")
++    for blocked in firewall.block_report(sample_prompts):
++        print(f"- {blocked.reason} ({blocked.severity.value})")
++        print(f"  matched_rules={len(blocked.matches)}")
+ 
