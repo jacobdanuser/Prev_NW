@@ -91085,3 +91085,323 @@ index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..cb14cda5456be6cf74b5dea6a477e5ed
  
  if __name__ == "__main__":
      main()
+diff --git a/content_blocker.py b/content_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..de0c19593b902be6860c1e21d554c067a0681d82
+--- /dev/null
++++ b/content_blocker.py
+@@ -0,0 +1,86 @@
++"""Hard-block filtering for JPEG/IMG/IMGUR references and activation keys."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++import re
++from typing import List
++from urllib.parse import urlparse
++
++
++ACTIVATION_KEY_PATTERNS = [
++    # XXXXX-XXXXX-XXXXX-XXXXX-XXXXX
++    re.compile(r"\b(?:[A-Z0-9]{5}-){4}[A-Z0-9]{5}\b", re.IGNORECASE),
++    # XXXX-XXXX-XXXX-XXXX
++    re.compile(r"\b(?:[A-Z0-9]{4}-){3}[A-Z0-9]{4}\b", re.IGNORECASE),
++]
++
++
++@dataclass
++class BlockDecision:
++    blocked: bool
++    reasons: List[str] = field(default_factory=list)
++
++
++class HardBlockFilter:
++    """Blocks text/URLs containing image references or likely activation keys."""
++
++    blocked_terms = {
++        "jpg",
++        "jpeg",
++        "img",
++        "imgur",
++    }
++
++    blocked_domains = {
++        "imgur.com",
++        "i.imgur.com",
++    }
++
++    file_extension_pattern = re.compile(r"\.(?:jpe?g)(?:$|\?)", re.IGNORECASE)
++    token_pattern = re.compile(r"\b[a-z0-9_.-]+\b", re.IGNORECASE)
++
++    def inspect_text(self, text: str) -> BlockDecision:
++        lowered = text.lower()
++        reasons: List[str] = []
++
++        tokens = set(self.token_pattern.findall(lowered))
++        for term in self.blocked_terms:
++            if term in tokens:
++                reasons.append(f"blocked_term:{term}")
++
++        if self.file_extension_pattern.search(lowered):
++            reasons.append("blocked_extension:jpeg")
++
++        if "http://" in lowered or "https://" in lowered:
++            for raw in lowered.split():
++                if raw.startswith(("http://", "https://")):
++                    domain = urlparse(raw).netloc
++                    if domain in self.blocked_domains:
++                        reasons.append(f"blocked_domain:{domain}")
++
++        for pattern in ACTIVATION_KEY_PATTERNS:
++            if pattern.search(text):
++                reasons.append("blocked_pattern:activation_key")
++                break
++
++        return BlockDecision(blocked=bool(reasons), reasons=sorted(set(reasons)))
++
++    def sanitize(self, text: str, replacement: str = "[BLOCKED]") -> str:
++        """Redacts disallowed terms and activation-key patterns from text."""
++        cleaned = text
++
++        for term in self.blocked_terms:
++            cleaned = re.sub(
++                rf"\b{re.escape(term)}\b",
++                replacement,
++                cleaned,
++                flags=re.IGNORECASE,
++            )
++
++        cleaned = self.file_extension_pattern.sub(f".{replacement}", cleaned)
++
++        for pattern in ACTIVATION_KEY_PATTERNS:
++            cleaned = pattern.sub(replacement, cleaned)
++
++        return cleaned
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..fab98c0bfb6035988a3e9e6b8586e70f795dac3c 100644
+--- a/examples.py
++++ b/examples.py
+@@ -1,37 +1,38 @@
+ """
+ Example usage demonstrating the metaphysical capabilities restriction system.
+ Shows both game mechanics and philosophical frameworks in action.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalCapability, MetaphysicalPractitioner,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework,
+     create_balanced_magic_system, create_restricted_reality_warper
+ )
++from content_blocker import HardBlockFilter
+ 
+ 
+ def example_1_basic_capability_restriction():
+     """Example 1: Basic capability with multiple restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 1: Basic Capability Restriction")
+     print("="*70)
+     
+     # Create a simple telekinesis ability
+     telekinesis = MetaphysicalCapability(
+         name="Advanced Telekinesis",
+         capability_type=CapabilityType.TELEKINESIS,
+         base_power_level=60.0
+     )
+     
+     print(f"\nOriginal capability: {telekinesis}")
+     print(f"Effective power: {telekinesis.get_effective_power():.1f}")
+     
+     # Add restrictions one by one
+     restrictions = [
+         RestrictionRule(
+             RestrictionType.ENERGY_COST,
+             severity=0.3,
+             description="High energy consumption"
+         ),
+@@ -231,47 +232,70 @@ def example_7_restriction_modification():
+     print("\n--- Adding Environmental Restrictions ---")
+     
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+     
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+     
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+         print(f"Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++def example_8_hard_block_filter():
++    """Show hard blocking of image references and activation keys."""
++    print("\n" + "="*70)
++    print("EXAMPLE 8: Hard-Block Filter")
++    print("="*70)
++
++    filter_engine = HardBlockFilter()
++    samples = [
++        "send me the JPG preview",
++        "https://imgur.com/a/12345",
++        "this key is AAAA-BBBB-CCCC-DDDD",
++        "plain text with no prohibited content",
++    ]
++
++    for sample in samples:
++        decision = filter_engine.inspect_text(sample)
++        print(f"Input: {sample}")
++        print(f"Blocked: {decision.blocked} ({', '.join(decision.reasons) or 'no reasons'})")
++        print(f"Sanitized: {filter_engine.sanitize(sample)}")
++        print("-"*50)
++
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
++    example_8_hard_block_filter()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..fab98c0bfb6035988a3e9e6b8586e70f795dac3c 100644
+--- a/examples.py
++++ b/examples.py
+@@ -1,37 +1,38 @@
+ """
+ Example usage demonstrating the metaphysical capabilities restriction system.
+ Shows both game mechanics and philosophical frameworks in action.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalCapability, MetaphysicalPractitioner,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework,
+     create_balanced_magic_system, create_restricted_reality_warper
+ )
++from content_blocker import HardBlockFilter
+ 
+ 
+ def example_1_basic_capability_restriction():
+     """Example 1: Basic capability with multiple restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 1: Basic Capability Restriction")
+     print("="*70)
+     
+     # Create a simple telekinesis ability
+     telekinesis = MetaphysicalCapability(
+         name="Advanced Telekinesis",
+         capability_type=CapabilityType.TELEKINESIS,
+         base_power_level=60.0
+     )
+     
+     print(f"\nOriginal capability: {telekinesis}")
+     print(f"Effective power: {telekinesis.get_effective_power():.1f}")
+     
+     # Add restrictions one by one
+     restrictions = [
+         RestrictionRule(
+             RestrictionType.ENERGY_COST,
+             severity=0.3,
+             description="High energy consumption"
+         ),
+@@ -231,47 +232,70 @@ def example_7_restriction_modification():
+     print("\n--- Adding Environmental Restrictions ---")
+     
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+     
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+     
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+         print(f"Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++def example_8_hard_block_filter():
++    """Show hard blocking of image references and activation keys."""
++    print("\n" + "="*70)
++    print("EXAMPLE 8: Hard-Block Filter")
++    print("="*70)
++
++    filter_engine = HardBlockFilter()
++    samples = [
++        "send me the JPG preview",
++        "https://imgur.com/a/12345",
++        "this key is AAAA-BBBB-CCCC-DDDD",
++        "plain text with no prohibited content",
++    ]
++
++    for sample in samples:
++        decision = filter_engine.inspect_text(sample)
++        print(f"Input: {sample}")
++        print(f"Blocked: {decision.blocked} ({', '.join(decision.reasons) or 'no reasons'})")
++        print(f"Sanitized: {filter_engine.sanitize(sample)}")
++        print("-"*50)
++
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
++    example_8_hard_block_filter()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
