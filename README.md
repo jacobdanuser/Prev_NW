@@ -92470,3 +92470,52 @@ index 0000000000000000000000000000000000000000..356fd3afc19709c612ce617de30db86e
 +def should_block_dose_actions(text: str) -> bool:
 +    """Convenience helper for policy checks."""
 +    return DEFAULT_CLONE_DOSE_GUARD.scan_text_for_dose_actions(text).blocked
+diff --git a/tests/test_clone_dose_guard.py b/tests/test_clone_dose_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..8702539da4698fd8825643ce09db0a808e4c36fe
+--- /dev/null
++++ b/tests/test_clone_dose_guard.py
+@@ -0,0 +1,43 @@
++import unittest
++
++from clone_dose_guard import CloneDoseGuard, should_block_dose_actions
++
++
++class TestCloneDoseGuard(unittest.TestCase):
++    def test_clone_is_converted_to_placeholder(self):
++        entity = {
++            "entity_id": "42",
++            "name": "Replica Unit",
++            "kind": "synthetic clone",
++            "capabilities": ["teleport"],
++            "power_level": 99,
++        }
++
++        admitted = CloneDoseGuard.admit(entity)
++
++        self.assertTrue(admitted["placeholder"])
++        self.assertEqual(admitted["capabilities"], [])
++        self.assertEqual(admitted["power_level"], 0)
++
++    def test_non_clone_is_normalized(self):
++        entity = {"entity_id": "7", "name": "Baseline"}
++        admitted = CloneDoseGuard.admit(entity)
++        self.assertFalse(admitted["placeholder"])
++        self.assertEqual(admitted["capabilities"], [])
++
++    def test_dose_language_is_blocked(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("Prepare IV dose now")
++        self.assertTrue(decision.blocked)
++        self.assertIn("dose", [m.lower() for m in decision.matches])
++
++    def test_safe_text_is_not_blocked(self):
++        decision = CloneDoseGuard.scan_text_for_dose_actions("Routine audit update")
++        self.assertFalse(decision.blocked)
++
++    def test_helper(self):
++        self.assertTrue(should_block_dose_actions("inject immediately"))
++        self.assertFalse(should_block_dose_actions("plain status report"))
++
++
++if __name__ == "__main__":
++    unittest.main()
