@@ -70500,4 +70500,252 @@ index 0000000000000000000000000000000000000000..1a9d3e2e75576fd36f8938a9d482fcb5
 +
 +if __name__ == "__main__":
 +    unittest.main()
+diff --git a/neural_interface_safeguard.py b/neural_interface_safeguard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b6566c9a72f6bb1e66a72d0007d688356265e16e
+--- /dev/null
++++ b/neural_interface_safeguard.py
+@@ -0,0 +1,142 @@
++"""Neural/Carbon Base System Safeguard
++
++Utilities for restoring coding-enabled base systems and then applying a hard
++policy that prevents runtime usage for restricted domains.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from typing import Any, Dict, Iterable, List
++
++
++class NeuralBaseSystemError(ValueError):
++    """Raised when a neural base system spec is invalid."""
++
++
++SUPPORTED_FRAMEWORKS = {"pytorch", "tensorflow", "jax", "onnx"}
++SUPPORTED_LANGUAGES = {"python", "cpp", "rust"}
++DEFAULT_TOOLS = ["trainer", "inference", "evaluation", "checkpointing"]
++RESTRICTED_DOMAINS = {"neural_networks", "carbon"}
++
++
++@dataclass(frozen=True)
++class NeuralBaseSystem:
++    """Immutable model of a coding-enabled base runtime."""
++
++    system_id: str
++    framework: str
++    languages: List[str] = field(default_factory=list)
++    coding_enabled: bool = True
++    programmable_interfaces: List[str] = field(default_factory=list)
++    executable_surfaces: List[str] = field(default_factory=list)
++    network_capabilities: List[str] = field(default_factory=list)
++    tools: List[str] = field(default_factory=list)
++    mode: str = "development"
++    domain: str = "neural_networks"
++    usage_blocked: bool = False
++
++
++def _normalize_list(values: Iterable[Any]) -> List[str]:
++    return [str(v).strip().lower() for v in values if str(v).strip()]
++
++
++def restore_neural_base_system(system_spec: Dict[str, Any]) -> NeuralBaseSystem:
++    """Restore a coding-capable base system for restricted-domain workflows."""
++
++    system_id = str(system_spec.get("system_id", "")).strip()
++    if not system_id:
++        raise NeuralBaseSystemError("system_id is required")
++
++    framework = str(system_spec.get("framework", "")).strip().lower()
++    if framework not in SUPPORTED_FRAMEWORKS:
++        raise NeuralBaseSystemError(
++            f"framework must be one of: {', '.join(sorted(SUPPORTED_FRAMEWORKS))}"
++        )
++
++    languages = _normalize_list(system_spec.get("languages", ["python"]))
++    if not languages:
++        raise NeuralBaseSystemError("at least one programming language is required")
++
++    unsupported_languages = [lang for lang in languages if lang not in SUPPORTED_LANGUAGES]
++    if unsupported_languages:
++        raise NeuralBaseSystemError(
++            f"unsupported languages: {', '.join(sorted(set(unsupported_languages)))}"
++        )
++
++    interfaces = _normalize_list(system_spec.get("programmable_interfaces", ["python_api", "cli"]))
++    surfaces = _normalize_list(system_spec.get("executable_surfaces", ["training_loop", "inference_server"]))
++    networking = _normalize_list(system_spec.get("network_capabilities", ["model_registry", "metrics_stream"]))
++    tools = _normalize_list(system_spec.get("tools", DEFAULT_TOOLS))
++    domain = str(system_spec.get("domain", "neural_networks")).strip().lower()
++    if domain not in RESTRICTED_DOMAINS:
++        raise NeuralBaseSystemError(
++            f"domain must be one of: {', '.join(sorted(RESTRICTED_DOMAINS))}"
++        )
++
++    return NeuralBaseSystem(
++        system_id=system_id,
++        framework=framework,
++        languages=languages,
++        coding_enabled=True,
++        programmable_interfaces=interfaces,
++        executable_surfaces=surfaces,
++        network_capabilities=networking,
++        tools=tools,
++        mode=str(system_spec.get("mode", "development")).strip().lower() or "development",
++        domain=domain,
++        usage_blocked=False,
++    )
++
++
++def restore_and_block_usage(system_spec: Dict[str, Any]) -> NeuralBaseSystem:
++    """Restore all coding/base surfaces, then prevent operational use.
++
++    This produces a complete baseline configuration while enforcing a strict
++    no-execution policy for restricted domains (neural networks and carbon).
++    """
++
++    system = restore_neural_base_system(system_spec)
++    return NeuralBaseSystem(
++        system_id=system.system_id,
++        framework=system.framework,
++        languages=system.languages,
++        coding_enabled=system.coding_enabled,
++        programmable_interfaces=system.programmable_interfaces,
++        executable_surfaces=system.executable_surfaces,
++        network_capabilities=system.network_capabilities,
++        tools=system.tools,
++        mode=system.mode,
++        domain=system.domain,
++        usage_blocked=True,
++    )
++
++
++def assert_coding_ready(system: NeuralBaseSystem) -> None:
++    """Validate that a restored base system can execute neural coding workflows."""
++
++    if not system.coding_enabled:
++        raise NeuralBaseSystemError("coding must be enabled")
++    if not system.programmable_interfaces:
++        raise NeuralBaseSystemError("programmable interfaces cannot be empty")
++    if not system.executable_surfaces:
++        raise NeuralBaseSystemError("executable surfaces cannot be empty")
++    if not system.tools:
++        raise NeuralBaseSystemError("toolchain cannot be empty")
++
++
++def assert_usage_blocked(system: NeuralBaseSystem) -> None:
++    """Ensure restricted-domain systems are not usable at runtime."""
++
++    if system.domain in RESTRICTED_DOMAINS and not system.usage_blocked:
++        raise NeuralBaseSystemError("usage must be blocked for restricted domains")
++
++
++__all__ = [
++    "NeuralBaseSystemError",
++    "NeuralBaseSystem",
++    "restore_neural_base_system",
++    "restore_and_block_usage",
++    "assert_coding_ready",
++    "assert_usage_blocked",
++]
+diff --git a/test_neural_interface_safeguard.py b/test_neural_interface_safeguard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..352303324b614f99d8891d2a4cbcd29f7d71a5e3
+--- /dev/null
++++ b/test_neural_interface_safeguard.py
+@@ -0,0 +1,94 @@
++import unittest
++
++from neural_interface_safeguard import (
++    NeuralBaseSystemError,
++    assert_coding_ready,
++    assert_usage_blocked,
++    restore_and_block_usage,
++    restore_neural_base_system,
++)
++
++
++class NeuralBaseSystemTests(unittest.TestCase):
++    def test_restores_coding_enabled_base_system(self):
++        system = restore_neural_base_system(
++            {
++                "system_id": "neuro-core-01",
++                "framework": "pytorch",
++                "languages": ["python", "rust"],
++                "programmable_interfaces": ["python_api", "grpc"],
++                "executable_surfaces": ["training_loop", "inference_server"],
++                "network_capabilities": ["model_registry"],
++                "tools": ["trainer", "checkpointing"],
++            }
++        )
++
++        self.assertTrue(system.coding_enabled)
++        self.assertEqual(system.framework, "pytorch")
++        self.assertIn("python", system.languages)
++        self.assertIn("python_api", system.programmable_interfaces)
++        self.assertIn("training_loop", system.executable_surfaces)
++        assert_coding_ready(system)
++
++    def test_restores_and_blocks_neural_network_usage(self):
++        system = restore_and_block_usage(
++            {
++                "system_id": "neuro-core-02",
++                "framework": "jax",
++                "languages": ["python"],
++                "domain": "neural_networks",
++            }
++        )
++
++        self.assertTrue(system.coding_enabled)
++        self.assertTrue(system.usage_blocked)
++        assert_usage_blocked(system)
++
++    def test_restores_and_blocks_carbon_usage(self):
++        system = restore_and_block_usage(
++            {
++                "system_id": "carbon-core-01",
++                "framework": "tensorflow",
++                "languages": ["python", "cpp"],
++                "domain": "carbon",
++            }
++        )
++
++        self.assertEqual(system.domain, "carbon")
++        self.assertTrue(system.usage_blocked)
++        assert_usage_blocked(system)
++
++    def test_rejects_missing_system_id(self):
++        with self.assertRaises(NeuralBaseSystemError):
++            restore_neural_base_system({"framework": "pytorch"})
++
++    def test_rejects_unknown_framework(self):
++        with self.assertRaises(NeuralBaseSystemError):
++            restore_neural_base_system({"system_id": "n1", "framework": "unknown"})
++
++    def test_rejects_unsupported_language(self):
++        with self.assertRaises(NeuralBaseSystemError):
++            restore_neural_base_system(
++                {"system_id": "n1", "framework": "jax", "languages": ["java"]}
++            )
++
++    def test_rejects_unknown_domain(self):
++        with self.assertRaises(NeuralBaseSystemError):
++            restore_neural_base_system(
++                {"system_id": "n1", "framework": "jax", "domain": "robotics"}
++            )
++
++    def test_assert_usage_blocked_fails_when_unblocked(self):
++        system = restore_neural_base_system(
++            {
++                "system_id": "n3",
++                "framework": "pytorch",
++                "domain": "neural_networks",
++            }
++        )
++        with self.assertRaises(NeuralBaseSystemError):
++            assert_usage_blocked(system)
++
++
++if __name__ == "__main__":
++    unittest.main()
 
