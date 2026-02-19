@@ -29174,3 +29174,194 @@ node scripts/secret-scan.mjs
     "typescript": "^5.0.0"
   }
 }
+{
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "audit-ci": "^7.0.0",
+    "eslint": "^9.0.0",
+    "typescript": "^5.0.0"
+  }
+}
+{
+  "name": "Secure Workspace",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:20",
+  "remoteUser": "node",
+  "updateRemoteUserUID": true,
+
+  "features": {},
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "security.workspace.trust.enabled": true,
+        "extensions.autoUpdate": false,
+        "extensions.autoCheckUpdates": false,
+        "telemetry.telemetryLevel": "off",
+        "git.autofetch": false,
+        "terminal.integrated.confirmOnExit": "always",
+        "github.copilot.enable": {
+          "*": true,
+          "plaintext": false,
+          "scminput": false
+        }
+      },
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  },
+
+  "postCreateCommand": "npm ci",
+  "postStartCommand": "node scripts/workspace-health.mjs"
+}
+{
+  "telemetry.telemetryLevel": "off",
+  "task.allowAutomaticTasks": "off",
+  "npm.autoDetect": "off",
+  "git.autofetch": false,
+  "security.workspace.trust.enabled": true,
+  "security.workspace.trust.startupPrompt": "always",
+  "extensions.ignoreRecommendations": true
+}
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode"
+  ],
+  "unwantedRecommendations": [
+    "ms-vscode.vscode-typescript-next"
+  ]
+}
+name: Secure CI
+
+on:
+  pull_request:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Secret scan
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --no-git --redact --verbose
+
+      - name: Block unpinned GitHub Actions
+        run: node scripts/check-actions-pinned.mjs
+
+      - name: Block risky install scripts
+        run: node scripts/check-npm-scripts.mjs
+
+      - name: Lint + Typecheck
+        run: |
+          npm run lint
+          npm run typecheck
+
+      - name: Semgrep (SAST)
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: p/ci
+import fs from "fs";
+import path from "path";
+
+const workflowsDir = path.join(process.cwd(), ".github", "workflows");
+const files = fs.existsSync(workflowsDir) ? fs.readdirSync(workflowsDir) : [];
+const offenders = [];
+
+for (const f of files) {
+  if (!f.endsWith(".yml") && !f.endsWith(".yaml")) continue;
+  const text = fs.readFileSync(path.join(workflowsDir, f), "utf8");
+  const re = /^\s*uses:\s*([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)@([^\s#]+)\s*$/gmi;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const ref = m[2];
+    if (!/^[0-9a-f]{40}$/i.test(ref)) offenders.push({ file: f, action: m[1], ref });
+  }
+}
+
+if (offenders.length) {
+  console.error("❌ Unpinned GitHub Actions detected. Pin actions to a full commit SHA.");
+  offenders.forEach(o => console.error(` - ${o.file}: uses ${o.action}@${o.ref}`));
+  process.exit(1);
+}
+
+console.log("✅ All actions are pinned.");
+import fs from "fs";
+
+if (!fs.existsSync("package.json")) process.exit(0);
+const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+const scripts = pkg.scripts || {};
+const blocked = ["preinstall", "install", "postinstall"];
+const found = blocked.filter(k => scripts[k]);
+
+if (found.length) {
+  console.error("❌ Risky npm lifecycle scripts found:");
+  found.forEach(k => console.error(` - ${k}: ${scripts[k]}`));
+  process.exit(1);
+}
+console.log("✅ No risky lifecycle scripts found.");
+import fs from "fs";
+import { execSync } from "child_process";
+
+const PATTERNS = [
+  /\bsk-[a-zA-Z0-9]{16,}\b/g,
+  /-----BEGIN (?:RSA|EC|OPENSSH) PRIVATE KEY-----/g,
+  /\b(api[_-]?key|secret|token|password)\b\s*[:=]\s*["']?[^"'\s]{8,}/gi
+];
+
+const staged = execSync("git diff --cached --name-only", { encoding: "utf8" })
+  .split("\n").map(s => s.trim()).filter(Boolean);
+
+const offenders = [];
+for (const f of staged) {
+  if (!fs.existsSync(f) || fs.statSync(f).isDirectory()) continue;
+  const text = fs.readFileSync(f, "utf8");
+  if (PATTERNS.some(re => re.test(text))) offenders.push(f);
+}
+
+if (offenders.length) {
+  console.error("❌ Potential secret detected in staged files:");
+  offenders.forEach(f => console.error(` - ${f}`));
+  process.exit(1);
+}
+console.log("✅ No obvious secrets detected.");
+npm i -D husky
+npx husky init
+node scripts/secret-scan.mjs
+import fs from "fs";
+
+function warn(msg) { console.warn("⚠️ " + msg); }
+
+if (fs.existsSync("package.json")) {
+  const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+  const scripts = pkg.scripts || {};
+  ["preinstall","install","postinstall"].forEach(k => {
+    if (scripts[k]) warn(`Risky npm lifecycle script present: ${k}`);
+  });
+}
+
+if (!fs.existsSync(".github/workflows")) warn("No workflows directory found; CI checks may be missing.");
+
+console.log("✅ Workspace health check complete.");
