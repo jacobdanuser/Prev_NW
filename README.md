@@ -73768,4 +73768,103 @@ index 2443ccb7c89f840621582951f42986372b6249bc..690e5be4b240e74fcbe42d02448fbce0
          RestrictionType.PHILOSOPHICAL_PARADOX,
          severity=0.6,
          description="Cannot create logical contradictions"
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..d890a6cb1821ae50854408fd3e31f0bbc0512808 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -1,35 +1,35 @@
+ """
+ Metaphysical Capabilities Restriction System
+ 
+ A combined game mechanics and philosophical framework for restricting
+ supernatural, magical, and metaphysical abilities.
+ """
+ 
+ from enum import Enum
+ from dataclasses import dataclass, field
+-from typing import List, Dict, Optional, Callable
++from typing import List, Dict, Optional
+ from abc import ABC, abstractmethod
+ import json
+ 
+ 
+ class CapabilityType(Enum):
+     """Categories of metaphysical capabilities."""
+     TELEKINESIS = "telekinesis"
+     TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+ 
+ 
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+@@ -253,50 +253,57 @@ class MetaphysicalPractitioner:
+             capability.use_count += 1
+             
+             result["power_used"] = power_used
+             result["energy_consumed"] = energy_consumed
+             result["remaining_energy"] = self.energy_pool
+ 
+         return result
+ 
+     def get_status(self) -> str:
+         """Get current status of the practitioner."""
+         status = f"\n=== {self.name} ===\n"
+         status += f"Consciousness: {self.consciousness_level:.1%}\n"
+         status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
+         status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+         status += f"\nCapabilities:\n"
+         
+         for cap in self.capabilities:
+             status += f"  • {cap}\n"
+             if cap.restrictions:
+                 for restriction in cap.restrictions:
+                     status += f"    - {restriction}\n"
+         
+         return status
+ 
+ 
++def remove_mouth_and_movement_capabilities(
++    practitioner: MetaphysicalPractitioner,
++) -> List[str]:
++    """Compatibility shim: no capabilities are removed."""
++    return []
++
++
+ # Utility functions for common restriction setups
+ 
+ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+     """Create a well-balanced magic system with standard restrictions."""
+     practitioner = MetaphysicalPractitioner("Balanced Mage")
+     
+     # Add frameworks
+     practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+     practitioner.add_framework(EntropicDecayFramework(0.9))
+     practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
+     
+     # Add capabilities with restrictions
+     telekinesis = MetaphysicalCapability(
+         "Telekinesis",
+         CapabilityType.TELEKINESIS,
+         base_power_level=45.0
+     )
+     telekinesis.add_restriction(RestrictionRule(
+         RestrictionType.RANGE_LIMIT,
+         severity=0.3,
+         description="Limited to 100 meters"
+     ))
+     telekinesis.add_restriction(RestrictionRule(
+         RestrictionType.TIME_COOLDOWN,
+         severity=0.2,
 
