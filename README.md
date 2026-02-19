@@ -88861,3 +88861,44 @@ class ApiKey < ApplicationRecord
 end
 # revoke all keys fast
 ApiKey.active.update_all(revoked_at: Time.current)
+# app/models/upload.rb
+class Upload < ApplicationRecord
+  has_one_attached :file
+
+  validate :block_jpeg_files
+
+  private
+
+  def block_jpeg_files
+    return unless file.attached?
+
+    if file.content_type.in?(["image/jpeg", "image/jpg"])
+      errors.add(:file, "JPEG uploads are currently disabled")
+    end
+  end
+end
+class Upload < ApplicationRecord
+  has_one_attached :file
+
+  before_save :quarantine_if_jpeg
+
+  def quarantine_if_jpeg
+    return unless file.attached?
+
+    if file.content_type.in?(["image/jpeg", "image/jpg"])
+      self.quarantined = true
+    end
+  end
+end
+require "mini_magick"
+
+def strip_metadata(path)
+  image = MiniMagick::Image.open(path)
+  image.strip  # removes EXIF/metadata
+  image.write(path)
+end
+# config/initializers/feature_flags.rb
+JPEG_DISABLED = ENV["JPEG_DISABLED"] == "1"
+if JPEG_DISABLED && file.content_type == "image/jpeg"
+  errors.add(:file, "JPEG processing is disabled by policy")
+end
