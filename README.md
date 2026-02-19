@@ -73097,4 +73097,381 @@ index c99d0ce68917c0af7a0bba8f176afb52f8bd8bd5..02dd909b449b5772e65a5de7e821371d
      print_framework_analysis("telekinesis")
      print_framework_analysis("telepathy")
      print_framework_analysis("time_manipulation")
+diff --git a/integration_patterns.py b/integration_patterns.py
+index d0d9384c76e3a5198104d495b00d68fea9ead922..8bcfc08addf7888b4ea74d6a922765ae907f1100 100644
+--- a/integration_patterns.py
++++ b/integration_patterns.py
+@@ -71,81 +71,80 @@ class RPGSpellSystem:
+         result = self.practitioner.use_capability(spell)
+         self.cast_history.append({
+             "spell": spell_name,
+             "power": result["power_used"],
+             "success": result["success"]
+         })
+         
+         return {
+             "success": result["success"],
+             "spell": spell_name,
+             "power": result["power_used"],
+             "slots_remaining": result["remaining_energy"] / 10,
+             "total_slots": self.practitioner.max_energy / 10
+         }
+     
+     def long_rest(self):
+         """Restore all spell slots (simulate D&D long rest)."""
+         self.practitioner.energy_pool = self.practitioner.max_energy
+         self.practitioner.consciousness_level = 1.0
+     
+     def _effect_to_capability(self, effect: str) -> CapabilityType:
+         """Map spell effect type to capability type."""
+         effect_map = {
+             "damage": CapabilityType.ENERGY_PROJECTION,
+             "healing": CapabilityType.ENERGY_PROJECTION,
+-            "movement": CapabilityType.TELEKINESIS,
+             "mind": CapabilityType.TELEPATHY,
+             "time": CapabilityType.TIME_MANIPULATION,
+             "reality": CapabilityType.REALITY_WARPING,
+         }
+         return effect_map.get(effect.lower(), CapabilityType.ENERGY_PROJECTION)
+ 
+ 
+ # ============================================================================
+ # PATTERN 2: SUPERHERO POWER SYSTEM
+ # ============================================================================
+ 
+ class SuperheroPowerSystem:
+     """Integration pattern for superhero/superpowers systems."""
+     
+     def __init__(self, hero_name: str, power_level: float = 50.0):
+         self.hero = MetaphysicalPractitioner(
+             name=hero_name,
+             consciousness_level=1.0,  # Superheros maintain focus
+             energy_pool=100.0,
+             max_energy=100.0
+         )
+         self.hero.add_framework(ConservationOfEnergyFramework(100.0))
+         self.power_level = power_level
+         self.active_powers = []
+     
+     def add_power(self, name: str, activation_type: str) -> MetaphysicalCapability:
+         """Add a superhero power."""
+         power = MetaphysicalCapability(
+             name=name,
+-            capability_type=CapabilityType.TELEKINESIS,  # Generic for powers
++            capability_type=CapabilityType.ENERGY_PROJECTION,  # Generic for powers
+             base_power_level=self.power_level
+         )
+         
+         if activation_type == "passive":
+             # Passive powers have no cost
+             pass
+         elif activation_type == "active":
+             # Active powers cost energy
+             power.add_restriction(RestrictionRule(
+                 RestrictionType.ENERGY_COST,
+                 severity=0.2,
+                 description="Active power requires sustained energy"
+             ))
+         elif activation_type == "ultimate":
+             # Ultimate powers cost a lot of energy and have cooldown
+             power.add_restriction(RestrictionRule(
+                 RestrictionType.ENERGY_COST,
+                 severity=0.5,
+                 description="Ultimate power requires maximum energy"
+             ))
+             power.add_restriction(RestrictionRule(
+                 RestrictionType.TIME_COOLDOWN,
+                 severity=0.4,
+                 description="Ultimate power needs recharge time"
+             ))
+diff --git a/integration_patterns.py b/integration_patterns.py
+index d0d9384c76e3a5198104d495b00d68fea9ead922..458629343e6a92dac73196980fad330698551488 100644
+--- a/integration_patterns.py
++++ b/integration_patterns.py
+@@ -71,55 +71,59 @@ class RPGSpellSystem:
+         result = self.practitioner.use_capability(spell)
+         self.cast_history.append({
+             "spell": spell_name,
+             "power": result["power_used"],
+             "success": result["success"]
+         })
+         
+         return {
+             "success": result["success"],
+             "spell": spell_name,
+             "power": result["power_used"],
+             "slots_remaining": result["remaining_energy"] / 10,
+             "total_slots": self.practitioner.max_energy / 10
+         }
+     
+     def long_rest(self):
+         """Restore all spell slots (simulate D&D long rest)."""
+         self.practitioner.energy_pool = self.practitioner.max_energy
+         self.practitioner.consciousness_level = 1.0
+     
+     def _effect_to_capability(self, effect: str) -> CapabilityType:
+         """Map spell effect type to capability type."""
+         effect_map = {
+             "damage": CapabilityType.ENERGY_PROJECTION,
+             "healing": CapabilityType.ENERGY_PROJECTION,
+-            "movement": CapabilityType.TELEKINESIS,
+             "mind": CapabilityType.TELEPATHY,
+             "time": CapabilityType.TIME_MANIPULATION,
+             "reality": CapabilityType.REALITY_WARPING,
+         }
++        blocked_effects = {"movement", "move", "mouth", "speech", "speak"}
++        if effect.lower() in blocked_effects:
++            raise ValueError(
++                f"Effect '{effect}' is not permitted because movement/mouth modules are disabled."
++            )
+         return effect_map.get(effect.lower(), CapabilityType.ENERGY_PROJECTION)
+ 
+ 
+ # ============================================================================
+ # PATTERN 2: SUPERHERO POWER SYSTEM
+ # ============================================================================
+ 
+ class SuperheroPowerSystem:
+     """Integration pattern for superhero/superpowers systems."""
+     
+     def __init__(self, hero_name: str, power_level: float = 50.0):
+         self.hero = MetaphysicalPractitioner(
+             name=hero_name,
+             consciousness_level=1.0,  # Superheros maintain focus
+             energy_pool=100.0,
+             max_energy=100.0
+         )
+         self.hero.add_framework(ConservationOfEnergyFramework(100.0))
+         self.power_level = power_level
+         self.active_powers = []
+     
+     def add_power(self, name: str, activation_type: str) -> MetaphysicalCapability:
+         """Add a superhero power."""
+         power = MetaphysicalCapability(
+             name=name,
+diff --git a/integration_patterns.py b/integration_patterns.py
+index d0d9384c76e3a5198104d495b00d68fea9ead922..d670721c03f35aa243eb58f6bc257d8173830734 100644
+--- a/integration_patterns.py
++++ b/integration_patterns.py
+@@ -9,50 +9,52 @@ from metaphysical_restrictions import (
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework
+ )
+ 
+ 
+ # ============================================================================
+ # PATTERN 1: RPG SPELL SYSTEM
+ # ============================================================================
+ 
+ class RPGSpellSystem:
+     """Integration pattern for traditional RPG magic systems (D&D-style)."""
+     
+     def __init__(self, player_name: str, spell_slots: int = 10):
+         self.practitioner = MetaphysicalPractitioner(
+             name=player_name,
+             energy_pool=float(spell_slots * 10),
+             max_energy=float(spell_slots * 10)
+         )
+         self.practitioner.add_framework(ConservationOfEnergyFramework(spell_slots * 10))
+         self.spell_slots = spell_slots
+         self.cast_history = []
+     
+     def add_spell(self, name: str, level: int, effect: str) -> MetaphysicalCapability:
+         """Add a standard RPG spell to the spellbook."""
++        effect = self._sanitize_effect(effect)
++
+         # Spell power = spell level * 10
+         spell = MetaphysicalCapability(
+             name=name,
+             capability_type=self._effect_to_capability(effect),
+             base_power_level=float(level * 10)
+         )
+         
+         # Add standard restrictions based on spell level
+         spell.add_restriction(RestrictionRule(
+             RestrictionType.ENERGY_COST,
+             severity=level / 10.0,  # Higher level spells cost more
+             description=f"Level {level} spell component cost"
+         ))
+         
+         # Cantrips have no cooldown, higher spells have cooldowns
+         if level > 0:
+             spell.add_restriction(RestrictionRule(
+                 RestrictionType.TIME_COOLDOWN,
+                 severity=level / 20.0,
+                 description=f"{level} round cooldown"
+             ))
+         
+         self.practitioner.add_capability(spell)
+         return spell
+     
+@@ -71,57 +73,72 @@ class RPGSpellSystem:
+         result = self.practitioner.use_capability(spell)
+         self.cast_history.append({
+             "spell": spell_name,
+             "power": result["power_used"],
+             "success": result["success"]
+         })
+         
+         return {
+             "success": result["success"],
+             "spell": spell_name,
+             "power": result["power_used"],
+             "slots_remaining": result["remaining_energy"] / 10,
+             "total_slots": self.practitioner.max_energy / 10
+         }
+     
+     def long_rest(self):
+         """Restore all spell slots (simulate D&D long rest)."""
+         self.practitioner.energy_pool = self.practitioner.max_energy
+         self.practitioner.consciousness_level = 1.0
+     
+     def _effect_to_capability(self, effect: str) -> CapabilityType:
+         """Map spell effect type to capability type."""
+         effect_map = {
+             "damage": CapabilityType.ENERGY_PROJECTION,
+             "healing": CapabilityType.ENERGY_PROJECTION,
+-            "movement": CapabilityType.TELEKINESIS,
+             "mind": CapabilityType.TELEPATHY,
+             "time": CapabilityType.TIME_MANIPULATION,
+             "reality": CapabilityType.REALITY_WARPING,
+         }
+         return effect_map.get(effect.lower(), CapabilityType.ENERGY_PROJECTION)
+ 
++    @staticmethod
++    def _sanitize_effect(effect: str) -> str:
++        """Block movement- and mouth-related spell effects from the system."""
++        normalized = effect.lower().strip()
++        blocked_effects = {
++            "movement",
++            "move",
++            "mouth",
++            "jaw",
++            "speech",
++        }
++
++        if normalized in blocked_effects:
++            return "damage"
++        return normalized
++
+ 
+ # ============================================================================
+ # PATTERN 2: SUPERHERO POWER SYSTEM
+ # ============================================================================
+ 
+ class SuperheroPowerSystem:
+     """Integration pattern for superhero/superpowers systems."""
+     
+     def __init__(self, hero_name: str, power_level: float = 50.0):
+         self.hero = MetaphysicalPractitioner(
+             name=hero_name,
+             consciousness_level=1.0,  # Superheros maintain focus
+             energy_pool=100.0,
+             max_energy=100.0
+         )
+         self.hero.add_framework(ConservationOfEnergyFramework(100.0))
+         self.power_level = power_level
+         self.active_powers = []
+     
+     def add_power(self, name: str, activation_type: str) -> MetaphysicalCapability:
+         """Add a superhero power."""
+         power = MetaphysicalCapability(
+             name=name,
+             capability_type=CapabilityType.TELEKINESIS,  # Generic for powers
+             base_power_level=self.power_level
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..6e218f510f70164908fe4eb0d1a960704340064c 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -253,50 +253,89 @@ class MetaphysicalPractitioner:
+             capability.use_count += 1
+             
+             result["power_used"] = power_used
+             result["energy_consumed"] = energy_consumed
+             result["remaining_energy"] = self.energy_pool
+ 
+         return result
+ 
+     def get_status(self) -> str:
+         """Get current status of the practitioner."""
+         status = f"\n=== {self.name} ===\n"
+         status += f"Consciousness: {self.consciousness_level:.1%}\n"
+         status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
+         status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+         status += f"\nCapabilities:\n"
+         
+         for cap in self.capabilities:
+             status += f"  • {cap}\n"
+             if cap.restrictions:
+                 for restriction in cap.restrictions:
+                     status += f"    - {restriction}\n"
+         
+         return status
+ 
+ 
++MOUTH_OR_MOVEMENT_KEYWORDS = {
++    "mouth",
++    "jaw",
++    "lip",
++    "tongue",
++    "speak",
++    "speech",
++    "movement",
++    "move",
++    "locomotion",
++    "walk",
++    "run",
++}
++
++
++def remove_mouth_and_movement_capabilities(
++    practitioner: MetaphysicalPractitioner,
++) -> List[str]:
++    """Remove mouth- and movement-related capabilities from a practitioner.
++
++    Returns the names of removed capabilities.
++    """
++    removed_capabilities: List[str] = []
++    retained_capabilities: List[MetaphysicalCapability] = []
++
++    for capability in practitioner.capabilities:
++        normalized_name = capability.name.lower()
++        if any(keyword in normalized_name for keyword in MOUTH_OR_MOVEMENT_KEYWORDS):
++            removed_capabilities.append(capability.name)
++            continue
++        if capability.capability_type == CapabilityType.TELEKINESIS:
++            removed_capabilities.append(capability.name)
++            continue
++        retained_capabilities.append(capability)
++
++    practitioner.capabilities = retained_capabilities
++    return removed_capabilities
++
++
+ # Utility functions for common restriction setups
+ 
+ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+     """Create a well-balanced magic system with standard restrictions."""
+     practitioner = MetaphysicalPractitioner("Balanced Mage")
+     
+     # Add frameworks
+     practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+     practitioner.add_framework(EntropicDecayFramework(0.9))
+     practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
+     
+     # Add capabilities with restrictions
+     telekinesis = MetaphysicalCapability(
+         "Telekinesis",
+         CapabilityType.TELEKINESIS,
+         base_power_level=45.0
+     )
+     telekinesis.add_restriction(RestrictionRule(
+         RestrictionType.RANGE_LIMIT,
+         severity=0.3,
+         description="Limited to 100 meters"
+     ))
+     telekinesis.add_restriction(RestrictionRule(
+         RestrictionType.TIME_COOLDOWN,
+         severity=0.2,
 
