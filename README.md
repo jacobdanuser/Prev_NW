@@ -45885,4 +45885,435 @@ async function run() {
 }
 
 run();
+npm install midi-writer-js fluent-ffmpeg fs-extra
+# plus ffmpeg installed on your system
+const fs = require("fs-extra");
+const path = require("path");
+const MidiWriter = require("midi-writer-js");
+const ffmpeg = require("fluent-ffmpeg");
+
+// --- helpers ---
+
+function getJSFiles(dir) {
+  let results = [];
+  const entries = fs.readdirSync(dir);
+
+  for (const entry of entries) {
+    const full = path.join(dir, entry);
+    const stat = fs.statSync(full);
+
+    if (stat.isDirectory()) {
+      results = results.concat(getJSFiles(full));
+    } else if (entry.endsWith(".js")) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
+function readModuleCode(modulePath) {
+  const files = getJSFiles(modulePath);
+  let all = "";
+  for (const f of files) {
+    all += "\n\n" + fs.readFileSync(f, "utf8");
+  }
+  return all;
+}
+
+function codeToNotes(code) {
+  const scale = ["C4","D4","E4","F4","G4","A4","B4","C5"];
+  const notes = [];
+  let time = 0;
+  const beat = "4"; // quarter notes
+
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i];
+    const ascii = ch.charCodeAt(0);
+    const pitch = scale[ascii % scale.length];
+
+    if (ch === "\n") {
+      time += 1; // phrase gap
+      continue;
+    }
+
+    notes.push({
+      pitch: [pitch],
+      duration: beat,
+      startTick: time * 128
+    });
+
+    time += 0.5; // eighth-note spacing
+  }
+
+  return notes;
+}
+
+function buildMidi(notes, moduleName) {
+  const track = new MidiWriter.Track();
+  track.setTempo(90);
+  track.addTrackName(`Module: ${moduleName}`);
+  track.addTimeSignature(4, 4);
+  track.addEvent(new MidiWriter.ProgramChangeEvent({ instrument: 48 })); // strings
+
+  notes.forEach(n => {
+    track.addEvent(
+      new MidiWriter.NoteEvent({
+        pitch: n.pitch,
+        duration: n.duration,
+        startTick: n.startTick,
+        velocity: 80
+      })
+    );
+  });
+
+  const writer = new MidiWriter.Writer(track);
+  return writer.buildFile();
+}
+
+function midiToMp3(midiPath, mp3Path) {
+  return new Promise((resolve, reject) => {
+    ffmpeg(midiPath)
+      .output(mp3Path)
+      .on("end", () => resolve())
+      .on("error", err => reject(err))
+      .run();
+  });
+}
+
+// --- main orchestration ---
+
+async function processModule(modulePath) {
+  const moduleName = path.basename(modulePath);
+  console.log(`Processing module: ${moduleName}`);
+
+  const code = readModuleCode(modulePath);
+  if (!code.trim()) {
+    console.log(`  (no JS code found, skipping)`);
+    return;
+  }
+
+  const notes = codeToNotes(code);
+  const midiData = buildMidi(notes, moduleName);
+
+  const outDir = path.join(__dirname, "out");
+  await fs.ensureDir(outDir);
+
+  const midiPath = path.join(outDir, `${moduleName}.mid`);
+  const mp3Path = path.join(outDir, `${moduleName}.mp3`);
+
+  fs.writeFileSync(midiPath, Buffer.from(midiData));
+  console.log(`  MIDI written: ${midiPath}`);
+
+  try {
+    await midiToMp3(midiPath, mp3Path);
+    console.log(`  MP3 created: ${mp3Path}`);
+  } catch (e) {
+    console.error(`  MP3 render failed for ${moduleName}:`, e.message);
+  }
+}
+
+async function run() {
+  const srcRoot = path.join(__dirname, "src");
+  const entries = fs.readdirSync(srcRoot);
+
+  const modules = entries
+    .map(e => path.join(srcRoot, e))
+    .filter(p => fs.statSync(p).isDirectory());
+
+  console.log("Found modules:", modules.map(m => path.basename(m)));
+
+  for (const mod of modules) {
+    await processModule(mod);
+  }
+
+  console.log("All modules processed.");
+}
+
+run();
+npm install midi-writer-js fluent-ffmpeg fs-extra
+const fs = require("fs-extra");
+const path = require("path");
+const MidiWriter = require("midi-writer-js");
+const ffmpeg = require("fluent-ffmpeg");
+
+// --- 1. Read a single code file ---
+function readCode(filePath) {
+  return fs.readFileSync(filePath, "utf8");
+}
+
+// --- 2. Convert code characters → musical notes ---
+function codeToNotes(code) {
+  const scale = ["C4","D4","E4","F4","G4","A4","B4","C5"];
+  const notes = [];
+  let time = 0;
+
+  for (let i = 0; i < code.length; i++) {
+    const ch = code[i];
+
+    if (ch === "\n") {
+      time += 1; // phrase break
+      continue;
+    }
+
+    const ascii = ch.charCodeAt(0);
+    const pitch = scale[ascii % scale.length];
+
+    notes.push({
+      pitch: [pitch],
+      duration: "4",
+      startTick: time * 128
+    });
+
+    time += 0.5; // eighth‑note spacing
+  }
+
+  return notes;
+}
+
+// --- 3. Build a MIDI track ---
+function buildMidi(notes, name) {
+  const track = new MidiWriter.Track();
+  track.setTempo(90);
+  track.addTrackName(name);
+  track.addTimeSignature(4, 4);
+  track.addEvent(new MidiWriter.ProgramChangeEvent({ instrument: 48 })); // strings
+
+  notes.forEach(n => {
+    track.addEvent(
+      new MidiWriter.NoteEvent({
+        pitch: n.pitch,
+        duration: n.duration,
+        startTick: n.startTick,
+        velocity: 80
+      })
+    );
+  });
+
+  const writer = new MidiWriter.Writer(track);
+  return writer.buildFile();
+}
+
+// --- 4. Convert MIDI → MP3 ---
+function midiToMp3(midiPath, mp3Path) {
+  return new Promise((resolve, reject) => {
+    ffmpeg(midiPath)
+      .output(mp3Path)
+      .on("end", resolve)
+      .on("error", reject)
+      .run();
+  });
+}
+
+// --- 5. Main ---
+async function run() {
+  const inputFile = process.argv[2];
+  if (!inputFile) {
+    console.error("Usage: node render-code-to-mp3.js <file.js>");
+    return;
+  }
+
+  const code = readCode(inputFile);
+  const notes = codeToNotes(code);
+  const midiData = buildMidi(notes, path.basename(inputFile));
+
+  const outDir = path.join(__dirname, "rendered");
+  await fs.ensureDir(outDir);
+
+  const midiPath = path.join(outDir, "output.mid");
+  const mp3Path = path.join(outDir, "output.mp3");
+
+  fs.writeFileSync(midiPath, Buffer.from(midiData));
+  console.log("MIDI created:", midiPath);
+
+  try {
+    await midiToMp3(midiPath, mp3Path);
+    console.log("MP3 created:", mp3Path);
+  } catch (err) {
+    console.error("MP3 render failed:", err.message);
+  }
+}
+
+run();
+#!/usr/bin/env ruby
+# batch_to_mp3.rb
+# Convert common audio formats to MP3 with sane defaults + light normalization.
+
+require "fileutils"
+require "open3"
+
+INPUT_DIR  = ARGV[0] || "."
+OUTPUT_DIR = ARGV[1] || File.join(INPUT_DIR, "mp3_out")
+BITRATE    = ENV.fetch("BITRATE", "192k")
+
+FileUtils.mkdir_p(OUTPUT_DIR)
+
+def ffmpeg_exists?
+  system("ffmpeg -version >NUL 2>&1") || system("ffmpeg -version >/dev/null 2>&1")
+end
+
+abort("ffmpeg not found on PATH. Install ffmpeg first.") unless ffmpeg_exists?
+
+exts = %w[.wav .aif .aiff .flac .m4a .aac .ogg .opus .wma .mp3]
+files = Dir.glob(File.join(INPUT_DIR, "**", "*")).select { |p| File.file?(p) && exts.include?(File.extname(p).downcase) }
+
+if files.empty?
+  puts "No audio files found in: #{INPUT_DIR}"
+  exit 0
+end
+
+files.each do |in_path|
+  base = File.basename(in_path, File.extname(in_path))
+  out_path = File.join(OUTPUT_DIR, "#{base}.mp3")
+
+  # loudnorm gives more consistent volume; safe for general use.
+  cmd = [
+    "ffmpeg", "-y",
+    "-i", in_path,
+    "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
+    "-codec:a", "libmp3lame",
+    "-b:a", BITRATE,
+    out_path
+  ]
+
+  puts "→ #{in_path} -> #{out_path}"
+  stdout, stderr, status = Open3.capture3(*cmd)
+  unless status.success?
+    warn "FFmpeg failed for #{in_path}:\n#{stderr}"
+  end
+end
+
+puts "Done. Output in: #{OUTPUT_DIR}"
+#!/usr/bin/env python3
+"""
+sonify_file_to_mp3.py
+Safe sonification: reads bytes from ANY file and converts them into a musical MP3.
+- Does NOT run/execute the file.
+- Uses only the file's bytes as data.
+
+Requires: ffmpeg on PATH.
+"""
+
+import os, sys, math, struct, subprocess, tempfile, random
+
+SAMPLE_RATE = 44100
+
+# A pleasant minor pentatonic scale (in semitones) for "symphonic" vibe.
+SCALE = [0, 3, 5, 7, 10]  # minor pentatonic
+ROOT_MIDI = 48           # C3
+TEMPO_BPM = 90
+NOTE_DUR = 60.0 / TEMPO_BPM / 2.0  # eighth notes
+FADE = 0.008
+
+def midi_to_freq(midi: int) -> float:
+    return 440.0 * (2.0 ** ((midi - 69) / 12.0))
+
+def clamp(x, lo, hi):
+    return lo if x < lo else hi if x > hi else x
+
+def triad(midi_root: int):
+    # minor triad: root, minor third, fifth
+    return [midi_root, midi_root + 3, midi_root + 7]
+
+def render_note(freqs, dur, amp=0.25):
+    n = int(dur * SAMPLE_RATE)
+    out = [0.0] * n
+    # simple additive synth (sine)
+    for i in range(n):
+        t = i / SAMPLE_RATE
+        s = 0.0
+        for f in freqs:
+            s += math.sin(2 * math.pi * f * t)
+        s /= max(1, len(freqs))
+        out[i] = s * amp
+
+    # fade in/out to avoid clicks
+    fade_n = int(FADE * SAMPLE_RATE)
+    fade_n = min(fade_n, n // 2)
+    for i in range(fade_n):
+        g = i / fade_n
+        out[i] *= g
+        out[-1 - i] *= g
+    return out
+
+def write_wav(path, samples):
+    # 16-bit PCM mono
+    with open(path, "wb") as f:
+        # WAV header
+        num_channels = 1
+        bits_per_sample = 16
+        byte_rate = SAMPLE_RATE * num_channels * bits_per_sample // 8
+        block_align = num_channels * bits_per_sample // 8
+        data = b"".join(struct.pack("<h", int(clamp(s, -1.0, 1.0) * 32767)) for s in samples)
+        f.write(b"RIFF")
+        f.write(struct.pack("<I", 36 + len(data)))
+        f.write(b"WAVEfmt ")
+        f.write(struct.pack("<IHHIIHH", 16, 1, num_channels, SAMPLE_RATE, byte_rate, block_align, bits_per_sample))
+        f.write(b"data")
+        f.write(struct.pack("<I", len(data)))
+        f.write(data)
+
+def ffmpeg_wav_to_mp3(wav_path, mp3_path, bitrate="192k"):
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", wav_path,
+        "-codec:a", "libmp3lame",
+        "-b:a", bitrate,
+        mp3_path
+    ]
+    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if p.returncode != 0:
+        raise RuntimeError("ffmpeg failed:\n" + p.stderr)
+
+def sonify(in_path, out_mp3, seconds=30, bitrate="192k"):
+    with open(in_path, "rb") as f:
+        data = f.read()
+
+    if not data:
+        raise ValueError("Input file is empty.")
+
+    # Limit how many notes we generate based on target duration
+    target_notes = int(seconds / NOTE_DUR)
+    step = max(1, len(data) // target_notes)
+
+    samples = []
+    # small deterministic “orchestration” choices based on file signature
+    seed = int.from_bytes(data[:8].ljust(8, b"\0"), "little")
+    rng = random.Random(seed)
+
+    # choose a simple chord progression pattern
+    prog_offsets = [0, 5, 7, 3]  # i, iv-ish, v-ish, bIII
+    prog = [ROOT_MIDI + o for o in prog_offsets]
+
+    idx = 0
+    for n in range(target_notes):
+        b = data[idx]
+        idx = (idx + step) % len(data)
+
+        # pick scale degree and octave from byte
+        degree = SCALE[b % len(SCALE)]
+        octave = (b // 64)  # 0..3
+        octave = clamp(octave, 0, 3)
+
+        chord_root = prog[n % len(prog)]
+        note_midi = chord_root + degree + 12 * octave
+
+        # build a triad sometimes; otherwise single note
+        if (b % 7) in (0, 1):  # ~2/7 of the time, triad
+            mids = triad(note_midi)
+            freqs = [midi_to_freq(m) for m in mids]
+            amp = 0.22
+        else:
+            freqs = [midi_to_freq(note_midi)]
+            amp = 0.18
+
+        # subtle “voice/slice” feel via a light vibrato sometimes
+        base = render_note(freqs, NOTE_DUR, amp=amp)
+        if (b % 11) == 0:
+            vib_rate = 5.5 + rng.random() * 2.0
+            vib_depth = 0.0025
+            for i in range(len(base)):
+                t = i / SAMPLE_RATE
+                base[i] *= (1.0 + m*
+python sonify_file_to_mp3.py ./some_program_or_any_file.bin ./symphony.mp3 45
+ruby batch_to_mp3.rb ./input_audio ./mp3_out
 
