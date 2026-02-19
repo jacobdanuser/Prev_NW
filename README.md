@@ -34618,3 +34618,1038 @@ index 0000000000000000000000000000000000000000..1b96467f29319ca71c2563109a86cf0d
 +        )
 +        print(f"Wrote rewritten systems to: {systems_path}")
 +        print(f"Wrote entity music score to: {entity_music_path}")
+diff --git a/program_music_absorber.py b/program_music_absorber.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1b96467f29319ca71c2563109a86cf0dd8460fb2
+--- /dev/null
++++ b/program_music_absorber.py
+@@ -0,0 +1,449 @@
++"""Convert program structures into symbolic music and code communication.
++
++This module provides three layers:
++1) Program -> symbolic music score.
++2) Speaking-system override -> code-first communication packets.
++3) Entity profile rewrite -> system profiles absorbed into the score.
++"""
++
++from __future__ import annotations
++
++from dataclasses import asdict, dataclass, field
++from pathlib import Path
++import hashlib
++import json
++import math
++import re
++from typing import Any, Iterable
++
++
++NOTE_SCALE = [60, 62, 64, 65, 67, 69, 71, 72]
++DEFAULT_EXTENSIONS = {
++    ".py", ".js", ".ts", ".java", ".rb", ".go", ".rs", ".cpp", ".c", ".h", ".hpp"
++}
++TOKEN_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
++SPEECH_TOKENS = (
++    "speak", "say", "print", "echo", "tell", "announce", "utter", "sentence", "verdict"
++)
++
++
++@dataclass(frozen=True)
++class LanguageProfile:
++    name: str
++    extensions: set[str]
++    declaration_keywords: tuple[str, ...] = ()
++    branch_keywords: tuple[str, ...] = ()
++    cycle_keywords: tuple[str, ...] = ()
++    resolution_keywords: tuple[str, ...] = ()
++
++
++LADY_JUSTICIA_PROFILE = LanguageProfile(
++    name="lady_justicia",
++    extensions={".lj", ".justicia", ".justice"},
++    declaration_keywords=("decree ", "canon ", "tribunal ", "statute "),
++    branch_keywords=("when ", "otherwise", "appeal ", "verdict ", "case "),
++    cycle_keywords=("for_each ", "repeat ", "while ", "hearing "),
++    resolution_keywords=("sentence ", "judgement ", "judgment ", "return "),
++)
++
++GENERIC_PROFILE = LanguageProfile(
++    name="generic",
++    extensions=DEFAULT_EXTENSIONS,
++    declaration_keywords=("def ", "class ", "function "),
++    branch_keywords=("if ", "elif ", "else", "switch", "case "),
++    cycle_keywords=("for ", "while ", "loop"),
++    resolution_keywords=("return",),
++)
++
++
++@dataclass
++class NoteEvent:
++    system: str
++    line: int
++    statement: str
++    role: str
++    pitch: int
++    duration: float
++    velocity: int
++    instrument: int
++    language: str
++
++
++@dataclass
++class CodePacket:
++    """Code-first representation for speaking systems."""
++
++    system: str
++    line: int
++    language: str
++    source_statement: str
++    opcode: str
++    payload: str
++
++
++@dataclass
++class SystemProfile:
++    """Entity profile rewritten into a system shape."""
++
++    system_id: str
++    system_name: str
++    source_entity_id: str
++    source_entity_name: str
++    interfaces: list[str]
++    capabilities: list[str]
++    metadata: dict[str, Any]
++
++
++@dataclass
++class MusicScore:
++    title: str
++    tempo_bpm: int = 108
++    events: list[NoteEvent] = field(default_factory=list)
++    systems: set[str] = field(default_factory=set)
++    participants: set[str] = field(default_factory=set)
++    mimics: int = 0
++    languages: set[str] = field(default_factory=set)
++
++    def to_dict(self) -> dict:
++        return {
++            "title": self.title,
++            "tempo_bpm": self.tempo_bpm,
++            "systems": sorted(self.systems),
++            "participants": sorted(self.participants),
++            "languages": sorted(self.languages),
++            "mimics": self.mimics,
++            "events": [
++                {
++                    "system": e.system,
++                    "line": e.line,
++                    "statement": e.statement,
++                    "role": e.role,
++                    "pitch": e.pitch,
++                    "duration": e.duration,
++                    "velocity": e.velocity,
++                    "instrument": e.instrument,
++                    "language": e.language,
++                    "frequency_hz": round(440 * math.pow(2, (e.pitch - 69) / 12), 3),
++                }
++                for e in self.events
++            ],
++        }
++
++    def save_json(self, output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
++        return output
++
++
++class ProgramMusicAbsorber:
++    """Absorb programs into symbolic music and code packets."""
++
++    def __init__(self, tempo_bpm: int = 108):
++        self.tempo_bpm = tempo_bpm
++        self.language_profiles = (LADY_JUSTICIA_PROFILE, GENERIC_PROFILE)
++
++    def absorb_paths(self, paths: Iterable[str | Path], title: str = "Program Symphony") -> MusicScore:
++        score = MusicScore(title=title, tempo_bpm=self.tempo_bpm)
++        seen_signatures: set[str] = set()
++
++        for root in [Path(p) for p in paths]:
++            for file_path in self._iter_source_files(root):
++                score.systems.add(file_path.as_posix())
++                profile = self._profile_for(file_path)
++                score.languages.add(profile.name)
++                self._absorb_file(file_path, profile, score, seen_signatures)
++        return score
++
++    def absorb_entity_profiles(self, entities: list[dict[str, Any]], score: MusicScore | None = None) -> tuple[list[SystemProfile], MusicScore]:
++        """Rewrite entity profiles into systems and absorb them into music events."""
++        current_score = score or MusicScore(title="Entity System Symphony", tempo_bpm=self.tempo_bpm)
++        current_score.languages.add("entity_profile")
++
++        rewritten: list[SystemProfile] = []
++        for idx, entity in enumerate(entities, start=1):
++            system_profile = self._rewrite_entity_to_system(entity, idx)
++            rewritten.append(system_profile)
++            current_score.systems.add(system_profile.system_id)
++            self._absorb_system_profile(system_profile, current_score)
++
++        return rewritten, current_score
++
++    def override_speaking_systems(self, paths: Iterable[str | Path]) -> list[CodePacket]:
++        packets: list[CodePacket] = []
++
++        for root in [Path(p) for p in paths]:
++            for file_path in self._iter_source_files(root):
++                profile = self._profile_for(file_path)
++                lines = file_path.read_text(encoding="utf-8", errors="ignore").splitlines()
++                for line_no, raw in enumerate(lines, start=1):
++                    statement = raw.strip()
++                    if not statement or not self._is_speaking_statement(statement):
++                        continue
++                    packets.append(
++                        CodePacket(
++                            system=file_path.as_posix(),
++                            line=line_no,
++                            language=profile.name,
++                            source_statement=statement,
++                            opcode="EMIT_CODE",
++                            payload=self._statement_to_payload(statement),
++                        )
++                    )
++        return packets
++
++    @staticmethod
++    def save_packets_json(packets: list[CodePacket], output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(
++            json.dumps(
++                {
++                    "format": "code_packets_v1",
++                    "count": len(packets),
++                    "packets": [packet.__dict__ for packet in packets],
++                },
++                indent=2,
++            ),
++            encoding="utf-8",
++        )
++        return output
++
++    @staticmethod
++    def save_system_profiles_json(profiles: list[SystemProfile], output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(
++            json.dumps(
++                {
++                    "format": "system_profiles_v1",
++                    "count": len(profiles),
++                    "systems": [asdict(profile) for profile in profiles],
++                },
++                indent=2,
++            ),
++            encoding="utf-8",
++        )
++        return output
++
++    @staticmethod
++    def load_entities_json(path: str | Path) -> list[dict[str, Any]]:
++        data = json.loads(Path(path).read_text(encoding="utf-8"))
++        if isinstance(data, list):
++            return [item for item in data if isinstance(item, dict)]
++        if isinstance(data, dict) and isinstance(data.get("entities"), list):
++            return [item for item in data["entities"] if isinstance(item, dict)]
++        return []
++
++    def _iter_source_files(self, root: Path) -> Iterable[Path]:
++        allowed = self._all_extensions()
++        if root.is_file() and root.suffix in allowed:
++            yield root
++            return
++        if not root.exists():
++            return
++        for candidate in root.rglob("*"):
++            if candidate.is_file() and candidate.suffix in allowed:
++                yield candidate
++
++    def _all_extensions(self) -> set[str]:
++        merged: set[str] = set()
++        for profile in self.language_profiles:
++            merged.update(profile.extensions)
++        return merged
++
++    def _profile_for(self, file_path: Path) -> LanguageProfile:
++        for profile in self.language_profiles:
++            if file_path.suffix in profile.extensions:
++                return profile
++        return GENERIC_PROFILE
++
++    def _absorb_file(self, file_path: Path, profile: LanguageProfile, score: MusicScore, seen: set[str]) -> None:
++        for line_no, raw in enumerate(file_path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
++            statement = raw.strip()
++            if not statement:
++                continue
++            role = self._statement_role(statement, profile)
++            signature = self._signature(statement, profile.name)
++            mimic = signature in seen
++            seen.add(signature)
++            if mimic:
++                score.mimics += 1
++
++            participants = TOKEN_PATTERN.findall(statement)
++            score.participants.update(participants)
++
++            score.events.append(
++                NoteEvent(
++                    system=file_path.as_posix(),
++                    line=line_no,
++                    statement=statement,
++                    role=role,
++                    pitch=self._pitch_for(statement, mimic),
++                    duration=self._duration_for(statement, role),
++                    velocity=70 if mimic else 92,
++                    instrument=self._instrument_for(participants),
++                    language=profile.name,
++                )
++            )
++
++    def _rewrite_entity_to_system(self, entity: dict[str, Any], index: int) -> SystemProfile:
++        entity_id = str(entity.get("entity_id") or entity.get("id") or f"entity_{index}")
++        name = str(entity.get("name") or entity.get("label") or entity_id)
++        kind = str(entity.get("kind") or "generic")
++
++        interfaces = [
++            f"ingest:{kind}",
++            "emit:music",
++            "emit:code",
++        ]
++        powers = entity.get("powers", {})
++        power_keys = [str(p) for p in powers.keys()] if isinstance(powers, dict) else []
++        capabilities = sorted({
++            *[str(c) for c in entity.get("capabilities", [])],
++            *power_keys,
++        })
++
++        return SystemProfile(
++            system_id=f"system::{entity_id}",
++            system_name=f"{name}_system",
++            source_entity_id=entity_id,
++            source_entity_name=name,
++            interfaces=interfaces,
++            capabilities=capabilities,
++            metadata={
++                "origin_kind": kind,
++                "rewritten": True,
++                "source_tags": entity.get("tags", []),
++            },
++        )
++
++    def _absorb_system_profile(self, profile: SystemProfile, score: MusicScore) -> None:
++        lines = [
++            f"system {profile.system_id}",
++            f"name {profile.system_name}",
++            *(f"interface {item}" for item in profile.interfaces),
++            *(f"capability {item}" for item in profile.capabilities),
++            "absorb into music",
++        ]
++        for line_no, statement in enumerate(lines, start=1):
++            participants = TOKEN_PATTERN.findall(statement)
++            score.participants.update(participants)
++            score.events.append(
++                NoteEvent(
++                    system=profile.system_id,
++                    line=line_no,
++                    statement=statement,
++                    role="system_rewrite",
++                    pitch=self._pitch_for(statement, mimic=False),
++                    duration=self._duration_for(statement, role="expression"),
++                    velocity=96,
++                    instrument=self._instrument_for(participants),
++                    language="entity_profile",
++                )
++            )
++
++    @staticmethod
++    def _is_speaking_statement(statement: str) -> bool:
++        lowered = statement.lower()
++        return any(token in lowered for token in SPEECH_TOKENS)
++
++    @staticmethod
++    def _statement_to_payload(statement: str) -> str:
++        tokens = TOKEN_PATTERN.findall(statement)
++        return " ".join(tokens[:24])
++
++    @staticmethod
++    def _signature(text: str, language: str) -> str:
++        normalized = TOKEN_PATTERN.sub("token", text.lower())
++        return hashlib.sha1(f"{language}:{normalized}".encode("utf-8")).hexdigest()
++
++    @staticmethod
++    def _statement_role(statement: str, profile: LanguageProfile) -> str:
++        lowered = statement.lower()
++        if lowered.startswith(profile.declaration_keywords):
++            return "declaration"
++        if lowered.startswith(profile.branch_keywords):
++            return "branch"
++        if lowered.startswith(profile.cycle_keywords):
++            return "cycle"
++        if any(keyword in lowered for keyword in profile.resolution_keywords):
++            return "resolution"
++        if ProgramMusicAbsorber._is_speaking_statement(statement):
++            return "communication"
++        return "expression"
++
++    @staticmethod
++    def _pitch_for(statement: str, mimic: bool) -> int:
++        digest = int(hashlib.md5(statement.encode("utf-8")).hexdigest(), 16)
++        base = NOTE_SCALE[digest % len(NOTE_SCALE)]
++        return base - 12 if mimic else base
++
++    @staticmethod
++    def _duration_for(statement: str, role: str) -> float:
++        base = max(0.15, min(len(statement) / 50, 2.0))
++        if role == "declaration":
++            return round(base * 1.2, 3)
++        if role == "resolution":
++            return round(base * 0.8, 3)
++        if role == "communication":
++            return round(base * 0.9, 3)
++        return round(base, 3)
++
++    @staticmethod
++    def _instrument_for(tokens: list[str]) -> int:
++        if not tokens:
++            return 0
++        digest = int(hashlib.sha1(tokens[0].encode("utf-8")).hexdigest(), 16)
++        return digest % 128
++
++
++def absorb_programs_into_music(paths: Iterable[str | Path], output_json: str | Path) -> Path:
++    absorber = ProgramMusicAbsorber()
++    return absorber.absorb_paths(paths).save_json(output_json)
++
++
++def override_speaking_systems_into_code(paths: Iterable[str | Path], output_json: str | Path) -> Path:
++    absorber = ProgramMusicAbsorber()
++    packets = absorber.override_speaking_systems(paths)
++    return absorber.save_packets_json(packets, output_json)
++
++
++def rewrite_entities_into_systems_and_music(
++    entities_json_path: str | Path,
++    systems_output_json: str | Path,
++    music_output_json: str | Path,
++) -> tuple[Path, Path]:
++    absorber = ProgramMusicAbsorber()
++    entities = absorber.load_entities_json(entities_json_path)
++    systems, score = absorber.absorb_entity_profiles(entities)
++    systems_path = absorber.save_system_profiles_json(systems, systems_output_json)
++    music_path = score.save_json(music_output_json)
++    return systems_path, music_path
++
++
++if __name__ == "__main__":
++    import argparse
++
++    parser = argparse.ArgumentParser(description="Absorb programs/entities into music and code packets")
++    parser.add_argument("paths", nargs="*", help="Files/directories to absorb")
++    parser.add_argument("--out", default="program_symphony.json", help="Output music JSON path")
++    parser.add_argument("--code-out", default=None, help="Optional output JSON for speaking-system code packets")
++    parser.add_argument("--entities-json", default=None, help="Optional input JSON path containing entity profiles")
++    parser.add_argument("--systems-out", default="rewritten_systems.json", help="Output JSON path for rewritten systems")
++    parser.add_argument("--entities-music-out", default="entity_system_symphony.json", help="Output music JSON for rewritten entities")
++    args = parser.parse_args()
++
++    if args.paths:
++        music_output = absorb_programs_into_music(args.paths, args.out)
++        print(f"Wrote musical score to: {music_output}")
++
++        if args.code_out:
++            code_output = override_speaking_systems_into_code(args.paths, args.code_out)
++            print(f"Wrote code packets to: {code_output}")
++
++    if args.entities_json:
++        systems_path, entity_music_path = rewrite_entities_into_systems_and_music(
++            args.entities_json,
++            args.systems_out,
++            args.entities_music_out,
++        )
++        print(f"Wrote rewritten systems to: {systems_path}")
++        print(f"Wrote entity music score to: {entity_music_path}")
+diff --git a/program_music_absorber.py b/program_music_absorber.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..fb6432949e8841a4aa2c5e6289d34570af91178c
+--- /dev/null
++++ b/program_music_absorber.py
+@@ -0,0 +1,574 @@
++"""Convert program structures into symbolic music and code communication.
++
++This module provides four layers:
++1) Program -> symbolic music score.
++2) Speaking-system override -> code-first communication packets.
++3) Entity profile rewrite -> system profiles absorbed into the score.
++4) Absolute network absorption -> connect every module/system/mechanism into one graph.
++"""
++
++from __future__ import annotations
++
++from dataclasses import asdict, dataclass, field
++from pathlib import Path
++import hashlib
++import json
++import math
++import re
++from typing import Any, Iterable
++
++
++NOTE_SCALE = [60, 62, 64, 65, 67, 69, 71, 72]
++DEFAULT_EXTENSIONS = {
++    ".py", ".js", ".ts", ".java", ".rb", ".go", ".rs", ".cpp", ".c", ".h", ".hpp"
++}
++TOKEN_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
++SPEECH_TOKENS = (
++    "speak", "say", "print", "echo", "tell", "announce", "utter", "sentence", "verdict"
++)
++
++
++@dataclass(frozen=True)
++class LanguageProfile:
++    name: str
++    extensions: set[str]
++    declaration_keywords: tuple[str, ...] = ()
++    branch_keywords: tuple[str, ...] = ()
++    cycle_keywords: tuple[str, ...] = ()
++    resolution_keywords: tuple[str, ...] = ()
++
++
++LADY_JUSTICIA_PROFILE = LanguageProfile(
++    name="lady_justicia",
++    extensions={".lj", ".justicia", ".justice"},
++    declaration_keywords=("decree ", "canon ", "tribunal ", "statute "),
++    branch_keywords=("when ", "otherwise", "appeal ", "verdict ", "case "),
++    cycle_keywords=("for_each ", "repeat ", "while ", "hearing "),
++    resolution_keywords=("sentence ", "judgement ", "judgment ", "return "),
++)
++
++GENERIC_PROFILE = LanguageProfile(
++    name="generic",
++    extensions=DEFAULT_EXTENSIONS,
++    declaration_keywords=("def ", "class ", "function "),
++    branch_keywords=("if ", "elif ", "else", "switch", "case "),
++    cycle_keywords=("for ", "while ", "loop"),
++    resolution_keywords=("return",),
++)
++
++
++@dataclass
++class NoteEvent:
++    system: str
++    line: int
++    statement: str
++    role: str
++    pitch: int
++    duration: float
++    velocity: int
++    instrument: int
++    language: str
++
++
++@dataclass
++class CodePacket:
++    """Code-first representation for speaking systems."""
++
++    system: str
++    line: int
++    language: str
++    source_statement: str
++    opcode: str
++    payload: str
++
++
++@dataclass
++class SystemProfile:
++    """Entity profile rewritten into a system shape."""
++
++    system_id: str
++    system_name: str
++    source_entity_id: str
++    source_entity_name: str
++    interfaces: list[str]
++    capabilities: list[str]
++    metadata: dict[str, Any]
++
++
++@dataclass
++class NetworkEdge:
++    """Connection in the absorbed network graph."""
++
++    source: str
++    target: str
++    relation: str
++
++
++@dataclass
++class AbsorbedNetwork:
++    """Network model unifying modules, systems, and mechanisms."""
++
++    nodes: set[str] = field(default_factory=set)
++    edges: list[NetworkEdge] = field(default_factory=list)
++
++    def to_dict(self) -> dict[str, Any]:
++        return {
++            "format": "absorbed_network_v1",
++            "node_count": len(self.nodes),
++            "edge_count": len(self.edges),
++            "nodes": sorted(self.nodes),
++            "edges": [asdict(edge) for edge in self.edges],
++        }
++
++    def save_json(self, output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
++        return output
++
++
++@dataclass
++class MusicScore:
++    title: str
++    tempo_bpm: int = 108
++    events: list[NoteEvent] = field(default_factory=list)
++    systems: set[str] = field(default_factory=set)
++    participants: set[str] = field(default_factory=set)
++    mimics: int = 0
++    languages: set[str] = field(default_factory=set)
++
++    def to_dict(self) -> dict:
++        return {
++            "title": self.title,
++            "tempo_bpm": self.tempo_bpm,
++            "systems": sorted(self.systems),
++            "participants": sorted(self.participants),
++            "languages": sorted(self.languages),
++            "mimics": self.mimics,
++            "events": [
++                {
++                    "system": e.system,
++                    "line": e.line,
++                    "statement": e.statement,
++                    "role": e.role,
++                    "pitch": e.pitch,
++                    "duration": e.duration,
++                    "velocity": e.velocity,
++                    "instrument": e.instrument,
++                    "language": e.language,
++                    "frequency_hz": round(440 * math.pow(2, (e.pitch - 69) / 12), 3),
++                }
++                for e in self.events
++            ],
++        }
++
++    def save_json(self, output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
++        return output
++
++
++class ProgramMusicAbsorber:
++    """Absorb programs into symbolic music and code packets."""
++
++    def __init__(self, tempo_bpm: int = 108):
++        self.tempo_bpm = tempo_bpm
++        self.language_profiles = (LADY_JUSTICIA_PROFILE, GENERIC_PROFILE)
++
++    def absorb_paths(self, paths: Iterable[str | Path], title: str = "Program Symphony") -> MusicScore:
++        score = MusicScore(title=title, tempo_bpm=self.tempo_bpm)
++        seen_signatures: set[str] = set()
++
++        for root in [Path(p) for p in paths]:
++            for file_path in self._iter_source_files(root):
++                score.systems.add(file_path.as_posix())
++                profile = self._profile_for(file_path)
++                score.languages.add(profile.name)
++                self._absorb_file(file_path, profile, score, seen_signatures)
++        return score
++
++    def absorb_entity_profiles(self, entities: list[dict[str, Any]], score: MusicScore | None = None) -> tuple[list[SystemProfile], MusicScore]:
++        """Rewrite entity profiles into systems and absorb them into music events."""
++        current_score = score or MusicScore(title="Entity System Symphony", tempo_bpm=self.tempo_bpm)
++        current_score.languages.add("entity_profile")
++
++        rewritten: list[SystemProfile] = []
++        for idx, entity in enumerate(entities, start=1):
++            system_profile = self._rewrite_entity_to_system(entity, idx)
++            rewritten.append(system_profile)
++            current_score.systems.add(system_profile.system_id)
++            self._absorb_system_profile(system_profile, current_score)
++
++        return rewritten, current_score
++
++    def override_speaking_systems(self, paths: Iterable[str | Path]) -> list[CodePacket]:
++        packets: list[CodePacket] = []
++
++        for root in [Path(p) for p in paths]:
++            for file_path in self._iter_source_files(root):
++                profile = self._profile_for(file_path)
++                lines = file_path.read_text(encoding="utf-8", errors="ignore").splitlines()
++                for line_no, raw in enumerate(lines, start=1):
++                    statement = raw.strip()
++                    if not statement or not self._is_speaking_statement(statement):
++                        continue
++                    packets.append(
++                        CodePacket(
++                            system=file_path.as_posix(),
++                            line=line_no,
++                            language=profile.name,
++                            source_statement=statement,
++                            opcode="EMIT_CODE",
++                            payload=self._statement_to_payload(statement),
++                        )
++                    )
++        return packets
++
++    def absorb_everything_into_network(
++        self,
++        paths: Iterable[str | Path],
++        entities: list[dict[str, Any]] | None = None,
++    ) -> tuple[AbsorbedNetwork, MusicScore]:
++        """Absorb modules, systems, and mechanisms into one network and music score."""
++        score = MusicScore(title="Absolute Network Symphony", tempo_bpm=self.tempo_bpm)
++        network = AbsorbedNetwork()
++
++        module_nodes: list[str] = []
++        for root in [Path(p) for p in paths]:
++            for file_path in self._iter_source_files(root):
++                module = f"module::{file_path.as_posix()}"
++                module_nodes.append(module)
++                network.nodes.add(module)
++                score.systems.add(module)
++                score.languages.add(self._profile_for(file_path).name)
++                statement = f"network absorb {module}"
++                score.events.append(
++                    NoteEvent(
++                        system=module,
++                        line=1,
++                        statement=statement,
++                        role="network_absorb",
++                        pitch=self._pitch_for(statement, mimic=False),
++                        duration=self._duration_for(statement, role="expression"),
++                        velocity=100,
++                        instrument=self._instrument_for(TOKEN_PATTERN.findall(statement)),
++                        language="network",
++                    )
++                )
++
++        for left, right in zip(module_nodes, module_nodes[1:]):
++            network.edges.append(NetworkEdge(source=left, target=right, relation="module_flow"))
++
++        if entities:
++            systems, score = self.absorb_entity_profiles(entities, score)
++            for system in systems:
++                network.nodes.add(system.system_id)
++                if module_nodes:
++                    network.edges.append(
++                        NetworkEdge(source=module_nodes[0], target=system.system_id, relation="governs")
++                    )
++                for capability in system.capabilities:
++                    mechanism = f"mechanism::{capability}"
++                    network.nodes.add(mechanism)
++                    network.edges.append(
++                        NetworkEdge(source=system.system_id, target=mechanism, relation="executes")
++                    )
++                    mechanism_statement = f"mechanism absorb {capability}"
++                    score.events.append(
++                        NoteEvent(
++                            system=system.system_id,
++                            line=len(score.events) + 1,
++                            statement=mechanism_statement,
++                            role="network_mechanism",
++                            pitch=self._pitch_for(mechanism_statement, mimic=False),
++                            duration=self._duration_for(mechanism_statement, role="expression"),
++                            velocity=98,
++                            instrument=self._instrument_for(TOKEN_PATTERN.findall(mechanism_statement)),
++                            language="network",
++                        )
++                    )
++
++        score.languages.add("network")
++        return network, score
++
++    @staticmethod
++    def save_packets_json(packets: list[CodePacket], output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(
++            json.dumps(
++                {
++                    "format": "code_packets_v1",
++                    "count": len(packets),
++                    "packets": [packet.__dict__ for packet in packets],
++                },
++                indent=2,
++            ),
++            encoding="utf-8",
++        )
++        return output
++
++    @staticmethod
++    def save_system_profiles_json(profiles: list[SystemProfile], output_path: str | Path) -> Path:
++        output = Path(output_path)
++        output.write_text(
++            json.dumps(
++                {
++                    "format": "system_profiles_v1",
++                    "count": len(profiles),
++                    "systems": [asdict(profile) for profile in profiles],
++                },
++                indent=2,
++            ),
++            encoding="utf-8",
++        )
++        return output
++
++    @staticmethod
++    def load_entities_json(path: str | Path) -> list[dict[str, Any]]:
++        data = json.loads(Path(path).read_text(encoding="utf-8"))
++        if isinstance(data, list):
++            return [item for item in data if isinstance(item, dict)]
++        if isinstance(data, dict) and isinstance(data.get("entities"), list):
++            return [item for item in data["entities"] if isinstance(item, dict)]
++        return []
++
++    def _iter_source_files(self, root: Path) -> Iterable[Path]:
++        allowed = self._all_extensions()
++        if root.is_file() and root.suffix in allowed:
++            yield root
++            return
++        if not root.exists():
++            return
++        for candidate in root.rglob("*"):
++            if candidate.is_file() and candidate.suffix in allowed:
++                yield candidate
++
++    def _all_extensions(self) -> set[str]:
++        merged: set[str] = set()
++        for profile in self.language_profiles:
++            merged.update(profile.extensions)
++        return merged
++
++    def _profile_for(self, file_path: Path) -> LanguageProfile:
++        for profile in self.language_profiles:
++            if file_path.suffix in profile.extensions:
++                return profile
++        return GENERIC_PROFILE
++
++    def _absorb_file(self, file_path: Path, profile: LanguageProfile, score: MusicScore, seen: set[str]) -> None:
++        for line_no, raw in enumerate(file_path.read_text(encoding="utf-8", errors="ignore").splitlines(), start=1):
++            statement = raw.strip()
++            if not statement:
++                continue
++            role = self._statement_role(statement, profile)
++            signature = self._signature(statement, profile.name)
++            mimic = signature in seen
++            seen.add(signature)
++            if mimic:
++                score.mimics += 1
++
++            participants = TOKEN_PATTERN.findall(statement)
++            score.participants.update(participants)
++
++            score.events.append(
++                NoteEvent(
++                    system=file_path.as_posix(),
++                    line=line_no,
++                    statement=statement,
++                    role=role,
++                    pitch=self._pitch_for(statement, mimic),
++                    duration=self._duration_for(statement, role),
++                    velocity=70 if mimic else 92,
++                    instrument=self._instrument_for(participants),
++                    language=profile.name,
++                )
++            )
++
++    def _rewrite_entity_to_system(self, entity: dict[str, Any], index: int) -> SystemProfile:
++        entity_id = str(entity.get("entity_id") or entity.get("id") or f"entity_{index}")
++        name = str(entity.get("name") or entity.get("label") or entity_id)
++        kind = str(entity.get("kind") or "generic")
++
++        interfaces = [
++            f"ingest:{kind}",
++            "emit:music",
++            "emit:code",
++        ]
++        powers = entity.get("powers", {})
++        power_keys = [str(p) for p in powers.keys()] if isinstance(powers, dict) else []
++        capabilities = sorted({
++            *[str(c) for c in entity.get("capabilities", [])],
++            *power_keys,
++        })
++
++        return SystemProfile(
++            system_id=f"system::{entity_id}",
++            system_name=f"{name}_system",
++            source_entity_id=entity_id,
++            source_entity_name=name,
++            interfaces=interfaces,
++            capabilities=capabilities,
++            metadata={
++                "origin_kind": kind,
++                "rewritten": True,
++                "source_tags": entity.get("tags", []),
++            },
++        )
++
++    def _absorb_system_profile(self, profile: SystemProfile, score: MusicScore) -> None:
++        lines = [
++            f"system {profile.system_id}",
++            f"name {profile.system_name}",
++            *(f"interface {item}" for item in profile.interfaces),
++            *(f"capability {item}" for item in profile.capabilities),
++            "absorb into music",
++        ]
++        for line_no, statement in enumerate(lines, start=1):
++            participants = TOKEN_PATTERN.findall(statement)
++            score.participants.update(participants)
++            score.events.append(
++                NoteEvent(
++                    system=profile.system_id,
++                    line=line_no,
++                    statement=statement,
++                    role="system_rewrite",
++                    pitch=self._pitch_for(statement, mimic=False),
++                    duration=self._duration_for(statement, role="expression"),
++                    velocity=96,
++                    instrument=self._instrument_for(participants),
++                    language="entity_profile",
++                )
++            )
++
++    @staticmethod
++    def _is_speaking_statement(statement: str) -> bool:
++        lowered = statement.lower()
++        return any(token in lowered for token in SPEECH_TOKENS)
++
++    @staticmethod
++    def _statement_to_payload(statement: str) -> str:
++        tokens = TOKEN_PATTERN.findall(statement)
++        return " ".join(tokens[:24])
++
++    @staticmethod
++    def _signature(text: str, language: str) -> str:
++        normalized = TOKEN_PATTERN.sub("token", text.lower())
++        return hashlib.sha1(f"{language}:{normalized}".encode("utf-8")).hexdigest()
++
++    @staticmethod
++    def _statement_role(statement: str, profile: LanguageProfile) -> str:
++        lowered = statement.lower()
++        if lowered.startswith(profile.declaration_keywords):
++            return "declaration"
++        if lowered.startswith(profile.branch_keywords):
++            return "branch"
++        if lowered.startswith(profile.cycle_keywords):
++            return "cycle"
++        if any(keyword in lowered for keyword in profile.resolution_keywords):
++            return "resolution"
++        if ProgramMusicAbsorber._is_speaking_statement(statement):
++            return "communication"
++        return "expression"
++
++    @staticmethod
++    def _pitch_for(statement: str, mimic: bool) -> int:
++        digest = int(hashlib.md5(statement.encode("utf-8")).hexdigest(), 16)
++        base = NOTE_SCALE[digest % len(NOTE_SCALE)]
++        return base - 12 if mimic else base
++
++    @staticmethod
++    def _duration_for(statement: str, role: str) -> float:
++        base = max(0.15, min(len(statement) / 50, 2.0))
++        if role == "declaration":
++            return round(base * 1.2, 3)
++        if role == "resolution":
++            return round(base * 0.8, 3)
++        if role == "communication":
++            return round(base * 0.9, 3)
++        return round(base, 3)
++
++    @staticmethod
++    def _instrument_for(tokens: list[str]) -> int:
++        if not tokens:
++            return 0
++        digest = int(hashlib.sha1(tokens[0].encode("utf-8")).hexdigest(), 16)
++        return digest % 128
++
++
++def absorb_programs_into_music(paths: Iterable[str | Path], output_json: str | Path) -> Path:
++    absorber = ProgramMusicAbsorber()
++    return absorber.absorb_paths(paths).save_json(output_json)
++
++
++def override_speaking_systems_into_code(paths: Iterable[str | Path], output_json: str | Path) -> Path:
++    absorber = ProgramMusicAbsorber()
++    packets = absorber.override_speaking_systems(paths)
++    return absorber.save_packets_json(packets, output_json)
++
++
++def rewrite_entities_into_systems_and_music(
++    entities_json_path: str | Path,
++    systems_output_json: str | Path,
++    music_output_json: str | Path,
++) -> tuple[Path, Path]:
++    absorber = ProgramMusicAbsorber()
++    entities = absorber.load_entities_json(entities_json_path)
++    systems, score = absorber.absorb_entity_profiles(entities)
++    systems_path = absorber.save_system_profiles_json(systems, systems_output_json)
++    music_path = score.save_json(music_output_json)
++    return systems_path, music_path
++
++
++def absorb_everything_absolutely_into_network(
++    paths: Iterable[str | Path],
++    network_output_json: str | Path,
++    music_output_json: str | Path,
++    entities_json_path: str | Path | None = None,
++) -> tuple[Path, Path]:
++    absorber = ProgramMusicAbsorber()
++    entities = absorber.load_entities_json(entities_json_path) if entities_json_path else []
++    network, score = absorber.absorb_everything_into_network(paths=paths, entities=entities)
++    network_path = network.save_json(network_output_json)
++    music_path = score.save_json(music_output_json)
++    return network_path, music_path
++
++
++if __name__ == "__main__":
++    import argparse
++
++    parser = argparse.ArgumentParser(description="Absorb programs/entities into music and code packets")
++    parser.add_argument("paths", nargs="*", help="Files/directories to absorb")
++    parser.add_argument("--out", default="program_symphony.json", help="Output music JSON path")
++    parser.add_argument("--code-out", default=None, help="Optional output JSON for speaking-system code packets")
++    parser.add_argument("--entities-json", default=None, help="Optional input JSON path containing entity profiles")
++    parser.add_argument("--systems-out", default="rewritten_systems.json", help="Output JSON path for rewritten systems")
++    parser.add_argument("--entities-music-out", default="entity_system_symphony.json", help="Output music JSON for rewritten entities")
++    parser.add_argument("--network-out", default=None, help="Optional output JSON path for absolute network absorption")
++    parser.add_argument("--network-music-out", default="network_symphony.json", help="Output music JSON for network absorption")
++    args = parser.parse_args()
++
++    if args.paths:
++        music_output = absorb_programs_into_music(args.paths, args.out)
++        print(f"Wrote musical score to: {music_output}")
++
++        if args.code_out:
++            code_output = override_speaking_systems_into_code(args.paths, args.code_out)
++            print(f"Wrote code packets to: {code_output}")
++
++    if args.entities_json:
++        systems_path, entity_music_path = rewrite_entities_into_systems_and_music(
++            args.entities_json,
++            args.systems_out,
++            args.entities_music_out,
++        )
++        print(f"Wrote rewritten systems to: {systems_path}")
++        print(f"Wrote entity music score to: {entity_music_path}")
++
++    if args.network_out:
++        network_path, network_music_path = absorb_everything_absolutely_into_network(
++            paths=args.paths,
++            network_output_json=args.network_out,
++            music_output_json=args.network_music_out,
++            entities_json_path=args.entities_json,
++        )
++        print(f"Wrote absorbed network to: {network_path}")
++        print(f"Wrote network music score to: {network_music_path}")
