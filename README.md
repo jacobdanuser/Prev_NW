@@ -71629,4 +71629,137 @@ index 0000000000000000000000000000000000000000..498ba647fa061a538f7dfaa2b1935364
 +
 +if __name__ == "__main__":
 +    raise SystemExit(main(sys.argv[1:]))
+diff --git a/README.md b/README.md
+index 511fed8bdc796640671c5b9e1717bb785137252a..42c54ba64beeb3bfcc00650c7232c5587785431b 100644
+--- a/README.md
++++ b/README.md
+@@ -70727,25 +70727,40 @@ index 0000000000000000000000000000000000000000..352303324b614f99d8891d2a4cbcd29f
+ +            restore_neural_base_system(
+ +                {"system_id": "n1", "framework": "jax", "languages": ["java"]}
+ +            )
+ +
+ +    def test_rejects_unknown_domain(self):
+ +        with self.assertRaises(NeuralBaseSystemError):
+ +            restore_neural_base_system(
+ +                {"system_id": "n1", "framework": "jax", "domain": "robotics"}
+ +            )
+ +
+ +    def test_assert_usage_blocked_fails_when_unblocked(self):
+ +        system = restore_neural_base_system(
+ +            {
+ +                "system_id": "n3",
+ +                "framework": "pytorch",
+ +                "domain": "neural_networks",
+ +            }
+ +        )
+ +        with self.assertRaises(NeuralBaseSystemError):
+ +            assert_usage_blocked(system)
+ +
+ +
+ +if __name__ == "__main__":
+ +    unittest.main()
+ 
++
++## Read-only forensic collection script
++
++A new utility `forensic_collection.py` performs host/profile artifact collection using read-only operations:
++
++- Enumerates all local user profiles via `pwd.getpwall()`.
++- Captures system context and safe command output (`uname`, `id`, `ps`, `netstat`, etc.).
++- Inspects common profile files and records metadata + SHA-256 (size-limited).
++- Writes `forensic_snapshot.json` and `forensic_profile_index.csv`.
++
++Run:
++
++```bash
++python3 forensic_collection.py --output-dir forensic_output
++```
+diff --git a/README.md b/README.md
+index 511fed8bdc796640671c5b9e1717bb785137252a..ad8af77c9a8873925574fb6e8b4817eb63505af7 100644
+--- a/README.md
++++ b/README.md
+@@ -70727,25 +70727,39 @@ index 0000000000000000000000000000000000000000..352303324b614f99d8891d2a4cbcd29f
+ +            restore_neural_base_system(
+ +                {"system_id": "n1", "framework": "jax", "languages": ["java"]}
+ +            )
+ +
+ +    def test_rejects_unknown_domain(self):
+ +        with self.assertRaises(NeuralBaseSystemError):
+ +            restore_neural_base_system(
+ +                {"system_id": "n1", "framework": "jax", "domain": "robotics"}
+ +            )
+ +
+ +    def test_assert_usage_blocked_fails_when_unblocked(self):
+ +        system = restore_neural_base_system(
+ +            {
+ +                "system_id": "n3",
+ +                "framework": "pytorch",
+ +                "domain": "neural_networks",
+ +            }
+ +        )
+ +        with self.assertRaises(NeuralBaseSystemError):
+ +            assert_usage_blocked(system)
+ +
+ +
+ +if __name__ == "__main__":
+ +    unittest.main()
+ 
++
++## Read-only forensic collection script
++
++Run `forensic_collection.py` to gather host triage data without modifying source artifacts.
++
++```bash
++python3 forensic_collection.py --output-dir ./forensic_collection
++```
++
++Outputs:
++- `collection_metadata.json` with host and run context
++- `commands/*.txt` for volatile state snapshots
++- `artifacts/` copied profile evidence (shell history, SSH, browser, cloud CLI, logs)
++- `manifest.csv` with SHA-256 hashes and timestamps for chain-of-custody support
+diff --git a/README.md b/README.md
+index 511fed8bdc796640671c5b9e1717bb785137252a..ad8af77c9a8873925574fb6e8b4817eb63505af7 100644
+--- a/README.md
++++ b/README.md
+@@ -70727,25 +70727,39 @@ index 0000000000000000000000000000000000000000..352303324b614f99d8891d2a4cbcd29f
+ +            restore_neural_base_system(
+ +                {"system_id": "n1", "framework": "jax", "languages": ["java"]}
+ +            )
+ +
+ +    def test_rejects_unknown_domain(self):
+ +        with self.assertRaises(NeuralBaseSystemError):
+ +            restore_neural_base_system(
+ +                {"system_id": "n1", "framework": "jax", "domain": "robotics"}
+ +            )
+ +
+ +    def test_assert_usage_blocked_fails_when_unblocked(self):
+ +        system = restore_neural_base_system(
+ +            {
+ +                "system_id": "n3",
+ +                "framework": "pytorch",
+ +                "domain": "neural_networks",
+ +            }
+ +        )
+ +        with self.assertRaises(NeuralBaseSystemError):
+ +            assert_usage_blocked(system)
+ +
+ +
+ +if __name__ == "__main__":
+ +    unittest.main()
+ 
++
++## Read-only forensic collection script
++
++Run `forensic_collection.py` to gather host triage data without modifying source artifacts.
++
++```bash
++python3 forensic_collection.py --output-dir ./forensic_collection
++```
++
++Outputs:
++- `collection_metadata.json` with host and run context
++- `commands/*.txt` for volatile state snapshots
++- `artifacts/` copied profile evidence (shell history, SSH, browser, cloud CLI, logs)
++- `manifest.csv` with SHA-256 hashes and timestamps for chain-of-custody support
 
