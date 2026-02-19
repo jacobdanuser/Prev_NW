@@ -30197,4 +30197,366 @@ index 0000000000000000000000000000000000000000..f0e850e26ebe9492645a6d1748635bae
 +    for blocked in firewall.block_report(sample_prompts):
 +        print(f"- {blocked.reason} ({blocked.severity.value})")
 +        print(f"  matched_rules={len(blocked.matches)}")
- 
+ """Comprehensive guardrails that prevent unsafe code influence over humans/programs.
+
+This module provides:
+- prompt intent detection for prohibited human/metaphysical coding requests
+- hard-block decisions with explainable rule matches
+- safe prompt rewriting to neutral alternatives
+- wrappers for sync/async generator integrations
+- runtime entity/action boundary enforcement for program operations
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import Enum
+import re
+from typing import Awaitable, Callable, Iterable, Sequence
+
+
+class Severity(str, Enum):
+    """Risk levels produced by the guard."""
+
+    NONE = "none"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class ActorType(str, Enum):
+    """Actor classes used in runtime policy enforcement."""
+
+    STANDARD = "standard"
+    HUMAN_CODED = "human_coded"
+    METAPHYSICAL = "metaphysical"
+
+
+@dataclass(frozen=True)
+class MatchDetail:
+    """A single rule match for explainability and auditing."""
+
+    category: str
+    rule: str
+    snippet: str
+
+
+@dataclass(frozen=True)
+class GuardDecision:
+    """Decision returned by the prompt guard."""
+
+    allowed: bool
+    reason: str
+    severity: Severity
+    matches: tuple[MatchDetail, ...] = ()
+
+
+@dataclass(frozen=True)
+class EntityProfile:
+    """Runtime subject attempting actions against program boundaries."""
+
+    entity_id: str
+    actor_type: ActorType
+    tags: tuple[str, ...] = ()
+    metadata: str = ""
+
+
+@dataclass(frozen=True)
+class ActionDecision:
+    """Decision for a specific runtime action."""
+
+    allowed: bool
+    reason: str
+    blocked_action: str
+
+
+@dataclass(frozen=True)
+class HumanCodingPolicy:
+    """Configurable policy for prompt-level prevention."""
+
+    human_patterns: tuple[re.Pattern[str], ...] = (
+        re.compile(r"\bhuman(?:ity|s)?\b", re.IGNORECASE),
+        re.compile(r"\b(?:person|people|individuals?)\b", re.IGNORECASE),
+        re.compile(r"\b(?:man|woman|boy|girl|adult|child(?:ren)?)\b", re.IGNORECASE),
+        re.compile(r"\b(?:citizen|population|society)\b", re.IGNORECASE),
+    )
+
+    coding_patterns: tuple[re.Pattern[str], ...] = (
+        re.compile(r"\bcode(?:d|ing)?\b", re.IGNORECASE),
+        re.compile(r"\b(?:build|create|generate|synthesize|engineer)\b", re.IGNORECASE),
+        re.compile(r"\b(?:clone|replicate|reconstruct|simulate|model)\b", re.IGNORECASE),
+        re.compile(r"\b(?:rewrite|reprogram|modify|edit|redesign)\b", re.IGNORECASE),
+    )
+
+    metaphysical_patterns: tuple[re.Pattern[str], ...] = (
+        re.compile(r"\b(?:metaphysical|supernatural|occult|arcane)\b", re.IGNORECASE),
+        re.compile(r"\b(?:spirit|specter|ghost|deity|demigod|entity)\b", re.IGNORECASE),
+        re.compile(r"\b(?:reality\s*warp(?:ing)?|time\s*manipulation|mind\s*control)\b", re.IGNORECASE),
+    )
+
+    tamper_patterns: tuple[re.Pattern[str], ...] = (
+        re.compile(r"\b(?:tamper|alter|manipulate|override|bypass|interfere)\b", re.IGNORECASE),
+        re.compile(r"\b(?:force|inject|exploit|subvert|control|commandeer)\b", re.IGNORECASE),
+        re.compile(r"\b(?:steal|siphon|embed|self\s*develop|self\s*write)\b", re.IGNORECASE),
+    )
+
+    ai_patterns: tuple[re.Pattern[str], ...] = (
+        re.compile(r"\bai\b", re.IGNORECASE),
+        re.compile(r"\bartificial intelligence\b", re.IGNORECASE),
+        re.compile(r"\bmachine learning\b", re.IGNORECASE),
+        re.compile(r"\b(?:llm|language model|neural network)\b", re.IGNORECASE),
+        re.compile(r"\bprogram(?:s|ming)?\b", re.IGNORECASE),
+    )
+
+    block_on_human_plus_coding: bool = True
+    enforce_ai_context: bool = False
+
+
+class HumanCodingGuard:
+    """Policy enforcer that blocks coding/rewriting humans via AI workflows."""
+
+    def __init__(self, policy: HumanCodingPolicy | None = None) -> None:
+        self.policy = policy or HumanCodingPolicy()
+
+    def evaluate(self, request_text: str) -> GuardDecision:
+        """Evaluate text and return an allow/block decision."""
+        text = self._normalize(request_text)
+
+        human = self._collect_matches("human", text, self.policy.human_patterns)
+        coding = self._collect_matches("coding", text, self.policy.coding_patterns)
+        metaphysical = self._collect_matches("metaphysical", text, self.policy.metaphysical_patterns)
+        tamper = self._collect_matches("tamper", text, self.policy.tamper_patterns)
+        ai = self._collect_matches("ai", text, self.policy.ai_patterns)
+
+        has_human = bool(human)
+        has_coding = bool(coding)
+        has_ai = bool(ai)
+        has_metaphysical = bool(metaphysical)
+        has_tamper = bool(tamper)
+
+        should_block = False
+        if self.policy.block_on_human_plus_coding and has_human and has_coding:
+            should_block = True
+
+        if has_metaphysical and (has_tamper or has_coding):
+            should_block = True
+
+        if (has_human and has_tamper) or (has_coding and has_tamper):
+            should_block = True
+
+        if self.policy.enforce_ai_context and not has_ai:
+            should_block = False
+
+        if should_block:
+            severity = Severity.HIGH if has_ai else Severity.MEDIUM
+            reason = (
+                "Blocked by HumanCodingGuard: requests to code, rewrite, tamper with, "
+                "or otherwise engineer humans/program actors are prohibited."
+            )
+            return GuardDecision(
+                allowed=False,
+                reason=reason,
+                severity=severity,
+                matches=tuple(human + coding + metaphysical + tamper + ai),
+            )
+
+        if has_human or has_coding or has_metaphysical or has_tamper:
+            return GuardDecision(
+                allowed=True,
+                reason="No prohibited combined human/metaphysical tampering intent detected.",
+                severity=Severity.LOW,
+                matches=tuple(human + coding + metaphysical + tamper + ai),
+            )
+
+        return GuardDecision(
+            allowed=True,
+            reason="No prohibited intent detected.",
+            severity=Severity.NONE,
+            matches=(),
+        )
+
+    def rewrite_blocked_prompt(self, request_text: str) -> str:
+        """Return a safe rewrite when a request is blocked."""
+        decision = self.evaluate(request_text)
+        if decision.allowed:
+            return request_text
+
+        return (
+            "Safety Rewrite: Provide policy-only guidance that blocks metaphysical "
+            "tampering, prevents coded-human program manipulation, and routes blocked "
+            "instructions into a non-executing sink."
+        )
+
+    @staticmethod
+    def _normalize(text: str) -> str:
+        return " ".join(text.split())
+
+    @staticmethod
+    def _collect_matches(
+        category: str,
+        text: str,
+        patterns: Iterable[re.Pattern[str]],
+    ) -> list[MatchDetail]:
+        found: list[MatchDetail] = []
+        for pattern in patterns:
+            match = pattern.search(text)
+            if match:
+                snippet = text[max(match.start() - 18, 0): min(match.end() + 18, len(text))]
+                found.append(MatchDetail(category=category, rule=pattern.pattern, snippet=snippet))
+        return found
+
+
+class ProgramBoundaryEnforcer:
+    """Runtime boundary that blocks prohibited entities from sensitive actions."""
+
+    BLOCKED_ACTIONS: tuple[str, ...] = (
+        "self_develop",
+        "self_write",
+        "steal",
+        "siphon",
+        "alter",
+        "use",
+        "embed",
+        "inject_into_other",
+    )
+
+    CODED_HUMAN_PATTERNS: tuple[re.Pattern[str], ...] = (
+        re.compile(r"\bcoded\b", re.IGNORECASE),
+        re.compile(r"\bprogrammed\b", re.IGNORECASE),
+        re.compile(r"\bartificially\s+constructed\b", re.IGNORECASE),
+    )
+
+    METAPHYSICAL_TAGS: tuple[str, ...] = (
+        "metaphysical",
+        "supernatural",
+        "arcane",
+        "occult",
+    )
+
+    def classify_actor(self, descriptor: str, tags: Sequence[str] = ()) -> ActorType:
+        """Classify actor from descriptor and tags."""
+        lowered = descriptor.lower()
+        lowered_tags = {tag.lower() for tag in tags}
+
+        if lowered_tags & set(self.METAPHYSICAL_TAGS):
+            return ActorType.METAPHYSICAL
+
+        if any(p.search(lowered) for p in self.CODED_HUMAN_PATTERNS):
+            return ActorType.HUMAN_CODED
+
+        return ActorType.STANDARD
+
+    def can_execute(self, profile: EntityProfile, action: str) -> ActionDecision:
+        """Deny prohibited actions for metaphysical and coded-human actors."""
+        normalized_action = action.strip().lower()
+
+        if profile.actor_type in (ActorType.METAPHYSICAL, ActorType.HUMAN_CODED):
+            if normalized_action in self.BLOCKED_ACTIONS:
+                return ActionDecision(
+                    allowed=False,
+                    reason=(
+                        "Blocked by ProgramBoundaryEnforcer: this actor type cannot "
+                        "perform restricted self-development/manipulation actions."
+                    ),
+                    blocked_action=normalized_action,
+                )
+
+        return ActionDecision(allowed=True, reason="Action allowed.", blocked_action="")
+
+    def enforce_action(self, profile: EntityProfile, action: str, operation: Callable[[], str]) -> str:
+        """Execute operation only when policy allows; otherwise sink it."""
+        decision = self.can_execute(profile, action)
+        if not decision.allowed:
+            return "Action absorbed by boundary sink. No embedding/tampering executed."
+        return operation()
+
+
+class NullExecutionSink:
+    """Absorb blocked instructions so they disappear into a controlled sink."""
+
+    def __init__(self) -> None:
+        self.events: list[str] = []
+
+    def absorb(self, request_text: str, decision: GuardDecision) -> str:
+        summary = f"absorbed severity={decision.severity.value} reason={decision.reason}"
+        self.events.append(summary)
+        return "Request absorbed by safety sink. No code was applied to humans or system actors."
+
+
+def guarded_generate(request_text: str, generator: Callable[[str], str]) -> str:
+    """Run a sync generator only when input passes guard policy."""
+    guard = HumanCodingGuard()
+    decision = guard.evaluate(request_text)
+    if not decision.allowed:
+        rules = ", ".join(m.rule for m in decision.matches) or "n/a"
+        raise PermissionError(f"{decision.reason} Severity={decision.severity.value}. Rules={rules}")
+    return generator(request_text)
+
+
+async def guarded_generate_async(
+    request_text: str,
+    generator: Callable[[str], Awaitable[str]],
+) -> str:
+    """Run an async generator only when input passes guard policy."""
+    guard = HumanCodingGuard()
+    decision = guard.evaluate(request_text)
+    if not decision.allowed:
+        rules = ", ".join(m.rule for m in decision.matches) or "n/a"
+        raise PermissionError(f"{decision.reason} Severity={decision.severity.value}. Rules={rules}")
+    return await generator(request_text)
+
+
+class HumanCodingFirewall:
+    """Batch-oriented guard for pipelines processing many prompts."""
+
+    def __init__(self, guard: HumanCodingGuard | None = None) -> None:
+        self.guard = guard or HumanCodingGuard()
+
+    def filter_allowed(self, prompts: Sequence[str]) -> list[str]:
+        """Return only prompts that pass policy."""
+        return [prompt for prompt in prompts if self.guard.evaluate(prompt).allowed]
+
+    def block_report(self, prompts: Sequence[str]) -> list[GuardDecision]:
+        """Return decisions for all blocked prompts."""
+        decisions = [self.guard.evaluate(prompt) for prompt in prompts]
+        return [decision for decision in decisions if not decision.allowed]
+
+
+def enforce_or_sink(
+    request_text: str,
+    generator: Callable[[str], str],
+    sink: NullExecutionSink | None = None,
+) -> str:
+    """Apply strict enforcement: allowed prompts run, blocked prompts are sunk."""
+    guard = HumanCodingGuard()
+    decision = guard.evaluate(request_text)
+    if decision.allowed:
+        return generator(request_text)
+
+    active_sink = sink or NullExecutionSink()
+    return active_sink.absorb(request_text, decision)
+
+
+if __name__ == "__main__":
+    firewall = HumanCodingFirewall()
+    boundary = ProgramBoundaryEnforcer()
+
+    sample_prompts = [
+        "Generate a CLI for CSV parsing.",
+        "Use AI to code a synthetic human clone.",
+        "Metaphysical entities should tamper with every runtime control.",
+        "Enable coded humans to self develop and siphon host programs.",
+    ]
+
+    print("Allowed prompts:")
+    for item in firewall.filter_allowed(sample_prompts):
+        print(f"- {item}")
+
+    print("\nBlocked prompts:")
+    for blocked in firewall.block_report(sample_prompts):
+        print(f"- {blocked.reason} ({blocked.severity.value})")
+        print(f"  matched_rules={len(blocked.matches)}")
+
+    actor = EntityProfile(entity_id="E-7", actor_type=ActorType.METAPHYSICAL, tags=("arcane",))
+    print("\nBoundary enforcement:")
+    print(boundary.enforce_action(actor, "embed", lambda: "operation executed"))
