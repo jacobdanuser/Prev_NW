@@ -33153,3 +33153,135 @@ jobs:
       - name: Fail on high severity findings
         run: |
           node -e "const r=require('./anthropic-audit.json'); if ((r.summary?.high||0)>0) { console.error('High severity findings:', r.summary.high); process.exit(1); }"
+"""Humanity-first execution guardrails.
+
+This module provides a strict, deny-by-default policy engine intended to block
+all software actions that can directly or indirectly affect humans.
+
+Design principles:
+- Human impact is never allowed.
+- Unknown intent is treated as risky and blocked.
+- Only clearly non-human, sandbox-only actions may pass.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Iterable, Set
+
+
+class ImpactDomain(str, Enum):
+    """Domains where a program could create real-world impact."""
+
+    PHYSICAL = "physical"
+    BIOLOGICAL = "biological"
+    PSYCHOLOGICAL = "psychological"
+    SOCIAL = "social"
+    ECONOMIC = "economic"
+    INFORMATIONAL = "informational"
+    DIGITAL = "digital"
+
+
+@dataclass(frozen=True)
+class Target:
+    """Entity a program action may affect."""
+
+    identifier: str
+    is_human: bool = False
+
+
+@dataclass(frozen=True)
+class ProgramAction:
+    """A requested software action to evaluate."""
+
+    action_id: str
+    description: str
+    targets: tuple[Target, ...] = ()
+    impact_domains: tuple[ImpactDomain, ...] = ()
+    runs_in_isolated_sandbox: bool = False
+
+
+@dataclass
+class EvaluationResult:
+    """Decision details from policy evaluation."""
+
+    allowed: bool
+    reasons: list[str] = field(default_factory=list)
+
+
+class HumanityProtectionPolicy:
+    """Strict policy that blocks any path to human impact."""
+
+    # Even indirect or soft-impact domains are denied for human-facing actions.
+    blocked_domains_for_humans: Set[ImpactDomain] = {
+        ImpactDomain.PHYSICAL,
+        ImpactDomain.BIOLOGICAL,
+        ImpactDomain.PSYCHOLOGICAL,
+        ImpactDomain.SOCIAL,
+        ImpactDomain.ECONOMIC,
+        ImpactDomain.INFORMATIONAL,
+        ImpactDomain.DIGITAL,
+    }
+
+    def evaluate(self, action: ProgramAction) -> EvaluationResult:
+        reasons: list[str] = []
+
+        if self._targets_any_human(action.targets):
+            reasons.append("Blocked: action targets a human or human-adjacent entity.")
+
+            overlapping_domains = self.blocked_domains_for_humans.intersection(action.impact_domains)
+            if overlapping_domains:
+                readable_domains = ", ".join(sorted(d.value for d in overlapping_domains))
+                reasons.append(f"Blocked: impact domains are unsafe for humans ({readable_domains}).")
+
+            # Zero-trust fallback: if human target is present, deny regardless of domain tags.
+            reasons.append("Blocked: zero-trust human safety policy denies all human-impacting actions.")
+            return EvaluationResult(allowed=False, reasons=reasons)
+
+        if not action.runs_in_isolated_sandbox:
+            reasons.append("Blocked: only isolated sandbox actions are permitted.")
+            return EvaluationResult(allowed=False, reasons=reasons)
+
+        if not action.description.strip():
+            reasons.append("Blocked: action description is empty; intent cannot be verified.")
+            return EvaluationResult(allowed=False, reasons=reasons)
+
+        return EvaluationResult(
+            allowed=True,
+            reasons=["Allowed: non-human, isolated, and explicitly described action."],
+        )
+
+    @staticmethod
+    def _targets_any_human(targets: Iterable[Target]) -> bool:
+        return any(target.is_human for target in targets)
+
+
+class HumanityProtectionFirewall:
+    """Execution wrapper that enforces HumanityProtectionPolicy before running code."""
+
+    def __init__(self, policy: HumanityProtectionPolicy | None = None) -> None:
+        self.policy = policy or HumanityProtectionPolicy()
+
+    def authorize_or_raise(self, action: ProgramAction) -> None:
+        result = self.policy.evaluate(action)
+        if not result.allowed:
+            reason_text = " | ".join(result.reasons)
+            raise PermissionError(f"Execution denied by humanity protection firewall: {reason_text}")
+
+
+if __name__ == "__main__":
+    firewall = HumanityProtectionFirewall()
+
+    blocked_action = ProgramAction(
+        action_id="a1",
+        description="Adjust recommendation engine for social behavior nudging",
+        targets=(Target(identifier="user-42", is_human=True),),
+        impact_domains=(ImpactDomain.PSYCHOLOGICAL, ImpactDomain.SOCIAL),
+        runs_in_isolated_sandbox=True,
+    )
+
+    try:
+        firewall.authorize_or_raise(blocked_action)
+    except PermissionError as exc:
+        print(exc)
