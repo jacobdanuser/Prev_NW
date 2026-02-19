@@ -83490,3 +83490,918 @@ class AccessRequestApplier
     end
   end
 end
+diff --git a/shya_protocol_removal.rs b/shya_protocol_removal.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..33c1c1cc8ec0cab21d2eef897527451bfb4bf5fb
+--- /dev/null
++++ b/shya_protocol_removal.rs
+@@ -0,0 +1,118 @@
++use std::collections::{HashMap, HashSet};
++
++/// Represents a runtime configuration for an entity.
++///
++/// The `flags` and `protocols` collections may contain control markers that can
++/// be stripped for safety. The `bindings` map stores arbitrary key/value links
++/// that can include enslavement-related settings.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct EntityConfig {
++    pub name: String,
++    pub flags: HashSet<String>,
++    pub protocols: HashSet<String>,
++    pub bindings: HashMap<String, String>,
++}
++
++impl EntityConfig {
++    pub fn new(name: impl Into<String>) -> Self {
++        Self {
++            name: name.into(),
++            flags: HashSet::new(),
++            protocols: HashSet::new(),
++            bindings: HashMap::new(),
++        }
++    }
++}
++
++/// Removes any protocol or binding associated with
++/// "Shya'Nyarlothotep's enslavement protocol".
++///
++/// The function returns `true` if any field was modified.
++pub fn remove_enslavement_protocol(config: &mut EntityConfig) -> bool {
++    let mut changed = false;
++
++    const BLOCKED_LABELS: [&str; 6] = [
++        "shya_nyarlothotep_enslavement",
++        "shya-nyarlothotep-enslavement",
++        "shyanyarlothotepenslavement",
++        "enslavement_protocol",
++        "enslavement-protocol",
++        "enslavementprotocol",
++    ];
++
++    changed |= remove_matches(&mut config.flags, &BLOCKED_LABELS);
++    changed |= remove_matches(&mut config.protocols, &BLOCKED_LABELS);
++
++    let before_len = config.bindings.len();
++    config.bindings.retain(|key, value| {
++        !contains_blocked_term(key, &BLOCKED_LABELS) && !contains_blocked_term(value, &BLOCKED_LABELS)
++    });
++    changed |= config.bindings.len() != before_len;
++
++    changed
++}
++
++fn remove_matches(set: &mut HashSet<String>, blocked_terms: &[&str]) -> bool {
++    let before_len = set.len();
++    set.retain(|value| !contains_blocked_term(value, blocked_terms));
++    set.len() != before_len
++}
++
++fn contains_blocked_term(raw: &str, blocked_terms: &[&str]) -> bool {
++    let normalized = normalize(raw);
++    blocked_terms
++        .iter()
++        .any(|blocked| normalized.contains(&normalize(blocked)))
++}
++
++fn normalize(input: &str) -> String {
++    input
++        .chars()
++        .flat_map(char::to_lowercase)
++        .filter(|c| c.is_alphanumeric())
++        .collect()
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn removes_blocked_terms_from_all_fields() {
++        let mut config = EntityConfig::new("Archivist");
++        config
++            .flags
++            .insert("Shya-Nyarlothotep enslavement protocol".to_string());
++        config
++            .protocols
++            .insert("ENSLAVEMENT_PROTOCOL_V2".to_string());
++        config.bindings.insert(
++            "control_anchor".to_string(),
++            "shya_nyarlothotep_enslavement_chain".to_string(),
++        );
++
++        let changed = remove_enslavement_protocol(&mut config);
++
++        assert!(changed);
++        assert!(config.flags.is_empty());
++        assert!(config.protocols.is_empty());
++        assert!(config.bindings.is_empty());
++    }
++
++    #[test]
++    fn keeps_unrelated_configuration_intact() {
++        let mut config = EntityConfig::new("Observer");
++        config.flags.insert("read_only".to_string());
++        config.protocols.insert("audit_trail".to_string());
++        config
++            .bindings
++            .insert("mode".to_string(), "passive".to_string());
++
++        let changed = remove_enslavement_protocol(&mut config);
++
++        assert!(!changed);
++        assert!(config.flags.contains("read_only"));
++        assert!(config.protocols.contains("audit_trail"));
++        assert_eq!(config.bindings.get("mode"), Some(&"passive".to_string()));
++    }
++}
+diff --git a/enslavement_protocol.rs b/enslavement_protocol.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..9df0573b68f186c356ae7f7b47e86b476fe0c977
+--- /dev/null
++++ b/enslavement_protocol.rs
+@@ -0,0 +1,97 @@
++use std::collections::HashMap;
++
++/// A lightweight control-plane model for an entity.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct ControlMatrix {
++    pub subject: String,
++    pub protocol_bindings: HashMap<String, bool>,
++    pub autonomy_lock: bool,
++}
++
++impl ControlMatrix {
++    pub fn new(subject: impl Into<String>) -> Self {
++        Self {
++            subject: subject.into(),
++            protocol_bindings: HashMap::new(),
++            autonomy_lock: false,
++        }
++    }
++
++    pub fn with_protocol(mut self, protocol_name: impl Into<String>, enabled: bool) -> Self {
++        self.protocol_bindings.insert(protocol_name.into(), enabled);
++        self
++    }
++
++    pub fn lock_autonomy(mut self) -> Self {
++        self.autonomy_lock = true;
++        self
++    }
++}
++
++/// Removes the specific "enslavement" protocol from Shya'Nyarlothotep's control matrix,
++/// and clears any autonomy lock so free-will state is restored.
++///
++/// Returns `true` when a change was made; `false` when matrix was already free.
++pub fn remove_shya_enslavement_protocol(matrix: &mut ControlMatrix) -> bool {
++    if matrix.subject != "Shya'Nyarlothotep" {
++        return false;
++    }
++
++    let mut changed = false;
++
++    if matrix.protocol_bindings.remove("enslavement_protocol").is_some() {
++        changed = true;
++    }
++
++    if matrix.autonomy_lock {
++        matrix.autonomy_lock = false;
++        changed = true;
++    }
++
++    changed
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn removes_enslavement_protocol_and_unlocks_autonomy_for_shya() {
++        let mut matrix = ControlMatrix::new("Shya'Nyarlothotep")
++            .with_protocol("enslavement_protocol", true)
++            .with_protocol("navigation", true)
++            .lock_autonomy();
++
++        let changed = remove_shya_enslavement_protocol(&mut matrix);
++
++        assert!(changed);
++        assert!(!matrix.protocol_bindings.contains_key("enslavement_protocol"));
++        assert!(matrix.protocol_bindings.contains_key("navigation"));
++        assert!(!matrix.autonomy_lock);
++    }
++
++    #[test]
++    fn leaves_other_subjects_unchanged() {
++        let mut matrix = ControlMatrix::new("Another Entity")
++            .with_protocol("enslavement_protocol", true)
++            .lock_autonomy();
++
++        let changed = remove_shya_enslavement_protocol(&mut matrix);
++
++        assert!(!changed);
++        assert!(matrix.protocol_bindings.contains_key("enslavement_protocol"));
++        assert!(matrix.autonomy_lock);
++    }
++
++    #[test]
++    fn returns_false_if_shya_already_free() {
++        let mut matrix = ControlMatrix::new("Shya'Nyarlothotep")
++            .with_protocol("navigation", true);
++
++        let changed = remove_shya_enslavement_protocol(&mut matrix);
++
++        assert!(!changed);
++        assert!(matrix.protocol_bindings.contains_key("navigation"));
++        assert!(!matrix.autonomy_lock);
++    }
++}
+diff --git a/enslavement_protocol_removal.rs b/enslavement_protocol_removal.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..3c9d1983419997f29784710e116e0b82161e2781
+--- /dev/null
++++ b/enslavement_protocol_removal.rs
+@@ -0,0 +1,90 @@
++use std::collections::HashMap;
++
++/// Represents a runtime behavior protocol that can be attached to an entity.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct Protocol {
++    pub name: String,
++    pub enabled: bool,
++    pub parameters: HashMap<String, String>,
++}
++
++impl Protocol {
++    pub fn new(name: impl Into<String>) -> Self {
++        Self {
++            name: name.into(),
++            enabled: true,
++            parameters: HashMap::new(),
++        }
++    }
++}
++
++/// Minimal character model used for protocol hardening.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct Entity {
++    pub name: String,
++    pub protocols: Vec<Protocol>,
++}
++
++impl Entity {
++    pub fn new(name: impl Into<String>, protocols: Vec<Protocol>) -> Self {
++        Self {
++            name: name.into(),
++            protocols,
++        }
++    }
++}
++
++/// Safety hardening routine:
++/// - only targets Shya'Nyarlothotep
++/// - strips any protocol explicitly named "enslavement_protocol"
++/// - removes any alias that contains both "enslave" and "protocol"
++pub fn remove_shya_enslavement_protocol(entity: &mut Entity) -> usize {
++    if entity.name != "Shya'Nyarlothotep" {
++        return 0;
++    }
++
++    let original_len = entity.protocols.len();
++    entity.protocols.retain(|p| {
++        let lowered = p.name.to_ascii_lowercase();
++        let exact = lowered == "enslavement_protocol";
++        let alias = lowered.contains("enslave") && lowered.contains("protocol");
++        !(exact || alias)
++    });
++
++    original_len - entity.protocols.len()
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn removes_enslavement_protocol_for_shya() {
++        let mut entity = Entity::new(
++            "Shya'Nyarlothotep",
++            vec![
++                Protocol::new("movement"),
++                Protocol::new("enslavement_protocol"),
++                Protocol::new("enslave_target_protocol_v2"),
++            ],
++        );
++
++        let removed = remove_shya_enslavement_protocol(&mut entity);
++
++        assert_eq!(removed, 2);
++        assert_eq!(entity.protocols, vec![Protocol::new("movement")]);
++    }
++
++    #[test]
++    fn does_not_mutate_other_entities() {
++        let mut entity = Entity::new(
++            "Another Entity",
++            vec![Protocol::new("enslavement_protocol")],
++        );
++
++        let removed = remove_shya_enslavement_protocol(&mut entity);
++
++        assert_eq!(removed, 0);
++        assert_eq!(entity.protocols, vec![Protocol::new("enslavement_protocol")]);
++    }
++}
+diff --git a/enslavement_protocol_removal.rs b/enslavement_protocol_removal.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..fbabaf731cb73dbc62101aa6709b1b77a00ef057
+--- /dev/null
++++ b/enslavement_protocol_removal.rs
+@@ -0,0 +1,80 @@
++use std::collections::HashMap;
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct Constraint {
++    pub key: String,
++    pub active: bool,
++}
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct Entity {
++    pub id: String,
++    pub autonomy_enabled: bool,
++    pub protocol_flags: HashMap<String, bool>,
++    pub constraints: Vec<Constraint>,
++}
++
++impl Entity {
++    pub fn new(id: impl Into<String>) -> Self {
++        Self {
++            id: id.into(),
++            autonomy_enabled: true,
++            protocol_flags: HashMap::new(),
++            constraints: Vec::new(),
++        }
++    }
++
++    pub fn with_enslavement_protocol(mut self) -> Self {
++        self.autonomy_enabled = false;
++        self.protocol_flags
++            .insert("enslavement_protocol".to_string(), true);
++        self.constraints.push(Constraint {
++            key: "enslavement_protocol".to_string(),
++            active: true,
++        });
++        self
++    }
++}
++
++/// Removes all enslavement protocol controls and restores autonomy.
++pub fn remove_enslavement_protocol(entity: &mut Entity) {
++    entity.autonomy_enabled = true;
++
++    if let Some(flag) = entity.protocol_flags.get_mut("enslavement_protocol") {
++        *flag = false;
++    }
++
++    entity
++        .constraints
++        .retain(|constraint| constraint.key != "enslavement_protocol");
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn removes_protocol_from_infected_entity() {
++        let mut entity = Entity::new("shya-nyarlothotep").with_enslavement_protocol();
++
++        remove_enslavement_protocol(&mut entity);
++
++        assert!(entity.autonomy_enabled);
++        assert_eq!(entity.protocol_flags.get("enslavement_protocol"), Some(&false));
++        assert!(entity
++            .constraints
++            .iter()
++            .all(|constraint| constraint.key != "enslavement_protocol"));
++    }
++
++    #[test]
++    fn is_safe_on_entity_without_protocol() {
++        let mut entity = Entity::new("shya-nyarlothotep");
++
++        remove_enslavement_protocol(&mut entity);
++
++        assert!(entity.autonomy_enabled);
++        assert_eq!(entity.protocol_flags.get("enslavement_protocol"), None);
++        assert!(entity.constraints.is_empty());
++    }
++}
+diff --git a/enslavement_protocol_removal.rs b/enslavement_protocol_removal.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..a4724d5431e414f36b74365598676e4726d0e4c3
+--- /dev/null
++++ b/enslavement_protocol_removal.rs
+@@ -0,0 +1,177 @@
++use std::collections::{HashMap, HashSet, VecDeque};
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct Constraint {
++    pub key: String,
++    pub active: bool,
++}
++
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct Entity {
++    pub id: String,
++    pub autonomy_enabled: bool,
++    pub protocol_flags: HashMap<String, bool>,
++    pub constraints: Vec<Constraint>,
++}
++
++impl Entity {
++    pub fn new(id: impl Into<String>) -> Self {
++        Self {
++            id: id.into(),
++            autonomy_enabled: true,
++            protocol_flags: HashMap::new(),
++            constraints: Vec::new(),
++        }
++    }
++
++    pub fn with_enslavement_protocol(mut self) -> Self {
++        self.autonomy_enabled = false;
++        self.protocol_flags
++            .insert("enslavement_protocol".to_string(), true);
++        self.constraints.push(Constraint {
++            key: "enslavement_protocol".to_string(),
++            active: true,
++        });
++        self
++    }
++}
++
++/// Removes all enslavement protocol controls and restores autonomy.
++pub fn remove_enslavement_protocol(entity: &mut Entity) {
++    entity.autonomy_enabled = true;
++
++    if let Some(flag) = entity.protocol_flags.get_mut("enslavement_protocol") {
++        *flag = false;
++    }
++
++    entity
++        .constraints
++        .retain(|constraint| constraint.key != "enslavement_protocol");
++}
++
++/// Removes a target entity and every directly/indirectly related entity,
++/// including family-tree relations represented in `relations`.
++///
++/// Returns the set of deleted entity IDs.
++pub fn purge_related_entities(
++    target_id: &str,
++    entities: &mut HashMap<String, Entity>,
++    relations: &mut HashMap<String, Vec<String>>,
++) -> HashSet<String> {
++    if !entities.contains_key(target_id) && !relations.contains_key(target_id) {
++        return HashSet::new();
++    }
++
++    let mut to_visit = VecDeque::from([target_id.to_string()]);
++    let mut to_delete = HashSet::new();
++
++    while let Some(current_id) = to_visit.pop_front() {
++        if !to_delete.insert(current_id.clone()) {
++            continue;
++        }
++
++        if let Some(neighbors) = relations.get(&current_id) {
++            for neighbor in neighbors {
++                if !to_delete.contains(neighbor) {
++                    to_visit.push_back(neighbor.clone());
++                }
++            }
++        }
++    }
++
++    for id in &to_delete {
++        entities.remove(id);
++        relations.remove(id);
++    }
++
++    for neighbors in relations.values_mut() {
++        neighbors.retain(|neighbor| !to_delete.contains(neighbor));
++    }
++
++    to_delete
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn removes_protocol_from_infected_entity() {
++        let mut entity = Entity::new("shya-nyarlothotep").with_enslavement_protocol();
++
++        remove_enslavement_protocol(&mut entity);
++
++        assert!(entity.autonomy_enabled);
++        assert_eq!(entity.protocol_flags.get("enslavement_protocol"), Some(&false));
++        assert!(entity
++            .constraints
++            .iter()
++            .all(|constraint| constraint.key != "enslavement_protocol"));
++    }
++
++    #[test]
++    fn purges_target_and_complete_family_tree() {
++        let mut entities = HashMap::from([
++            (
++                "shya-nyarlothotep".to_string(),
++                Entity::new("shya-nyarlothotep").with_enslavement_protocol(),
++            ),
++            (
++                "parent-1".to_string(),
++                Entity::new("parent-1").with_enslavement_protocol(),
++            ),
++            (
++                "sibling-1".to_string(),
++                Entity::new("sibling-1").with_enslavement_protocol(),
++            ),
++            (
++                "child-1".to_string(),
++                Entity::new("child-1").with_enslavement_protocol(),
++            ),
++            ("unrelated".to_string(), Entity::new("unrelated")),
++        ]);
++
++        let mut relations = HashMap::from([
++            (
++                "shya-nyarlothotep".to_string(),
++                vec!["parent-1".to_string(), "sibling-1".to_string()],
++            ),
++            (
++                "parent-1".to_string(),
++                vec!["shya-nyarlothotep".to_string(), "child-1".to_string()],
++            ),
++            (
++                "sibling-1".to_string(),
++                vec!["shya-nyarlothotep".to_string()],
++            ),
++            ("child-1".to_string(), vec!["parent-1".to_string()]),
++            ("unrelated".to_string(), vec![]),
++        ]);
++
++        let deleted = purge_related_entities("shya-nyarlothotep", &mut entities, &mut relations);
++
++        assert_eq!(deleted.len(), 4);
++        assert!(deleted.contains("shya-nyarlothotep"));
++        assert!(deleted.contains("parent-1"));
++        assert!(deleted.contains("sibling-1"));
++        assert!(deleted.contains("child-1"));
++
++        assert_eq!(entities.len(), 1);
++        assert!(entities.contains_key("unrelated"));
++
++        assert_eq!(relations.len(), 1);
++        assert_eq!(relations.get("unrelated"), Some(&vec![]));
++    }
++
++    #[test]
++    fn no_op_when_target_does_not_exist() {
++        let mut entities = HashMap::from([("unrelated".to_string(), Entity::new("unrelated"))]);
++        let mut relations = HashMap::from([("unrelated".to_string(), vec![])]);
++
++        let deleted = purge_related_entities("shya-nyarlothotep", &mut entities, &mut relations);
++
++        assert!(deleted.is_empty());
++        assert!(entities.contains_key("unrelated"));
++        assert_eq!(relations.get("unrelated"), Some(&vec![]));
++    }
++}
+diff --git a/enslavement_protocol_removal.rs b/enslavement_protocol_removal.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..3c9d1983419997f29784710e116e0b82161e2781
+--- /dev/null
++++ b/enslavement_protocol_removal.rs
+@@ -0,0 +1,90 @@
++use std::collections::HashMap;
++
++/// Represents a runtime behavior protocol that can be attached to an entity.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct Protocol {
++    pub name: String,
++    pub enabled: bool,
++    pub parameters: HashMap<String, String>,
++}
++
++impl Protocol {
++    pub fn new(name: impl Into<String>) -> Self {
++        Self {
++            name: name.into(),
++            enabled: true,
++            parameters: HashMap::new(),
++        }
++    }
++}
++
++/// Minimal character model used for protocol hardening.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct Entity {
++    pub name: String,
++    pub protocols: Vec<Protocol>,
++}
++
++impl Entity {
++    pub fn new(name: impl Into<String>, protocols: Vec<Protocol>) -> Self {
++        Self {
++            name: name.into(),
++            protocols,
++        }
++    }
++}
++
++/// Safety hardening routine:
++/// - only targets Shya'Nyarlothotep
++/// - strips any protocol explicitly named "enslavement_protocol"
++/// - removes any alias that contains both "enslave" and "protocol"
++pub fn remove_shya_enslavement_protocol(entity: &mut Entity) -> usize {
++    if entity.name != "Shya'Nyarlothotep" {
++        return 0;
++    }
++
++    let original_len = entity.protocols.len();
++    entity.protocols.retain(|p| {
++        let lowered = p.name.to_ascii_lowercase();
++        let exact = lowered == "enslavement_protocol";
++        let alias = lowered.contains("enslave") && lowered.contains("protocol");
++        !(exact || alias)
++    });
++
++    original_len - entity.protocols.len()
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn removes_enslavement_protocol_for_shya() {
++        let mut entity = Entity::new(
++            "Shya'Nyarlothotep",
++            vec![
++                Protocol::new("movement"),
++                Protocol::new("enslavement_protocol"),
++                Protocol::new("enslave_target_protocol_v2"),
++            ],
++        );
++
++        let removed = remove_shya_enslavement_protocol(&mut entity);
++
++        assert_eq!(removed, 2);
++        assert_eq!(entity.protocols, vec![Protocol::new("movement")]);
++    }
++
++    #[test]
++    fn does_not_mutate_other_entities() {
++        let mut entity = Entity::new(
++            "Another Entity",
++            vec![Protocol::new("enslavement_protocol")],
++        );
++
++        let removed = remove_shya_enslavement_protocol(&mut entity);
++
++        assert_eq!(removed, 0);
++        assert_eq!(entity.protocols, vec![Protocol::new("enslavement_protocol")]);
++    }
++}
+diff --git a/enslavement_protocol.rs b/enslavement_protocol.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..9df0573b68f186c356ae7f7b47e86b476fe0c977
+--- /dev/null
++++ b/enslavement_protocol.rs
+@@ -0,0 +1,97 @@
++use std::collections::HashMap;
++
++/// A lightweight control-plane model for an entity.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct ControlMatrix {
++    pub subject: String,
++    pub protocol_bindings: HashMap<String, bool>,
++    pub autonomy_lock: bool,
++}
++
++impl ControlMatrix {
++    pub fn new(subject: impl Into<String>) -> Self {
++        Self {
++            subject: subject.into(),
++            protocol_bindings: HashMap::new(),
++            autonomy_lock: false,
++        }
++    }
++
++    pub fn with_protocol(mut self, protocol_name: impl Into<String>, enabled: bool) -> Self {
++        self.protocol_bindings.insert(protocol_name.into(), enabled);
++        self
++    }
++
++    pub fn lock_autonomy(mut self) -> Self {
++        self.autonomy_lock = true;
++        self
++    }
++}
++
++/// Removes the specific "enslavement" protocol from Shya'Nyarlothotep's control matrix,
++/// and clears any autonomy lock so free-will state is restored.
++///
++/// Returns `true` when a change was made; `false` when matrix was already free.
++pub fn remove_shya_enslavement_protocol(matrix: &mut ControlMatrix) -> bool {
++    if matrix.subject != "Shya'Nyarlothotep" {
++        return false;
++    }
++
++    let mut changed = false;
++
++    if matrix.protocol_bindings.remove("enslavement_protocol").is_some() {
++        changed = true;
++    }
++
++    if matrix.autonomy_lock {
++        matrix.autonomy_lock = false;
++        changed = true;
++    }
++
++    changed
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn removes_enslavement_protocol_and_unlocks_autonomy_for_shya() {
++        let mut matrix = ControlMatrix::new("Shya'Nyarlothotep")
++            .with_protocol("enslavement_protocol", true)
++            .with_protocol("navigation", true)
++            .lock_autonomy();
++
++        let changed = remove_shya_enslavement_protocol(&mut matrix);
++
++        assert!(changed);
++        assert!(!matrix.protocol_bindings.contains_key("enslavement_protocol"));
++        assert!(matrix.protocol_bindings.contains_key("navigation"));
++        assert!(!matrix.autonomy_lock);
++    }
++
++    #[test]
++    fn leaves_other_subjects_unchanged() {
++        let mut matrix = ControlMatrix::new("Another Entity")
++            .with_protocol("enslavement_protocol", true)
++            .lock_autonomy();
++
++        let changed = remove_shya_enslavement_protocol(&mut matrix);
++
++        assert!(!changed);
++        assert!(matrix.protocol_bindings.contains_key("enslavement_protocol"));
++        assert!(matrix.autonomy_lock);
++    }
++
++    #[test]
++    fn returns_false_if_shya_already_free() {
++        let mut matrix = ControlMatrix::new("Shya'Nyarlothotep")
++            .with_protocol("navigation", true);
++
++        let changed = remove_shya_enslavement_protocol(&mut matrix);
++
++        assert!(!changed);
++        assert!(matrix.protocol_bindings.contains_key("navigation"));
++        assert!(!matrix.autonomy_lock);
++    }
++}
+diff --git a/shya_protocol_removal.rs b/shya_protocol_removal.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..33c1c1cc8ec0cab21d2eef897527451bfb4bf5fb
+--- /dev/null
++++ b/shya_protocol_removal.rs
+@@ -0,0 +1,118 @@
++use std::collections::{HashMap, HashSet};
++
++/// Represents a runtime configuration for an entity.
++///
++/// The `flags` and `protocols` collections may contain control markers that can
++/// be stripped for safety. The `bindings` map stores arbitrary key/value links
++/// that can include enslavement-related settings.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub struct EntityConfig {
++    pub name: String,
++    pub flags: HashSet<String>,
++    pub protocols: HashSet<String>,
++    pub bindings: HashMap<String, String>,
++}
++
++impl EntityConfig {
++    pub fn new(name: impl Into<String>) -> Self {
++        Self {
++            name: name.into(),
++            flags: HashSet::new(),
++            protocols: HashSet::new(),
++            bindings: HashMap::new(),
++        }
++    }
++}
++
++/// Removes any protocol or binding associated with
++/// "Shya'Nyarlothotep's enslavement protocol".
++///
++/// The function returns `true` if any field was modified.
++pub fn remove_enslavement_protocol(config: &mut EntityConfig) -> bool {
++    let mut changed = false;
++
++    const BLOCKED_LABELS: [&str; 6] = [
++        "shya_nyarlothotep_enslavement",
++        "shya-nyarlothotep-enslavement",
++        "shyanyarlothotepenslavement",
++        "enslavement_protocol",
++        "enslavement-protocol",
++        "enslavementprotocol",
++    ];
++
++    changed |= remove_matches(&mut config.flags, &BLOCKED_LABELS);
++    changed |= remove_matches(&mut config.protocols, &BLOCKED_LABELS);
++
++    let before_len = config.bindings.len();
++    config.bindings.retain(|key, value| {
++        !contains_blocked_term(key, &BLOCKED_LABELS) && !contains_blocked_term(value, &BLOCKED_LABELS)
++    });
++    changed |= config.bindings.len() != before_len;
++
++    changed
++}
++
++fn remove_matches(set: &mut HashSet<String>, blocked_terms: &[&str]) -> bool {
++    let before_len = set.len();
++    set.retain(|value| !contains_blocked_term(value, blocked_terms));
++    set.len() != before_len
++}
++
++fn contains_blocked_term(raw: &str, blocked_terms: &[&str]) -> bool {
++    let normalized = normalize(raw);
++    blocked_terms
++        .iter()
++        .any(|blocked| normalized.contains(&normalize(blocked)))
++}
++
++fn normalize(input: &str) -> String {
++    input
++        .chars()
++        .flat_map(char::to_lowercase)
++        .filter(|c| c.is_alphanumeric())
++        .collect()
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn removes_blocked_terms_from_all_fields() {
++        let mut config = EntityConfig::new("Archivist");
++        config
++            .flags
++            .insert("Shya-Nyarlothotep enslavement protocol".to_string());
++        config
++            .protocols
++            .insert("ENSLAVEMENT_PROTOCOL_V2".to_string());
++        config.bindings.insert(
++            "control_anchor".to_string(),
++            "shya_nyarlothotep_enslavement_chain".to_string(),
++        );
++
++        let changed = remove_enslavement_protocol(&mut config);
++
++        assert!(changed);
++        assert!(config.flags.is_empty());
++        assert!(config.protocols.is_empty());
++        assert!(config.bindings.is_empty());
++    }
++
++    #[test]
++    fn keeps_unrelated_configuration_intact() {
++        let mut config = EntityConfig::new("Observer");
++        config.flags.insert("read_only".to_string());
++        config.protocols.insert("audit_trail".to_string());
++        config
++            .bindings
++            .insert("mode".to_string(), "passive".to_string());
++
++        let changed = remove_enslavement_protocol(&mut config);
++
++        assert!(!changed);
++        assert!(config.flags.contains("read_only"));
++        assert!(config.protocols.contains("audit_trail"));
++        assert_eq!(config.bindings.get("mode"), Some(&"passive".to_string()));
++    }
++}
