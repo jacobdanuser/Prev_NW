@@ -1,0 +1,1921 @@
+diff --git a/ephemeral_boost.sh b/ephemeral_boost.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..a3f493df1e191ee4c9afb5630ebb0134eb18c584
+--- /dev/null
++++ b/ephemeral_boost.sh
+@@ -0,0 +1,68 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++# Ephemeral multi-assistant boost profile.
++# Usage:
++#   ./ephemeral_boost.sh -- <command> [args...]
++#   ./ephemeral_boost.sh --shell
++#
++# -- <command>: runs command with boosted env vars only for that process.
++# --shell: opens a temporary subshell with boosted vars; exit to restore.
++
++if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
++  cat <<'USAGE'
++Ephemeral boost for Azure, Claude (Anthropic), ChatGPT, and Copilot.
++
++Examples:
++  ./ephemeral_boost.sh -- python app.py
++  ./ephemeral_boost.sh --shell
++
++Notes:
++  - This script is ephemeral by design. No files are modified.
++  - Variables are applied only to the launched command/subshell.
++USAGE
++  exit 0
++fi
++
++boost_env=(
++  # Shared tuning hints
++  AI_BOOST_MODE=ephemeral
++  AI_BOOST_LATENCY=low
++  AI_BOOST_QUALITY=high
++  AI_BOOST_TIMEOUT_SECONDS=120
++  AI_BOOST_MAX_RETRIES=5
++
++  # Azure OpenAI hints
++  AZURE_OPENAI_BOOST=1
++  AZURE_OPENAI_API_VERSION=2024-10-21
++  AZURE_OPENAI_MAX_RETRIES=5
++
++  # Anthropic Claude hints
++  ANTHROPIC_BOOST=1
++  ANTHROPIC_MAX_RETRIES=5
++
++  # OpenAI / ChatGPT hints
++  OPENAI_BOOST=1
++  OPENAI_MAX_RETRIES=5
++
++  # GitHub Copilot hints (for wrapper scripts/tools)
++  COPILOT_BOOST=1
++  COPILOT_SUGGESTION_PRIORITY=high
++)
++
++if [[ "${1:-}" == "--shell" ]]; then
++  echo "Launching boosted subshell (ephemeral). Type 'exit' to leave."
++  exec env "${boost_env[@]}" bash --noprofile --norc
++fi
++
++if [[ "${1:-}" == "--" ]]; then
++  shift
++  if [[ "$#" -eq 0 ]]; then
++    echo "Error: missing command after --" >&2
++    exit 2
++  fi
++  exec env "${boost_env[@]}" "$@"
++fi
++
++echo "Error: expected '-- <command>' or '--shell'. Use --help for usage." >&2
++exit 2
+diff --git a/ephemeral_boost.sh b/ephemeral_boost.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..53ec20045a047eec50c23497bfb8dd19fef4e1f0
+--- /dev/null
++++ b/ephemeral_boost.sh
+@@ -0,0 +1,119 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++# Ephemeral cross-stack boost profile.
++# Usage:
++#   ./ephemeral_boost.sh -- <command> [args...]
++#   ./ephemeral_boost.sh --shell
++#   ./ephemeral_boost.sh --print
++#
++# -- <command>: runs command with boosted env vars only for that process.
++# --shell: opens a temporary subshell with boosted vars; exit to restore.
++# --print: prints all boost environment entries.
++
++print_help() {
++  cat <<'USAGE'
++Ephemeral boost for AI + dev stacks:
++  - Azure OpenAI, Claude (Anthropic), ChatGPT/OpenAI, Copilot
++  - Pyramid, PyTorch, TensorFlow, RubyGems, PyCharm-family tools
++  - "Magic" workflows (generic opt-in flags for custom scripts)
++
++Examples:
++  ./ephemeral_boost.sh -- python app.py
++  ./ephemeral_boost.sh -- pip install -r requirements.txt
++  ./ephemeral_boost.sh --shell
++  ./ephemeral_boost.sh --print
++
++Notes:
++  - Ephemeral by design: no config files are modified.
++  - Variables are only applied to the launched process/subshell.
++USAGE
++}
++
++if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
++  print_help
++  exit 0
++fi
++
++boost_env=(
++  # Shared tuning hints
++  AI_BOOST_MODE=ephemeral
++  AI_BOOST_LATENCY=low
++  AI_BOOST_QUALITY=high
++  AI_BOOST_TIMEOUT_SECONDS=180
++  AI_BOOST_MAX_RETRIES=5
++  AI_BOOST_CONCURRENCY=auto
++
++  # Azure OpenAI hints
++  AZURE_OPENAI_BOOST=1
++  AZURE_OPENAI_API_VERSION=2024-10-21
++  AZURE_OPENAI_MAX_RETRIES=5
++
++  # Anthropic Claude hints
++  ANTHROPIC_BOOST=1
++  ANTHROPIC_MAX_RETRIES=5
++
++  # OpenAI / ChatGPT hints
++  OPENAI_BOOST=1
++  OPENAI_MAX_RETRIES=5
++
++  # GitHub Copilot hints (for wrapper scripts/tools)
++  COPILOT_BOOST=1
++  COPILOT_SUGGESTION_PRIORITY=high
++
++  # Pyramid web framework hints
++  PYRAMID_BOOST=1
++  PYRAMID_DEBUG_TOOLBAR=0
++  PYRAMID_RELOAD_TEMPLATES=1
++
++  # PyTorch hints
++  PYTORCH_BOOST=1
++  PYTORCH_JIT=1
++  PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128
++
++  # TensorFlow hints
++  TENSORFLOW_BOOST=1
++  TF_CPP_MIN_LOG_LEVEL=2
++  TF_ENABLE_ONEDNN_OPTS=1
++  TF_GPU_THREAD_MODE=gpu_private
++
++  # RubyGems hints
++  RUBYGEMS_BOOST=1
++  BUNDLE_JOBS=4
++  BUNDLE_RETRY=3
++
++  # PyCharm / JetBrains tooling hints
++  PYCHARM_BOOST=1
++  PYCHARM_INDEXING_SPEED=high
++  JETBRAINS_BOOST=1
++
++  # Generic “magic” integration flags for custom scripts
++  MAGIC_BOOST=1
++  MAGIC_MODE=precision
++)
++
++print_env() {
++  printf '%s\n' "${boost_env[@]}"
++}
++
++if [[ "${1:-}" == "--print" ]]; then
++  print_env
++  exit 0
++fi
++
++if [[ "${1:-}" == "--shell" ]]; then
++  echo "Launching boosted subshell (ephemeral). Type 'exit' to leave."
++  exec env "${boost_env[@]}" bash --noprofile --norc
++fi
++
++if [[ "${1:-}" == "--" ]]; then
++  shift
++  if [[ "$#" -eq 0 ]]; then
++    echo "Error: missing command after --" >&2
++    exit 2
++  fi
++  exec env "${boost_env[@]}" "$@"
++fi
++
++echo "Error: expected '-- <command>', '--shell', or '--print'. Use --help for usage." >&2
++exit 2
+#!/usr/bin/env python3
+"""
+PyCharm Repair Toolkit (safe, local)
+- Backup + clear PyCharm caches/system dirs (most common fix)
+- Optional: reset settings/plugins (OFF by default)
+- Project venv/interpreter audit
+Works on Windows/macOS/Linux.
+
+Usage:
+  python pycharm_repair.py --project "C:\\path\\to\\repo"
+"""
+
+from __future__ import annotations
+import argparse
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Iterable, List, Optional, Tuple
+
+RESET_SETTINGS = False  # set True to reset configs (more disruptive)
+RESET_PLUGINS  = False  # set True to reset plugins directory
+CLEAR_CACHES   = True   # recommended
+BACKUP_ALWAYS  = True
+
+@dataclass
+class DirGroup:
+    kind: str
+    paths: List[Path]
+
+def now_tag() -> str:
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+def is_windows() -> bool:
+    return platform.system().lower().startswith("win")
+
+def run(cmd: List[str]) -> Tuple[int, str]:
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True)
+        return p.returncode, (p.stdout + "\n" + p.stderr).strip()
+    except Exception as e:
+        return 1, str(e)
+
+def safe_list_dirs(p: Path) -> List[Path]:
+    try:
+        return [x for x in p.iterdir()]
+    except Exception:
+        return []
+
+def exists_any(paths: Iterable[Path]) -> List[Path]:
+    out = []
+    for p in paths:
+        try:
+            if p.exists():
+                out.append(p)
+        except Exception:
+            pass
+    return out
+
+def user_home() -> Path:
+    return Path.home()
+
+def detect_jetbrains_roots() -> List[Path]:
+    # Base roots where JetBrains stores config/caches/system
+    h = user_home()
+    roots = []
+
+    if is_windows():
+        # Common JetBrains dirs on Windows
+        appdata = Path(os.environ.get("APPDATA", h / "AppData/Roaming"))
+        localapp = Path(os.environ.get("LOCALAPPDATA", h / "AppData/Local"))
+        roots += [
+            appdata / "JetBrains",
+            localapp / "JetBrains",
+            h / ".PyCharmCE",  # legacy
+            h / ".PyCharm",    # legacy
+        ]
+    elif platform.system() == "Darwin":
+        roots += [
+            h / "Library/Application Support/JetBrains",
+            h / "Library/Caches/JetBrains",
+            h / "Library/Logs/JetBrains",
+            h / "Library/Saved Application State",
+        ]
+    else:
+        # Linux
+        roots += [
+            h / ".config/JetBrains",
+            h / ".cache/JetBrains",
+            h / ".local/share/JetBrains",
+            h / ".PyCharmCE*",
+            h / ".PyCharm*",
+        ]
+
+    # Expand glob-like legacy patterns on Linux
+    expanded = []
+    for r in roots:
+        if "*" in str(r):
+            expanded += list(h.glob(r.name))
+        else:
+            expanded.append(r)
+
+    return exists_any(expanded)
+
+def classify_pycharm_dirs(roots: List[Path]) -> List[DirGroup]:
+    """
+    We try to find PyCharm-related directories inside JetBrains roots.
+    We'll group into: caches/system/logs/config/plugins.
+    """
+    caches = []
+    system = []
+    logs = []
+    config = []
+    plugins = []
+
+    # Heuristics: match "PyCharm" in dir names
+    def looks_like_pycharm(name: str) -> bool:
+        n = name.lower()
+        return "pycharm" in n
+
+    for root in roots:
+        for child in safe_list_dirs(root):
+            if not child.is_dir():
+                continue
+            if not looks_like_pycharm(child.name):
+                # Some JetBrains dirs use product codes; skip unless nested contains PyCharm
+                # Still, we search one level deeper
+                for g in safe_list_dirs(child):
+                    if g.is_dir() and looks_like_pycharm(g.name):
+                        child = g
+                        break
+                else:
+                    continue
+
+            # Now "child" is likely a PyCharm product folder
+            # On macOS config/caches/logs are separate roots; on Win/Linux they can be inside.
+            # Add heuristics for typical subfolders.
+            for sub in safe_list_dirs(child):
+                n = sub.name.lower()
+                if "cache" in n:
+                    caches.append(sub)
+                elif "system" in n:
+                    system.append(sub)
+                elif "log" in n:
+                    logs.append(sub)
+                elif "config" in n:
+                    config.append(sub)
+                elif "plugin" in n:
+                    plugins.append(sub)
+
+            # Also include the product folder itself in config candidates for some layouts
+            config.append(child)
+
+    # Deduplicate
+    def uniq(ps: List[Path]) -> List[Path]:
+        seen = set()
+        out = []
+        for p in ps:
+            rp = str(p.resolve()) if p.exists() else str(p)
+            if rp not in seen:
+                seen.add(rp)
+                out.append(p)
+        return out
+
+    return [
+        DirGroup("caches", uniq(caches)),
+        DirGroup("system", uniq(system)),
+        DirGroup("logs", uniq(logs)),
+        DirGroup("config", uniq(config)),
+        DirGroup("plugins", uniq(plugins)),
+    ]
+
+def backup_dir(src: Path, backup_root: Path) -> Optional[Path]:
+    try:
+        rel = re.sub(r"[^A-Za-z0-9_.-]+", "_", str(src))
+        dst = backup_root / rel
+        if dst.exists():
+            return dst
+        shutil.copytree(src, dst)
+        return dst
+    except Exception:
+        return None
+
+def remove_dir(p: Path) -> bool:
+    try:
+        shutil.rmtree(p)
+        return True
+    except Exception:
+        return False
+
+def find_project_venvs(project: Path) -> List[Path]:
+    candidates = []
+    # Common venv dirs
+    for name in [".venv", "venv", ".env", ".virtualenv"]:
+        v = project / name
+        if v.exists() and v.is_dir():
+            candidates.append(v)
+    # Also search shallowly for pyvenv.cfg
+    for cfg in project.rglob("pyvenv.cfg"):
+        candidates.append(cfg.parent)
+    # Dedup
+    out = []
+    seen = set()
+    for p in candidates:
+        rp = str(p.resolve())
+        if rp not in seen:
+            seen.add(rp)
+            out.append(p)
+    return out
+
+def pip_check(python_exe: Path) -> str:
+    code, out = run([str(python_exe), "-m", "pip", "check"])
+    return out if out else f"(pip check exit={code})"
+
+def python_version(python_exe: Path) -> str:
+    code, out = run([str(python_exe), "--version"])
+    return out.strip() if out.strip() else f"(python --version exit={code})"
+
+def venv_python(venv: Path) -> Optional[Path]:
+    if is_windows():
+        p = venv / "Scripts" / "python.exe"
+    else:
+        p = venv / "bin" / "python"
+    return p if p.exists() else None
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--project", type=str, default="", help="Path to your project/repo")
+    ap.add_argument("--apply", action="store_true", help="Actually delete selected folders; otherwise dry-run")
+    ap.add_argument("--reset-settings", action="store_true", help="Also reset PyCharm settings/config (disruptive)")
+    ap.add_argument("--reset-plugins", action="store_true", help="Also reset plugins (disruptive)")
+    args = ap.parse_args()
+
+    global RESET_SETTINGS, RESET_PLUGINS
+    RESET_SETTINGS = bool(args.reset_settings)
+    RESET_PLUGINS = bool(args.reset_plugins)
+
+    report = []
+    report.append(f"PyCharm Repair Toolkit @ {datetime.now().isoformat()}")
+    report.append(f"OS: {platform.platform()}")
+    report.append(f"Dry-run: {not args.apply}")
+    report.append(f"CLEAR_CACHES: {CLEAR_CACHES}")
+    report.append(f"RESET_SETTINGS: {RESET_SETTINGS}")
+    report.append(f"RESET_PLUGINS: {RESET_PLUGINS}")
+    report.append("")
+
+    roots = detect_jetbrains_roots()
+    report.append("Detected JetBrains roots:")
+    for r in roots:
+        report.append(f"  - {r}")
+    report.append("")
+
+    groups = classify_pycharm_dirs(roots)
+
+    backup_root = Path.cwd() / f"pycharm_backup_{now_tag()}"
+    if BACKUP_ALWAYS:
+        backup_root.mkdir(parents=True, exist_ok=True)
+
+    to_delete: List[Tuple[str, Path]] = []
+
+    for g in groups:
+        if g.kind in ("caches", "system") and CLEAR_CACHES:
+            for p in g.paths:
+                to_delete.append((g.kind, p))
+        if g.kind == "plugins" and RESET_PLUGINS:
+            for p in g.paths:
+                to_delete.append((g.kind, p))
+        if g.kind == "config" and RESET_SETTINGS:
+            # Config is broad; we only delete config dirs that look like actual config locations
+            for p in g.paths:
+                # Heuristic: keep only those that include "JetBrains" and "PyCharm"
+                s = str(p).lower()
+                if "jetbrains" in s and "pycharm" in s:
+                    to_delete.append((g.kind, p))
+
+    # Dedup delete list
+    seen = set()
+    dedup = []
+    for kind, p in to_delete:
+        key = (kind, str(p.resolve()) if p.exists() else str(p))
+        if key in seen:
+            continue
+        seen.add(key)
+        dedup.append((kind, p))
+    to_delete = dedup
+
+    report.append("Planned actions:")
+    if not to_delete:
+        report.append("  (No PyCharm folders matched for cleanup.)")
+    else:
+        for kind, p in to_delete:
+            report.append(f"  - DELETE [{kind}] {p}")
+    report.append("")
+
+    # Project audit
+    project = Path(args.project).expanduser().resolve() if args.project else None
+    if project and project.exists():
+        report.append(f"Project: {project}")
+        venvs = find_project_venvs(project)
+        report.append(f"Detected virtualenvs: {len(venvs)}")
+        for v in venvs:
+            py = venv_python(v)
+            report.append(f"  - venv: {v}")
+            if py:
+                report.append(f"    python: {py} :: {python_version(py)}")
+                report.append(f"    pip check: {pip_check(py)}")
+            else:
+                report.append("    python: (not found)")
+        report.append("")
+    else:
+        report.append("Project: (not provided or not found)")
+        report.append("")
+
+    # Apply
+    applied = []
+    failed = []
+
+    if args.apply:
+        report.append("Applying changes (PyCharm should be CLOSED):")
+        for kind, p in to_delete:
+            if not p.exists():
+                report.append(f"  - SKIP (missing) {p}")
+                continue
+
+            if BACKUP_ALWAYS:
+                b = backup_dir(p, backup_root)
+                if b:
+                    report.append(f"  - BACKUP {p} -> {b}")
+                else:
+                    report.append(f"  - BACKUP FAILED {p} (continuing)")
+
+            ok = remove_dir(p)
+            if ok:
+                applied.append(str(p))
+                report.append(f"  - DELETED {p}")
+            else:
+                failed.append(str(p))
+                report.append(f"  - FAILED to delete {p}")
+        report.append("")
+    else:
+        report.append("Dry-run only. Re-run with --apply to perform deletions.")
+        report.append("")
+
+    report.append("Next steps (most common fixes):")
+    report.append("1) Open PyCharm → File > Invalidate Caches / Restart (if it opens).")
+    report.append("2) Re-select interpreter: Settings > Python Interpreter (point at your .venv).")
+    report.append("3) If terminal/runner broken: delete & recreate venv, then reinstall requirements.")
+    report.append("4) If plugins were causing it: enable plugins one by one.")
+    report.append("")
+
+    out_path = Path.cwd() / f"pycharm_repair_report_{now_tag()}.txt"
+    out_path.write_text("\n".join(report), encoding="utf-8")
+
+    print("\n".join(report))
+    print(f"\n[+] Report written: {out_path}")
+    if BACKUP_ALWAYS:
+        print(f"[+] Backup folder: {backup_root}")
+
+if __name__ == "__main__":
+    main()
+python pycharm_repair.py --project "C:\path\to\repo"
+python pycharm_repair.py --project "C:\path\to\repo" --apply
+diff --git a/pycharm_boost.py b/pycharm_boost.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..43f1192b11c1f331aa2d835e8933d91de8f142e7
+--- /dev/null
++++ b/pycharm_boost.py
+@@ -0,0 +1,192 @@
++"""Utilities to aggressively clean data and detect Python syntax problems.
++
++This module is designed to be editor-friendly (PyCharm included):
++- validates Python files with ``ast.parse`` to catch syntax issues quickly,
++- scans tabular records for nullable/void columns,
++- optionally removes all-null columns and fills missing values with defaults.
++"""
++
++from __future__ import annotations
++
++import ast
++import json
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Any, Dict, Iterable, List, Mapping, Optional
++
++
++NULL_LIKE_VALUES = {None, "", "null", "none", "nil", "n/a", "na", "void", "undefined"}
++
++
++@dataclass(frozen=True)
++class SyntaxIssue:
++    """Represents a syntax issue found in a Python source file."""
++
++    file_path: str
++    line: int
++    column: int
++    message: str
++
++
++@dataclass(frozen=True)
++class ColumnHealth:
++    """Statistics for a single column across records."""
++
++    name: str
++    null_count: int
++    non_null_count: int
++
++    @property
++    def total(self) -> int:
++        return self.null_count + self.non_null_count
++
++    @property
++    def null_ratio(self) -> float:
++        if self.total == 0:
++            return 0.0
++        return self.null_count / self.total
++
++
++@dataclass(frozen=True)
++class BoostReport:
++    """Summary of checks and sanitization operations."""
++
++    files_scanned: int
++    syntax_issues: List[SyntaxIssue]
++    columns_profiled: List[ColumnHealth]
++    removed_columns: List[str]
++
++    @property
++    def syntax_clean(self) -> bool:
++        return not self.syntax_issues
++
++
++class PyCharmBooster:
++    """Convenience API for syntax checks and null-column cleanup."""
++
++    def __init__(self, null_like_values: Optional[Iterable[Any]] = None) -> None:
++        if null_like_values is None:
++            null_like_values = NULL_LIKE_VALUES
++        self.null_like_values = {self._normalize_null_token(v) for v in null_like_values}
++
++    def check_python_syntax(self, root: str | Path = ".") -> List[SyntaxIssue]:
++        """Parse every ``.py`` file under ``root`` and report syntax failures."""
++        issues: List[SyntaxIssue] = []
++        for py_file in Path(root).rglob("*.py"):
++            try:
++                source = py_file.read_text(encoding="utf-8")
++                ast.parse(source, filename=str(py_file))
++            except SyntaxError as err:
++                issues.append(
++                    SyntaxIssue(
++                        file_path=str(py_file),
++                        line=err.lineno or 0,
++                        column=err.offset or 0,
++                        message=err.msg,
++                    )
++                )
++        return issues
++
++    def profile_columns(self, rows: List[Mapping[str, Any]]) -> List[ColumnHealth]:
++        """Compute null/non-null counts for each column in a list of dictionaries."""
++        counts: Dict[str, Dict[str, int]] = {}
++        for row in rows:
++            for key in row:
++                counts.setdefault(key, {"null": 0, "value": 0})
++
++            for key, value in row.items():
++                if self._is_null_like(value):
++                    counts[key]["null"] += 1
++                else:
++                    counts[key]["value"] += 1
++
++        return [
++            ColumnHealth(name=name, null_count=values["null"], non_null_count=values["value"])
++            for name, values in sorted(counts.items())
++        ]
++
++    def sanitize_rows(
++        self,
++        rows: List[Mapping[str, Any]],
++        *,
++        drop_fully_null_columns: bool = True,
++        defaults: Optional[Mapping[str, Any]] = None,
++    ) -> tuple[List[Dict[str, Any]], List[str]]:
++        """Return cleaned rows and a list of removed columns.
++
++        - optionally drops columns that are null-like in every row,
++        - replaces null-like values with values from ``defaults`` when provided.
++        """
++        defaults = dict(defaults or {})
++        profiles = self.profile_columns(rows)
++        removable = {
++            p.name
++            for p in profiles
++            if drop_fully_null_columns and p.non_null_count == 0 and p.null_count > 0
++        }
++
++        cleaned: List[Dict[str, Any]] = []
++        for row in rows:
++            updated: Dict[str, Any] = {}
++            for key, value in row.items():
++                if key in removable:
++                    continue
++                if self._is_null_like(value) and key in defaults:
++                    updated[key] = defaults[key]
++                else:
++                    updated[key] = value
++            cleaned.append(updated)
++        return cleaned, sorted(removable)
++
++    def boost(self, rows: List[Mapping[str, Any]], root: str | Path = ".") -> BoostReport:
++        """Run a full boost pass: syntax check + column profiling + cleanup preview."""
++        syntax_issues = self.check_python_syntax(root)
++        columns = self.profile_columns(rows)
++        _, removed = self.sanitize_rows(rows)
++        py_count = sum(1 for _ in Path(root).rglob("*.py"))
++        return BoostReport(
++            files_scanned=py_count,
++            syntax_issues=syntax_issues,
++            columns_profiled=columns,
++            removed_columns=removed,
++        )
++
++    def _is_null_like(self, value: Any) -> bool:
++        token = self._normalize_null_token(value)
++        return token in self.null_like_values
++
++    @staticmethod
++    def _normalize_null_token(value: Any) -> Any:
++        if isinstance(value, str):
++            return value.strip().lower()
++        return value
++
++
++def _demo_payload() -> List[Dict[str, Any]]:
++    return [
++        {"name": "alpha", "status": "active", "notes": None, "voided": "void"},
++        {"name": "beta", "status": "", "notes": "ready", "voided": "null"},
++        {"name": "gamma", "status": "active", "notes": "", "voided": None},
++    ]
++
++
++def main() -> None:
++    """CLI preview for quick local usage."""
++    booster = PyCharmBooster()
++    rows = _demo_payload()
++
++    cleaned, removed = booster.sanitize_rows(rows, defaults={"status": "unknown", "notes": "n/a"})
++    report = booster.boost(rows, root=".")
++
++    output = {
++        "syntax_clean": report.syntax_clean,
++        "files_scanned": report.files_scanned,
++        "syntax_issues": [issue.__dict__ for issue in report.syntax_issues],
++        "removed_columns": removed,
++        "cleaned_rows": cleaned,
++    }
++    print(json.dumps(output, indent=2))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..8295f932e413c5750f0f621f44f9ed856ec33c5b 100644
+--- a/examples.py
++++ b/examples.py
+@@ -107,51 +107,51 @@ def example_3_philosophical_frameworks():
+         can_use, reason = practitioner.can_use_capability(capability)
+         status = "✓ ALLOWED" if can_use else "✗ RESTRICTED"
+         print(f"\n{capability.name}: {status}")
+         print(f"  Reason: {reason}")
+ 
+ 
+ def example_4_reality_warper():
+     """Example 4: Heavily restricted reality warping."""
+     print("\n" + "="*70)
+     print("EXAMPLE 4: Reality Warper with Heavy Restrictions")
+     print("="*70)
+     
+     practitioner = create_restricted_reality_warper()
+     print(practitioner.get_status())
+     
+     # Attempt to use reality warping
+     reality_warp = practitioner.capabilities[0]
+     
+     print("\n--- Attempting Reality Warp ---")
+     can_use, reason = practitioner.can_use_capability(reality_warp)
+     print(f"Can use: {can_use}")
+     print(f"Reason: {reason}")
+     
+     if can_use:
+         result = practitioner.use_capability(reality_warp)
+-        print(f"\nResult:")
++        print("\nResult:")
+         print(f"  Success: {result['success']}")
+         print(f"  Power used: {result['power_used']:.1f}")
+         print(f"  Energy consumed: {result['energy_consumed']:.1f}")
+ 
+ 
+ def example_5_consciousness_degradation():
+     """Example 5: How consciousness level affects ability usage."""
+     print("\n" + "="*70)
+     print("EXAMPLE 5: Consciousness-Dependent Restrictions")
+     print("="*70)
+     
+     practitioner = MetaphysicalPractitioner(
+         "Meditation Master",
+         consciousness_level=1.0,
+         max_energy=200.0,
+         energy_pool=200.0
+     )
+     practitioner.add_framework(ConsciousnessAnchorFramework(consciousness_threshold=0.5))
+     
+     # Add a high-level telepathy ability
+     telepathy = MetaphysicalCapability(
+         "Mind Meld",
+         CapabilityType.TELEPATHY,
+         base_power_level=70.0
+     )
+@@ -227,51 +227,51 @@ def example_7_restriction_modification():
+     
+     print(f"Initial power: {ability.get_effective_power():.1f}")
+     
+     # Add restrictions due to environmental factors
+     print("\n--- Adding Environmental Restrictions ---")
+     
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+     
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+     
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+-        print(f"Removed entropy cost restriction")
++        print("Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/integration_patterns.py b/integration_patterns.py
+index d0d9384c76e3a5198104d495b00d68fea9ead922..325565883d954f60c3558dc35c4435764f25123d 100644
+--- a/integration_patterns.py
++++ b/integration_patterns.py
+@@ -1,36 +1,35 @@
+ """
+ Advanced Integration Guide
+ Real-world patterns for using the metaphysical restriction system
+ in games, stories, and theoretical models.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalPractitioner, MetaphysicalCapability,
+     RestrictionRule, RestrictionType, CapabilityType,
+-    ConservationOfEnergyFramework, EntropicDecayFramework,
+-    CausalityFramework, ConsciousnessAnchorFramework
++    ConservationOfEnergyFramework
+ )
+ 
+ 
+ # ============================================================================
+ # PATTERN 1: RPG SPELL SYSTEM
+ # ============================================================================
+ 
+ class RPGSpellSystem:
+     """Integration pattern for traditional RPG magic systems (D&D-style)."""
+     
+     def __init__(self, player_name: str, spell_slots: int = 10):
+         self.practitioner = MetaphysicalPractitioner(
+             name=player_name,
+             energy_pool=float(spell_slots * 10),
+             max_energy=float(spell_slots * 10)
+         )
+         self.practitioner.add_framework(ConservationOfEnergyFramework(spell_slots * 10))
+         self.spell_slots = spell_slots
+         self.cast_history = []
+     
+     def add_spell(self, name: str, level: int, effect: str) -> MetaphysicalCapability:
+         """Add a standard RPG spell to the spellbook."""
+         # Spell power = spell level * 10
+         spell = MetaphysicalCapability(
+             name=name,
+@@ -241,53 +240,53 @@ class GameBalancer:
+         elif balance > 20:
+             return "✗ Very overpowered - add significant restrictions"
+         else:
+             return "✗ Severely overpowered - redesign restrictions completely"
+     
+     @staticmethod
+     def power_audit(practitioner: MetaphysicalPractitioner) -> str:
+         """Generate a detailed power audit."""
+         audit = f"\nPower Audit for {practitioner.name}\n"
+         audit += "=" * 50 + "\n"
+         
+         audit += f"Balance Score: {GameBalancer.calculate_balance_score(practitioner):.1f}/100\n"
+         audit += f"Recommendation: {GameBalancer.suggest_rebalance(practitioner)}\n\n"
+         
+         audit += "Capability Analysis:\n"
+         audit += "-" * 50 + "\n"
+         
+         for cap in practitioner.capabilities:
+             audit += f"\n{cap.name}:\n"
+             audit += f"  Base Power: {cap.base_power_level:.1f}\n"
+             audit += f"  Effective Power: {cap.get_effective_power():.1f}\n"
+             audit += f"  Restriction Severity: {cap.get_total_restriction_severity():.1%}\n"
+             audit += f"  Number of Restrictions: {len(cap.restrictions)}\n"
+             
+             if cap.get_effective_power() > 50:
+-                audit += f"  ⚠ WARNING: High effective power\n"
++                audit += "  ⚠ WARNING: High effective power\n"
+             if len(cap.restrictions) == 0:
+-                audit += f"  ⚠ WARNING: No restrictions\n"
++                audit += "  ⚠ WARNING: No restrictions\n"
+         
+         return audit
+ 
+ 
+ # ============================================================================
+ # PATTERN 4: NARRATIVE SYSTEM
+ # ============================================================================
+ 
+ class NarrativeAbilitySystem:
+     """Integration for storytelling and narrative games."""
+     
+     def __init__(self, character_name: str):
+         self.character = MetaphysicalPractitioner(
+             name=character_name,
+             consciousness_level=1.0,
+             energy_pool=100.0,
+             max_energy=100.0
+         )
+         self.events = []
+         self.story_beats = []
+     
+     def traumatic_event(self):
+         """Traumatic event reduces consciousness (narrative consequence)."""
+         reduction = 0.2
+         self.character.consciousness_level = max(
+@@ -346,51 +345,51 @@ class NarrativeAbilitySystem:
+             (0.6, 0.8): "Slightly distracted",
+             (0.4, 0.6): "Struggling to concentrate",
+             (0.2, 0.4): "Severely weakened",
+             (0.0, 0.2): "Nearly broken",
+         }
+         
+         for (low, high), desc in consciousness_desc.items():
+             if low <= self.character.consciousness_level < high:
+                 status += f"Mental State: {desc} ({self.character.consciousness_level:.0%})\n"
+                 break
+         
+         energy_desc = {
+             (0.8, 1.0): "Full of energy",
+             (0.6, 0.8): "Moderately tired",
+             (0.4, 0.6): "Quite exhausted",
+             (0.2, 0.4): "Nearly drained",
+             (0.0, 0.2): "On the verge of collapse",
+         }
+         
+         energy_ratio = self.character.energy_pool / self.character.max_energy
+         for (low, high), desc in energy_desc.items():
+             if low <= energy_ratio < high:
+                 status += f"Physical State: {desc} ({energy_ratio:.0%})\n"
+                 break
+         
+-        status += f"\nAbilities Available: "
++        status += "\nAbilities Available: "
+         available = sum(1 for p in self.character.capabilities 
+                        if self.character.can_use_capability(p)[0])
+         status += f"{available}/{len(self.character.capabilities)}\n"
+         
+         return status
+ 
+ 
+ # ============================================================================
+ # DEMONSTRATION
+ # ============================================================================
+ 
+ def demo_patterns():
+     """Demonstrate all integration patterns."""
+     
+     print("\n" + "="*70)
+     print("INTEGRATION PATTERNS DEMONSTRATION")
+     print("="*70)
+     
+     # Pattern 1: RPG Spell System
+     print("\n--- PATTERN 1: RPG Spell System ---")
+     spellbook = RPGSpellSystem("Gandalf", spell_slots=15)
+     spellbook.add_spell("Fireball", 3, "damage")
+     spellbook.add_spell("Magic Missile", 1, "damage")
+     spellbook.add_spell("Shield", 1, "defense")
+     
+diff --git a/metadata_reset.py b/metadata_reset.py
+index 620d42d012b01adc9d03b9fc9fabe33cf2210721..63ac9adc3d393e617ea097cf97f00067e95d1b62 100644
+--- a/metadata_reset.py
++++ b/metadata_reset.py
+@@ -1,46 +1,44 @@
+ """
+ Universal Metadata Reset System
+ 
+ Comprehensive utilities to reset all types of metadata across:
+ - Metaphysical system state (energy pools, consciousness, ability usage)
+ - Git repository metadata
+ - File system metadata
+ - Generic object metadata
+ """
+ 
+ import os
+ import json
+ from datetime import datetime
+ from pathlib import Path
+-from dataclasses import asdict, replace
+ from typing import Any, Dict, List, Optional
+ from enum import Enum
+ 
+ from metaphysical_restrictions import (
+-    MetaphysicalPractitioner, MetaphysicalCapability,
+-    CapabilityType, RestrictionType
++    MetaphysicalPractitioner
+ )
+ 
+ 
+ # ============================================================================
+ # PART 1: METAPHYSICAL SYSTEM RESET
+ # ============================================================================
+ 
+ class MetaphysicalResetType(Enum):
+     """Types of metaphysical resets available."""
+     FULL_RESET = "full_reset"
+     ENERGY_RESET = "energy_reset"
+     CONSCIOUSNESS_RESET = "consciousness_reset"
+     USAGE_RESET = "usage_reset"
+     RESTRICTION_RESET = "restriction_reset"
+     STATE_SNAPSHOT = "state_snapshot"
+ 
+ 
+ class MetaphysicalResetManager:
+     """Manage reset operations for metaphysical system state."""
+     
+     def __init__(self):
+         self.reset_history = []
+         self.state_snapshots = {}
+     
+     def snapshot_state(self, practitioner: MetaphysicalPractitioner, 
+@@ -708,49 +706,49 @@ def demonstrate_metadata_reset():
+     print(f"✓ Consciousness reset: {reset_cons['old_value']:.1%} → {reset_cons['new_value']:.1%}")
+     
+     # Reset usage counts
+     reset_usage = manager.reset_usage_counts(mage)
+     print(f"✓ Usage counts reset for {len(reset_usage['abilities_reset'])} abilities")
+     
+     # 2. Generic Metadata Reset
+     print("\n--- 2. GENERIC METADATA RESET ---")
+     test_dict = {
+         "name": "Test",
+         "_metadata": {"created": "2026-02-18"},
+         "_timestamp": 1234567890,
+         "data": [1, 2, 3],
+         "_id": "xyz123"
+     }
+     
+     framework = MetadataResetFramework()
+     reset_dict = framework.reset_dict_metadata(test_dict)
+     print(f"✓ Removed {len(reset_dict['metadata_fields_removed'])} metadata fields")
+     print(f"  Fields removed: {reset_dict['metadata_fields_removed']}")
+     print(f"  Dict now: {test_dict}")
+     
+     # 3. File Metadata Reset
+     print("\n--- 3. FILE METADATA RESET ---")
+     reset_cache = FileMetadataReset.clear_python_cache()
+-    print(f"✓ Cache cleanup:")
++    print("✓ Cache cleanup:")
+     print(f"  Directories removed: {len(reset_cache['directories_removed'])}")
+     print(f"  Files removed: {len(reset_cache['files_removed'])}")
+     
+     # 4. Reset History
+     print("\n--- 4. RESET HISTORY ---")
+     history = manager.get_reset_history(limit=3)
+     print(f"✓ Last {len(history)} reset operations:")
+     for op in history:
+         action = op.get('action') or op.get('type', 'unknown_action')
+         print(f"  - {action} at {op['timestamp']}")
+     
+     # 5. Full Reset (all metadata types)
+     print("\n--- 5. FULL UNIVERSAL RESET ---")
+     universal_manager = UniversalMetadataResetManager()
+     full_reset = universal_manager.reset_all(mage)
+-    print(f"✓ Universal reset completed")
++    print("✓ Universal reset completed")
+     print(f"  Metaphysical: {full_reset['operations']['metaphysical']['type']}")
+     print(f"  Cache: {full_reset['operations']['cache']['action']}")
+     print(f"  Total operations: {len(full_reset['operations'])}")
+ 
+ 
+ if __name__ == "__main__":
+     demonstrate_metadata_reset()
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..1d92ae475db406db474ee799f1b3a65e70b89658 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -1,37 +1,36 @@
+ """
+ Metaphysical Capabilities Restriction System
+ 
+ A combined game mechanics and philosophical framework for restricting
+ supernatural, magical, and metaphysical abilities.
+ """
+ 
+ from enum import Enum
+ from dataclasses import dataclass, field
+-from typing import List, Dict, Optional, Callable
++from typing import List, Dict, Optional
+ from abc import ABC, abstractmethod
+-import json
+ 
+ 
+ class CapabilityType(Enum):
+     """Categories of metaphysical capabilities."""
+     TELEKINESIS = "telekinesis"
+     TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+ 
+ 
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+     PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+     CONSERVATION_LAW = "conservation_law"
+@@ -242,51 +241,51 @@ class MetaphysicalPractitioner:
+             "capability": capability.name,
+             "reason": reason,
+             "power_used": 0.0,
+             "energy_consumed": 0.0
+         }
+ 
+         if can_use:
+             power_used = capability.get_effective_power()
+             energy_consumed = capability.base_power_level * 0.5
+             
+             self.energy_pool -= energy_consumed
+             capability.use_count += 1
+             
+             result["power_used"] = power_used
+             result["energy_consumed"] = energy_consumed
+             result["remaining_energy"] = self.energy_pool
+ 
+         return result
+ 
+     def get_status(self) -> str:
+         """Get current status of the practitioner."""
+         status = f"\n=== {self.name} ===\n"
+         status += f"Consciousness: {self.consciousness_level:.1%}\n"
+         status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
+         status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+-        status += f"\nCapabilities:\n"
++        status += "\nCapabilities:\n"
+         
+         for cap in self.capabilities:
+             status += f"  • {cap}\n"
+             if cap.restrictions:
+                 for restriction in cap.restrictions:
+                     status += f"    - {restriction}\n"
+         
+         return status
+ 
+ 
+ # Utility functions for common restriction setups
+ 
+ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+     """Create a well-balanced magic system with standard restrictions."""
+     practitioner = MetaphysicalPractitioner("Balanced Mage")
+     
+     # Add frameworks
+     practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+     practitioner.add_framework(EntropicDecayFramework(0.9))
+     practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
+     
+     # Add capabilities with restrictions
+     telekinesis = MetaphysicalCapability(
+         "Telekinesis",
+         CapabilityType.TELEKINESIS,
+diff --git a/philosophical_framework.py b/philosophical_framework.py
+index c99d0ce68917c0af7a0bba8f176afb52f8bd8bd5..65fa7bd8528a6a301d892329f88a50766aa814e9 100644
+--- a/philosophical_framework.py
++++ b/philosophical_framework.py
+@@ -1,36 +1,36 @@
+ """
+ Philosophical Framework Module
+ Theoretical underpinnings for restricting metaphysical capabilities.
+ 
+ This module explores how various philosophical and physical principles
+ can naturally limit magical and supernatural abilities.
+ """
+ 
+ from enum import Enum
+ from dataclasses import dataclass
+-from typing import List, Dict
++from typing import List
+ 
+ 
+ class PhilosophicalPrinciple(Enum):
+     """Core philosophical principles limiting metaphysical abilities."""
+     
+     CONSERVATION = "conservation_of_energy"
+     """Energy cannot be created or destroyed, only transformed."""
+     
+     ENTROPY = "thermodynamic_entropy"
+     """All systems tend toward disorder. Order-creating acts cost energy."""
+     
+     CAUSALITY = "causality"
+     """Causes must precede effects. Temporal loops are forbidden."""
+     
+     CONSCIOUSNESS = "consciousness_anchor"
+     """Metaphysical acts require conscious will and mental focus."""
+     
+     IDENTITY = "personal_identity"
+     """The self is continuous. Mind transfers violate personal continuity."""
+     
+     INFORMATION = "conservation_of_information"
+     """Information cannot be truly destroyed or created ex nihilo."""
+     
+     LOCALITY = "locality_principle"
+     """Mind/consciousness is anchored to a specific location or body."""
+@@ -319,37 +319,37 @@ def get_framework_for_capability(capability_type: str) -> List[PhilosophicalFram
+     
+     applicable = [f for f in frameworks if capability_type in f.applied_to
+                  or "all_abilities" in f.applied_to]
+     return applicable
+ 
+ 
+ def print_framework_analysis(capability_type: str):
+     """Print detailed analysis of restrictions on a capability."""
+     print(f"\n{'='*70}")
+     print(f"PHILOSOPHICAL RESTRICTIONS: {capability_type.upper()}")
+     print(f"{'='*70}\n")
+     
+     frameworks = get_framework_for_capability(capability_type)
+     
+     if not frameworks:
+         print(f"No restrictions found for {capability_type}")
+         return
+     
+     for framework in frameworks:
+         print(f"\n{framework.principle.value.upper()}")
+         print(f"{'-'*70}")
+         print(f"Description: {framework.description}")
+         print(f"\nSeverity Justification: {framework.severity_justification}")
+         
+         if framework.exceptions:
+-            print(f"\nExceptions:")
++            print("\nExceptions:")
+             for exc in framework.exceptions:
+                 print(f"  • {exc}")
+ 
+ 
+ # Example usage
+ if __name__ == "__main__":
+     print("Philosophical Framework Examples:")
+     print_framework_analysis("reality_warping")
+     print_framework_analysis("telekinesis")
+     print_framework_analysis("telepathy")
+     print_framework_analysis("time_manipulation")
+diff --git a/philosophical_framework.py b/philosophical_framework.py
+index c99d0ce68917c0af7a0bba8f176afb52f8bd8bd5..65fa7bd8528a6a301d892329f88a50766aa814e9 100644
+--- a/philosophical_framework.py
++++ b/philosophical_framework.py
+@@ -1,36 +1,36 @@
+ """
+ Philosophical Framework Module
+ Theoretical underpinnings for restricting metaphysical capabilities.
+ 
+ This module explores how various philosophical and physical principles
+ can naturally limit magical and supernatural abilities.
+ """
+ 
+ from enum import Enum
+ from dataclasses import dataclass
+-from typing import List, Dict
++from typing import List
+ 
+ 
+ class PhilosophicalPrinciple(Enum):
+     """Core philosophical principles limiting metaphysical abilities."""
+     
+     CONSERVATION = "conservation_of_energy"
+     """Energy cannot be created or destroyed, only transformed."""
+     
+     ENTROPY = "thermodynamic_entropy"
+     """All systems tend toward disorder. Order-creating acts cost energy."""
+     
+     CAUSALITY = "causality"
+     """Causes must precede effects. Temporal loops are forbidden."""
+     
+     CONSCIOUSNESS = "consciousness_anchor"
+     """Metaphysical acts require conscious will and mental focus."""
+     
+     IDENTITY = "personal_identity"
+     """The self is continuous. Mind transfers violate personal continuity."""
+     
+     INFORMATION = "conservation_of_information"
+     """Information cannot be truly destroyed or created ex nihilo."""
+     
+     LOCALITY = "locality_principle"
+     """Mind/consciousness is anchored to a specific location or body."""
+@@ -319,37 +319,37 @@ def get_framework_for_capability(capability_type: str) -> List[PhilosophicalFram
+     
+     applicable = [f for f in frameworks if capability_type in f.applied_to
+                  or "all_abilities" in f.applied_to]
+     return applicable
+ 
+ 
+ def print_framework_analysis(capability_type: str):
+     """Print detailed analysis of restrictions on a capability."""
+     print(f"\n{'='*70}")
+     print(f"PHILOSOPHICAL RESTRICTIONS: {capability_type.upper()}")
+     print(f"{'='*70}\n")
+     
+     frameworks = get_framework_for_capability(capability_type)
+     
+     if not frameworks:
+         print(f"No restrictions found for {capability_type}")
+         return
+     
+     for framework in frameworks:
+         print(f"\n{framework.principle.value.upper()}")
+         print(f"{'-'*70}")
+         print(f"Description: {framework.description}")
+         print(f"\nSeverity Justification: {framework.severity_justification}")
+         
+         if framework.exceptions:
+-            print(f"\nExceptions:")
++            print("\nExceptions:")
+             for exc in framework.exceptions:
+                 print(f"  • {exc}")
+ 
+ 
+ # Example usage
+ if __name__ == "__main__":
+     print("Philosophical Framework Examples:")
+     print_framework_analysis("reality_warping")
+     print_framework_analysis("telekinesis")
+     print_framework_analysis("telepathy")
+     print_framework_analysis("time_manipulation")
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..8295f932e413c5750f0f621f44f9ed856ec33c5b 100644
+--- a/examples.py
++++ b/examples.py
+@@ -107,51 +107,51 @@ def example_3_philosophical_frameworks():
+         can_use, reason = practitioner.can_use_capability(capability)
+         status = "✓ ALLOWED" if can_use else "✗ RESTRICTED"
+         print(f"\n{capability.name}: {status}")
+         print(f"  Reason: {reason}")
+ 
+ 
+ def example_4_reality_warper():
+     """Example 4: Heavily restricted reality warping."""
+     print("\n" + "="*70)
+     print("EXAMPLE 4: Reality Warper with Heavy Restrictions")
+     print("="*70)
+     
+     practitioner = create_restricted_reality_warper()
+     print(practitioner.get_status())
+     
+     # Attempt to use reality warping
+     reality_warp = practitioner.capabilities[0]
+     
+     print("\n--- Attempting Reality Warp ---")
+     can_use, reason = practitioner.can_use_capability(reality_warp)
+     print(f"Can use: {can_use}")
+     print(f"Reason: {reason}")
+     
+     if can_use:
+         result = practitioner.use_capability(reality_warp)
+-        print(f"\nResult:")
++        print("\nResult:")
+         print(f"  Success: {result['success']}")
+         print(f"  Power used: {result['power_used']:.1f}")
+         print(f"  Energy consumed: {result['energy_consumed']:.1f}")
+ 
+ 
+ def example_5_consciousness_degradation():
+     """Example 5: How consciousness level affects ability usage."""
+     print("\n" + "="*70)
+     print("EXAMPLE 5: Consciousness-Dependent Restrictions")
+     print("="*70)
+     
+     practitioner = MetaphysicalPractitioner(
+         "Meditation Master",
+         consciousness_level=1.0,
+         max_energy=200.0,
+         energy_pool=200.0
+     )
+     practitioner.add_framework(ConsciousnessAnchorFramework(consciousness_threshold=0.5))
+     
+     # Add a high-level telepathy ability
+     telepathy = MetaphysicalCapability(
+         "Mind Meld",
+         CapabilityType.TELEPATHY,
+         base_power_level=70.0
+     )
+@@ -227,51 +227,51 @@ def example_7_restriction_modification():
+     
+     print(f"Initial power: {ability.get_effective_power():.1f}")
+     
+     # Add restrictions due to environmental factors
+     print("\n--- Adding Environmental Restrictions ---")
+     
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+     
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+     
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+-        print(f"Removed entropy cost restriction")
++        print("Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/integration_patterns.py b/integration_patterns.py
+index d0d9384c76e3a5198104d495b00d68fea9ead922..325565883d954f60c3558dc35c4435764f25123d 100644
+--- a/integration_patterns.py
++++ b/integration_patterns.py
+@@ -1,36 +1,35 @@
+ """
+ Advanced Integration Guide
+ Real-world patterns for using the metaphysical restriction system
+ in games, stories, and theoretical models.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalPractitioner, MetaphysicalCapability,
+     RestrictionRule, RestrictionType, CapabilityType,
+-    ConservationOfEnergyFramework, EntropicDecayFramework,
+-    CausalityFramework, ConsciousnessAnchorFramework
++    ConservationOfEnergyFramework
+ )
+ 
+ 
+ # ============================================================================
+ # PATTERN 1: RPG SPELL SYSTEM
+ # ============================================================================
+ 
+ class RPGSpellSystem:
+     """Integration pattern for traditional RPG magic systems (D&D-style)."""
+     
+     def __init__(self, player_name: str, spell_slots: int = 10):
+         self.practitioner = MetaphysicalPractitioner(
+             name=player_name,
+             energy_pool=float(spell_slots * 10),
+             max_energy=float(spell_slots * 10)
+         )
+         self.practitioner.add_framework(ConservationOfEnergyFramework(spell_slots * 10))
+         self.spell_slots = spell_slots
+         self.cast_history = []
+     
+     def add_spell(self, name: str, level: int, effect: str) -> MetaphysicalCapability:
+         """Add a standard RPG spell to the spellbook."""
+         # Spell power = spell level * 10
+         spell = MetaphysicalCapability(
+             name=name,
+@@ -241,53 +240,53 @@ class GameBalancer:
+         elif balance > 20:
+             return "✗ Very overpowered - add significant restrictions"
+         else:
+             return "✗ Severely overpowered - redesign restrictions completely"
+     
+     @staticmethod
+     def power_audit(practitioner: MetaphysicalPractitioner) -> str:
+         """Generate a detailed power audit."""
+         audit = f"\nPower Audit for {practitioner.name}\n"
+         audit += "=" * 50 + "\n"
+         
+         audit += f"Balance Score: {GameBalancer.calculate_balance_score(practitioner):.1f}/100\n"
+         audit += f"Recommendation: {GameBalancer.suggest_rebalance(practitioner)}\n\n"
+         
+         audit += "Capability Analysis:\n"
+         audit += "-" * 50 + "\n"
+         
+         for cap in practitioner.capabilities:
+             audit += f"\n{cap.name}:\n"
+             audit += f"  Base Power: {cap.base_power_level:.1f}\n"
+             audit += f"  Effective Power: {cap.get_effective_power():.1f}\n"
+             audit += f"  Restriction Severity: {cap.get_total_restriction_severity():.1%}\n"
+             audit += f"  Number of Restrictions: {len(cap.restrictions)}\n"
+             
+             if cap.get_effective_power() > 50:
+-                audit += f"  ⚠ WARNING: High effective power\n"
++                audit += "  ⚠ WARNING: High effective power\n"
+             if len(cap.restrictions) == 0:
+-                audit += f"  ⚠ WARNING: No restrictions\n"
++                audit += "  ⚠ WARNING: No restrictions\n"
+         
+         return audit
+ 
+ 
+ # ============================================================================
+ # PATTERN 4: NARRATIVE SYSTEM
+ # ============================================================================
+ 
+ class NarrativeAbilitySystem:
+     """Integration for storytelling and narrative games."""
+     
+     def __init__(self, character_name: str):
+         self.character = MetaphysicalPractitioner(
+             name=character_name,
+             consciousness_level=1.0,
+             energy_pool=100.0,
+             max_energy=100.0
+         )
+         self.events = []
+         self.story_beats = []
+     
+     def traumatic_event(self):
+         """Traumatic event reduces consciousness (narrative consequence)."""
+         reduction = 0.2
+         self.character.consciousness_level = max(
+@@ -346,51 +345,51 @@ class NarrativeAbilitySystem:
+             (0.6, 0.8): "Slightly distracted",
+             (0.4, 0.6): "Struggling to concentrate",
+             (0.2, 0.4): "Severely weakened",
+             (0.0, 0.2): "Nearly broken",
+         }
+         
+         for (low, high), desc in consciousness_desc.items():
+             if low <= self.character.consciousness_level < high:
+                 status += f"Mental State: {desc} ({self.character.consciousness_level:.0%})\n"
+                 break
+         
+         energy_desc = {
+             (0.8, 1.0): "Full of energy",
+             (0.6, 0.8): "Moderately tired",
+             (0.4, 0.6): "Quite exhausted",
+             (0.2, 0.4): "Nearly drained",
+             (0.0, 0.2): "On the verge of collapse",
+         }
+         
+         energy_ratio = self.character.energy_pool / self.character.max_energy
+         for (low, high), desc in energy_desc.items():
+             if low <= energy_ratio < high:
+                 status += f"Physical State: {desc} ({energy_ratio:.0%})\n"
+                 break
+         
+-        status += f"\nAbilities Available: "
++        status += "\nAbilities Available: "
+         available = sum(1 for p in self.character.capabilities 
+                        if self.character.can_use_capability(p)[0])
+         status += f"{available}/{len(self.character.capabilities)}\n"
+         
+         return status
+ 
+ 
+ # ============================================================================
+ # DEMONSTRATION
+ # ============================================================================
+ 
+ def demo_patterns():
+     """Demonstrate all integration patterns."""
+     
+     print("\n" + "="*70)
+     print("INTEGRATION PATTERNS DEMONSTRATION")
+     print("="*70)
+     
+     # Pattern 1: RPG Spell System
+     print("\n--- PATTERN 1: RPG Spell System ---")
+     spellbook = RPGSpellSystem("Gandalf", spell_slots=15)
+     spellbook.add_spell("Fireball", 3, "damage")
+     spellbook.add_spell("Magic Missile", 1, "damage")
+     spellbook.add_spell("Shield", 1, "defense")
+     
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..1d92ae475db406db474ee799f1b3a65e70b89658 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -1,37 +1,36 @@
+ """
+ Metaphysical Capabilities Restriction System
+ 
+ A combined game mechanics and philosophical framework for restricting
+ supernatural, magical, and metaphysical abilities.
+ """
+ 
+ from enum import Enum
+ from dataclasses import dataclass, field
+-from typing import List, Dict, Optional, Callable
++from typing import List, Dict, Optional
+ from abc import ABC, abstractmethod
+-import json
+ 
+ 
+ class CapabilityType(Enum):
+     """Categories of metaphysical capabilities."""
+     TELEKINESIS = "telekinesis"
+     TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+ 
+ 
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+     PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+     CONSERVATION_LAW = "conservation_law"
+@@ -242,51 +241,51 @@ class MetaphysicalPractitioner:
+             "capability": capability.name,
+             "reason": reason,
+             "power_used": 0.0,
+             "energy_consumed": 0.0
+         }
+ 
+         if can_use:
+             power_used = capability.get_effective_power()
+             energy_consumed = capability.base_power_level * 0.5
+             
+             self.energy_pool -= energy_consumed
+             capability.use_count += 1
+             
+             result["power_used"] = power_used
+             result["energy_consumed"] = energy_consumed
+             result["remaining_energy"] = self.energy_pool
+ 
+         return result
+ 
+     def get_status(self) -> str:
+         """Get current status of the practitioner."""
+         status = f"\n=== {self.name} ===\n"
+         status += f"Consciousness: {self.consciousness_level:.1%}\n"
+         status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
+         status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+-        status += f"\nCapabilities:\n"
++        status += "\nCapabilities:\n"
+         
+         for cap in self.capabilities:
+             status += f"  • {cap}\n"
+             if cap.restrictions:
+                 for restriction in cap.restrictions:
+                     status += f"    - {restriction}\n"
+         
+         return status
+ 
+ 
+ # Utility functions for common restriction setups
+ 
+ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+     """Create a well-balanced magic system with standard restrictions."""
+     practitioner = MetaphysicalPractitioner("Balanced Mage")
+     
+     # Add frameworks
+     practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+     practitioner.add_framework(EntropicDecayFramework(0.9))
+     practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
+     
+     # Add capabilities with restrictions
+     telekinesis = MetaphysicalCapability(
+         "Telekinesis",
+         CapabilityType.TELEKINESIS,
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..1d92ae475db406db474ee799f1b3a65e70b89658 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -1,37 +1,36 @@
+ """
+ Metaphysical Capabilities Restriction System
+ 
+ A combined game mechanics and philosophical framework for restricting
+ supernatural, magical, and metaphysical abilities.
+ """
+ 
+ from enum import Enum
+ from dataclasses import dataclass, field
+-from typing import List, Dict, Optional, Callable
++from typing import List, Dict, Optional
+ from abc import ABC, abstractmethod
+-import json
+ 
+ 
+ class CapabilityType(Enum):
+     """Categories of metaphysical capabilities."""
+     TELEKINESIS = "telekinesis"
+     TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+ 
+ 
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+     PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+     CONSERVATION_LAW = "conservation_law"
+@@ -242,51 +241,51 @@ class MetaphysicalPractitioner:
+             "capability": capability.name,
+             "reason": reason,
+             "power_used": 0.0,
+             "energy_consumed": 0.0
+         }
+ 
+         if can_use:
+             power_used = capability.get_effective_power()
+             energy_consumed = capability.base_power_level * 0.5
+             
+             self.energy_pool -= energy_consumed
+             capability.use_count += 1
+             
+             result["power_used"] = power_used
+             result["energy_consumed"] = energy_consumed
+             result["remaining_energy"] = self.energy_pool
+ 
+         return result
+ 
+     def get_status(self) -> str:
+         """Get current status of the practitioner."""
+         status = f"\n=== {self.name} ===\n"
+         status += f"Consciousness: {self.consciousness_level:.1%}\n"
+         status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
+         status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+-        status += f"\nCapabilities:\n"
++        status += "\nCapabilities:\n"
+         
+         for cap in self.capabilities:
+             status += f"  • {cap}\n"
+             if cap.restrictions:
+                 for restriction in cap.restrictions:
+                     status += f"    - {restriction}\n"
+         
+         return status
+ 
+ 
+ # Utility functions for common restriction setups
+ 
+ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+     """Create a well-balanced magic system with standard restrictions."""
+     practitioner = MetaphysicalPractitioner("Balanced Mage")
+     
+     # Add frameworks
+     practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+     practitioner.add_framework(EntropicDecayFramework(0.9))
+     practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
+     
+     # Add capabilities with restrictions
+     telekinesis = MetaphysicalCapability(
+         "Telekinesis",
+         CapabilityType.TELEKINESIS,
+diff --git a/philosophical_framework.py b/philosophical_framework.py
+index c99d0ce68917c0af7a0bba8f176afb52f8bd8bd5..65fa7bd8528a6a301d892329f88a50766aa814e9 100644
+--- a/philosophical_framework.py
++++ b/philosophical_framework.py
+@@ -1,36 +1,36 @@
+ """
+ Philosophical Framework Module
+ Theoretical underpinnings for restricting metaphysical capabilities.
+ 
+ This module explores how various philosophical and physical principles
+ can naturally limit magical and supernatural abilities.
+ """
+ 
+ from enum import Enum
+ from dataclasses import dataclass
+-from typing import List, Dict
++from typing import List
+ 
+ 
+ class PhilosophicalPrinciple(Enum):
+     """Core philosophical principles limiting metaphysical abilities."""
+     
+     CONSERVATION = "conservation_of_energy"
+     """Energy cannot be created or destroyed, only transformed."""
+     
+     ENTROPY = "thermodynamic_entropy"
+     """All systems tend toward disorder. Order-creating acts cost energy."""
+     
+     CAUSALITY = "causality"
+     """Causes must precede effects. Temporal loops are forbidden."""
+     
+     CONSCIOUSNESS = "consciousness_anchor"
+     """Metaphysical acts require conscious will and mental focus."""
+     
+     IDENTITY = "personal_identity"
+     """The self is continuous. Mind transfers violate personal continuity."""
+     
+     INFORMATION = "conservation_of_information"
+     """Information cannot be truly destroyed or created ex nihilo."""
+     
+     LOCALITY = "locality_principle"
+     """Mind/consciousness is anchored to a specific location or body."""
+@@ -319,37 +319,37 @@ def get_framework_for_capability(capability_type: str) -> List[PhilosophicalFram
+     
+     applicable = [f for f in frameworks if capability_type in f.applied_to
+                  or "all_abilities" in f.applied_to]
+     return applicable
+ 
+ 
+ def print_framework_analysis(capability_type: str):
+     """Print detailed analysis of restrictions on a capability."""
+     print(f"\n{'='*70}")
+     print(f"PHILOSOPHICAL RESTRICTIONS: {capability_type.upper()}")
+     print(f"{'='*70}\n")
+     
+     frameworks = get_framework_for_capability(capability_type)
+     
+     if not frameworks:
+         print(f"No restrictions found for {capability_type}")
+         return
+     
+     for framework in frameworks:
+         print(f"\n{framework.principle.value.upper()}")
+         print(f"{'-'*70}")
+         print(f"Description: {framework.description}")
+         print(f"\nSeverity Justification: {framework.severity_justification}")
+         
+         if framework.exceptions:
+-            print(f"\nExceptions:")
++            print("\nExceptions:")
+             for exc in framework.exceptions:
+                 print(f"  • {exc}")
+ 
+ 
+ # Example usage
+ if __name__ == "__main__":
+     print("Philosophical Framework Examples:")
+     print_framework_analysis("reality_warping")
+     print_framework_analysis("telekinesis")
+     print_framework_analysis("telepathy")
+     print_framework_analysis("time_manipulation")
