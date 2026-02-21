@@ -9357,3 +9357,1730 @@ index 0000000000000000000000000000000000000000..89fc75f8b1ac01a7e6f28f4fef6ae911
 +
 +if __name__ == "__main__":
 +    unittest.main()
+diff --git a/telemetry_cyber_guard.py b/telemetry_cyber_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4362412215ffe4b174335f6456ea93155245e85a
+--- /dev/null
++++ b/telemetry_cyber_guard.py
+@@ -0,0 +1,129 @@
++"""CLI cybersecurity utility for process-local telemetry hardening.
++
++This script uses `telemetry_restrictions` to:
++- apply telemetry-focused environment overrides,
++- optionally activate in-process host blocking,
++- audit active policy state,
++- probe whether a host would be blocked.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import socket
++from typing import Iterable, List
++
++from telemetry_restrictions import (
++    TelemetryBlockedError,
++    TelemetryPolicy,
++    activate_network_block,
++    apply_env_restrictions,
++    audit_policy_state,
++    deactivate_network_block,
++    merge_policies,
++)
++
++
++def parse_csv_hosts(csv: str) -> List[str]:
++    """Parse a comma-separated host string into a normalized list (raw form)."""
++    return [item.strip() for item in csv.split(",") if item.strip()]
++
++
++def build_policy(extra_hosts: Iterable[str], strict_mode: bool) -> TelemetryPolicy:
++    """Build a policy optionally extended for stricter telemetry controls."""
++    base_policy = TelemetryPolicy()
++
++    strict_policy = TelemetryPolicy(
++        env_overrides={
++            "OTEL_SDK_DISABLED": "true",
++            "SCARF_ANALYTICS": "false",
++            "CHECKPOINT_DISABLE_TELEMETRY": "1",
++        },
++        blocked_hosts={
++            "api.segment.io",
++            "api.mixpanel.com",
++            "ingest.sentry.io",
++        },
++    )
++
++    extras_policy = TelemetryPolicy(env_overrides={}, blocked_hosts=set(extra_hosts))
++
++    if strict_mode:
++        return merge_policies(base_policy, strict_policy, extras_policy)
++    return merge_policies(base_policy, extras_policy)
++
++
++def probe_hosts(policy: TelemetryPolicy, hosts: Iterable[str]) -> List[dict]:
++    """Attempt DNS resolution for hosts and report allowed/blocked/error status."""
++    results = []
++
++    activate_network_block(policy)
++    try:
++        for host in hosts:
++            try:
++                socket.getaddrinfo(host, 443)
++            except TelemetryBlockedError as exc:
++                results.append({"host": host, "status": "blocked", "detail": str(exc)})
++            except OSError as exc:
++                # DNS/network issues are environment-dependent; keep visible.
++                results.append({"host": host, "status": "error", "detail": str(exc)})
++            else:
++                results.append({"host": host, "status": "allowed", "detail": "resolved"})
++    finally:
++        deactivate_network_block()
++
++    return results
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser(description="Process-local telemetry cybersecurity guard")
++    parser.add_argument("--strict", action="store_true", help="Enable stricter telemetry defaults")
++    parser.add_argument(
++        "--extra-blocked-hosts",
++        default="",
++        help="Comma-separated hosts to add to blocked host set",
++    )
++    parser.add_argument(
++        "--probe-hosts",
++        default="",
++        help="Comma-separated hosts to probe against the telemetry block",
++    )
++    parser.add_argument("--no-network-block", action="store_true", help="Skip network blocking activation")
++
++    args = parser.parse_args()
++
++    extra_hosts = parse_csv_hosts(args.extra_blocked_hosts)
++    probe_targets = parse_csv_hosts(args.probe_hosts)
++
++    policy = build_policy(extra_hosts=extra_hosts, strict_mode=args.strict)
++
++    apply_env_restrictions(policy)
++
++    if not args.no_network_block:
++        activate_network_block(policy)
++
++    try:
++        report = audit_policy_state(policy)
++        output = {
++            "summary": {
++                "env_overrides": len(policy.env_overrides),
++                "blocked_hosts": len(policy.blocked_hosts),
++                "network_block_active": report["network_block_active"],
++                "network_block_refcount": report["network_block_refcount"],
++            },
++            "audit": report,
++        }
++
++        if probe_targets:
++            output["probe_results"] = probe_hosts(policy, probe_targets)
++
++        print(json.dumps(output, indent=2, sort_keys=True))
++        return 0
++    finally:
++        if not args.no_network_block:
++            deactivate_network_block()
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/telemetry_data_hygiene.rb b/telemetry_data_hygiene.rb
+new file mode 100644
+index 0000000000000000000000000000000000000000..a999c8ea2ea59c5a1dfb0186609a5171fefa1573
+--- /dev/null
++++ b/telemetry_data_hygiene.rb
+@@ -0,0 +1,149 @@
++#!/usr/bin/env ruby
++# frozen_string_literal: true
++
++# Safe telemetry data hygiene utility.
++#
++# Purpose:
++# - Remove low-quality telemetry records (placeholder/placebo/test rows)
++# - Redact sensitive-like fields from retained records
++# - Operate only on caller-provided files (no system-wide deletion)
++#
++# Usage:
++#   ruby telemetry_data_hygiene.rb --input in.jsonl --output out.jsonl --report report.json
++#   ruby telemetry_data_hygiene.rb --input in.jsonl --output out.jsonl --dry-run
++
++require 'json'
++require 'optparse'
++require 'time'
++
++module TelemetryDataHygiene
++  PLACEHOLDER_MARKERS = %w[
++    placeholder
++    placebo
++    dummy
++    synthetic
++    mock
++    test_record
++  ].freeze
++
++  REDACT_FIELDS = %w[
++    biometric_signature
++    neural_pattern
++    dna_hash
++    private_notes
++  ].freeze
++
++  module_function
++
++  def marker_record?(record)
++    blob = [
++      record['type'],
++      record['category'],
++      record['source'],
++      Array(record['tags']).join(' '),
++      record['label'],
++      record['notes']
++    ].compact.join(' ').downcase
++
++    PLACEHOLDER_MARKERS.any? { |marker| blob.include?(marker) }
++  end
++
++  def suspicious_capability_record?(record)
++    capability_fields = %w[power_transfer power_extraction capability_drain human_override]
++    capability_fields.any? do |field|
++      value = record[field]
++      value == true || value.to_s.downcase == 'true'
++    end
++  end
++
++  def redact_record(record)
++    sanitized = record.dup
++    REDACT_FIELDS.each do |field|
++      sanitized[field] = '[REDACTED]' if sanitized.key?(field)
++    end
++    sanitized
++  end
++
++  def process_records(records)
++    kept = []
++    dropped = []
++
++    records.each do |record|
++      if marker_record?(record)
++        dropped << { reason: 'placeholder_or_placebo_marker', id: record['id'] }
++        next
++      end
++
++      if suspicious_capability_record?(record)
++        dropped << { reason: 'suspicious_capability_flag', id: record['id'] }
++        next
++      end
++
++      kept << redact_record(record)
++    end
++
++    [kept, dropped]
++  end
++
++  def load_jsonl(path)
++    File.readlines(path, chomp: true).reject(&:empty?).map { |line| JSON.parse(line) }
++  end
++
++  def write_jsonl(path, rows)
++    File.open(path, 'w') do |f|
++      rows.each { |row| f.puts(JSON.generate(row)) }
++    end
++  end
++
++  def run!(input:, output:, report_path: nil, dry_run: false)
++    records = load_jsonl(input)
++    kept, dropped = process_records(records)
++
++    write_jsonl(output, kept) unless dry_run
++
++    report = {
++      timestamp_utc: Time.now.utc.iso8601,
++      input_records: records.length,
++      output_records: kept.length,
++      dropped_records: dropped.length,
++      dropped_reasons: dropped.group_by { |r| r[:reason] }.transform_values(&:length),
++      dropped_ids: dropped.map { |r| r[:id] }.compact
++    }
++
++    File.write(report_path, JSON.pretty_generate(report)) if report_path
++
++    report
++  end
++end
++
++if $PROGRAM_NAME == __FILE__
++  options = {
++    dry_run: false,
++    report_path: nil
++  }
++
++  parser = OptionParser.new do |opts|
++    opts.banner = 'Usage: telemetry_data_hygiene.rb --input INPUT --output OUTPUT [options]'
++
++    opts.on('--input PATH', 'Input JSONL path') { |v| options[:input] = v }
++    opts.on('--output PATH', 'Output JSONL path') { |v| options[:output] = v }
++    opts.on('--report PATH', 'Write JSON report to file') { |v| options[:report_path] = v }
++    opts.on('--dry-run', 'Do not write output data') { options[:dry_run] = true }
++  end
++
++  parser.parse!
++
++  unless options[:input] && options[:output]
++    warn parser.to_s
++    exit(1)
++  end
++
++  report = TelemetryDataHygiene.run!(
++    input: options[:input],
++    output: options[:output],
++    report_path: options[:report_path],
++    dry_run: options[:dry_run]
++  )
++
++  puts JSON.pretty_generate(report)
++end
+diff --git a/telemetry_defense_guard.rb b/telemetry_defense_guard.rb
+new file mode 100644
+index 0000000000000000000000000000000000000000..b996a62f1c373d1391eab02ae4466f6ecee7dd10
+--- /dev/null
++++ b/telemetry_defense_guard.rb
+@@ -0,0 +1,280 @@
++#!/usr/bin/env ruby
++# frozen_string_literal: true
++
++# Defensive, process-local telemetry hardening for Ruby runtimes.
++#
++# What this does:
++# - Enforces telemetry opt-out environment variables.
++# - Blocks DNS resolution to configured telemetry hosts/subdomains.
++# - Runs tamper watchdog checks for env + network hook integrity.
++# - Emits tamper events to an append-only local log.
++#
++# What this does NOT do:
++# - It cannot guarantee global/system-wide prevention by itself.
++# - It only protects the current process unless integrated by launcher/service.
++
++require 'digest'
++require 'json'
++require 'socket'
++require 'thread'
++require 'time'
++
++module TelemetryDefenseGuard
++  class TelemetryBlockedError < StandardError; end
++
++  class TamperDetectedError < StandardError; end
++
++  DEFAULT_ENV_OVERRIDES = {
++    'DO_NOT_TRACK' => '1',
++    'OTEL_SDK_DISABLED' => 'true',
++    'CHECKPOINT_DISABLE_TELEMETRY' => '1',
++    'SENTRY_DSN' => '',
++    'SEGMENT_WRITE_KEY' => '',
++    'AMPLITUDE_API_KEY' => '',
++    'POSTHOG_DISABLED' => '1'
++  }.freeze
++
++  DEFAULT_BLOCKED_HOSTS = %w[
++    segment.io
++    mixpanel.com
++    sentry.io
++    plausible.io
++    amplitude.com
++    posthog.com
++    telemetry.pypi.org
++  ].freeze
++
++  State = Struct.new(
++    :env_before,
++    :policy,
++    :original_socket_method,
++    :network_active,
++    :watchdog_thread,
++    :watchdog_stop,
++    :lock,
++    keyword_init: true
++  )
++
++  module_function
++
++  def build_policy(env_overrides: {}, blocked_hosts: [])
++    merged_env = DEFAULT_ENV_OVERRIDES.merge(stringify_hash(env_overrides))
++    merged_hosts = (DEFAULT_BLOCKED_HOSTS + blocked_hosts.map { |h| normalize_host(h) }).reject(&:empty?).uniq
++
++    {
++      env_overrides: merged_env.freeze,
++      blocked_hosts: merged_hosts.freeze,
++      integrity_hash: Digest::SHA256.hexdigest(JSON.generate({ env: merged_env, hosts: merged_hosts }))
++    }.freeze
++  end
++
++  def activate!(policy: build_policy, tamper_log: 'telemetry_tamper.log', watchdog_interval: 0.5)
++    state = State.new(
++      env_before: {},
++      policy: policy,
++      original_socket_method: Socket.method(:getaddrinfo),
++      network_active: false,
++      watchdog_stop: false,
++      lock: Mutex.new
++    )
++
++    enforce_env!(state)
++    install_network_block!(state)
++    start_watchdog!(state, tamper_log: tamper_log, interval: watchdog_interval)
++    trap_signals!(state, tamper_log: tamper_log)
++
++    state
++  end
++
++  def deactivate!(state)
++    state.lock.synchronize do
++      restore_env!(state)
++      restore_network_block!(state)
++      stop_watchdog!(state)
++    end
++  end
++
++  def audit(state)
++    env_status = {}
++    state.policy[:env_overrides].each do |k, expected|
++      actual = ENV[k]
++      env_status[k] = { expected: expected, actual: actual, active: (actual == expected) }
++    end
++
++    {
++      env: env_status,
++      blocked_hosts: state.policy[:blocked_hosts],
++      network_block_active: state.network_active,
++      policy_integrity_hash: state.policy[:integrity_hash]
++    }
++  end
++
++  def probe_host(host)
++    Socket.getaddrinfo(host, 443)
++    { host: host, status: 'allowed' }
++  rescue TelemetryBlockedError => e
++    { host: host, status: 'blocked', detail: e.message }
++  rescue StandardError => e
++    { host: host, status: 'error', detail: e.message }
++  end
++
++  def run_cli!
++    strict_hosts = (ENV['TDG_EXTRA_BLOCKED_HOSTS'] || '').split(',').map(&:strip).reject(&:empty?)
++    policy = build_policy(blocked_hosts: strict_hosts)
++    state = activate!(policy: policy)
++
++    at_exit { deactivate!(state) }
++
++    output = {
++      summary: {
++        blocked_hosts: policy[:blocked_hosts].length,
++        env_overrides: policy[:env_overrides].length,
++        network_block_active: state.network_active
++      },
++      audit: audit(state)
++    }
++
++    probe = (ENV['TDG_PROBE_HOSTS'] || '').split(',').map(&:strip).reject(&:empty?)
++    output[:probe_results] = probe.map { |h| probe_host(h) } unless probe.empty?
++
++    puts JSON.pretty_generate(output)
++  end
++
++  def enforce_env!(state)
++    state.policy[:env_overrides].each do |key, value|
++      state.env_before[key] = ENV[key] if ENV.key?(key)
++      ENV[key] = value
++    end
++  end
++  private_class_method :enforce_env!
++
++  def restore_env!(state)
++    state.policy[:env_overrides].each_key do |key|
++      if state.env_before.key?(key)
++        ENV[key] = state.env_before[key]
++      else
++        ENV.delete(key)
++      end
++    end
++  end
++  private_class_method :restore_env!
++
++  def install_network_block!(state)
++    return if state.network_active
++
++    blocked = state.policy[:blocked_hosts]
++
++    Socket.singleton_class.class_eval do
++      define_method(:getaddrinfo) do |host, *args|
++        normalized = TelemetryDefenseGuard.normalize_host(host)
++        if TelemetryDefenseGuard.blocked?(normalized, blocked)
++          raise TelemetryDefenseGuard::TelemetryBlockedError, "Blocked telemetry destination: #{host}"
++        end
++
++        Socket.method(:__tdg_original_getaddrinfo).call(host, *args)
++      end
++    end
++
++    Socket.singleton_class.class_eval do
++      define_method(:__tdg_original_getaddrinfo, &state.original_socket_method)
++    end
++
++    state.network_active = true
++  end
++  private_class_method :install_network_block!
++
++  def restore_network_block!(state)
++    return unless state.network_active
++
++    original = state.original_socket_method
++    Socket.singleton_class.class_eval do
++      define_method(:getaddrinfo, &original)
++      remove_method(:__tdg_original_getaddrinfo) if method_defined?(:__tdg_original_getaddrinfo)
++    end
++
++    state.network_active = false
++  end
++  private_class_method :restore_network_block!
++
++  def start_watchdog!(state, tamper_log:, interval:)
++    state.watchdog_thread = Thread.new do
++      Thread.current.abort_on_exception = false
++
++      until state.watchdog_stop
++        begin
++          verify_integrity!(state)
++        rescue TamperDetectedError => e
++          append_tamper_log(tamper_log, e.message)
++        end
++        sleep(interval)
++      end
++    end
++  end
++  private_class_method :start_watchdog!
++
++  def stop_watchdog!(state)
++    return unless state.watchdog_thread
++
++    state.watchdog_stop = true
++    state.watchdog_thread.join(1)
++    state.watchdog_thread = nil
++  end
++  private_class_method :stop_watchdog!
++
++  def verify_integrity!(state)
++    state.policy[:env_overrides].each do |k, v|
++      next if ENV[k] == v
++
++      ENV[k] = v
++      raise TamperDetectedError, "Env override tampered and restored: #{k}"
++    end
++
++    unless Socket.method(:getaddrinfo).owner == Socket.singleton_class
++      raise TamperDetectedError, 'Socket.getaddrinfo hook tampered'
++    end
++  end
++  private_class_method :verify_integrity!
++
++  def trap_signals!(state, tamper_log:)
++    %w[INT TERM].each do |sig|
++      Signal.trap(sig) do
++        append_tamper_log(tamper_log, "Received signal #{sig}; shutting down guard")
++        deactivate!(state)
++        exit(0)
++      end
++    end
++  rescue ArgumentError
++    # Signal unavailable on current platform/runtime.
++  end
++  private_class_method :trap_signals!
++
++  def append_tamper_log(path, message)
++    File.open(path, 'a') do |f|
++      f.puts("#{Time.now.utc.iso8601} #{message}")
++    end
++  rescue StandardError
++    nil
++  end
++  private_class_method :append_tamper_log
++
++  def blocked?(normalized_host, blocked_hosts)
++    blocked_hosts.any? do |blocked|
++      normalized_host == blocked || normalized_host.end_with?(".#{blocked}")
++    end
++  end
++  module_function :blocked?
++
++  def normalize_host(host)
++    return '' if host.nil?
++
++    host.to_s.strip.downcase.sub(/\.+\z/, '')
++  end
++  module_function :normalize_host
++
++  def stringify_hash(h)
++    h.each_with_object({}) { |(k, v), acc| acc[k.to_s] = v.to_s }
++  end
++  private_class_method :stringify_hash
++end
++
++TelemetryDefenseGuard.run_cli! if $PROGRAM_NAME == __FILE__
+diff --git a/telemetry_restrictions.py b/telemetry_restrictions.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..a4d6c600e236af3dcaa45caf5cdb6036c843eaee
+--- /dev/null
++++ b/telemetry_restrictions.py
+@@ -0,0 +1,261 @@
++"""Telemetry restriction utilities.
++
++This module provides a defensive, opt-out-oriented approach to reduce telemetry
++emission from Python processes without destructive system behavior.
++
++Important scope note:
++- This is process-local and opt-in.
++- It does not rewrite or deactivate arbitrary applications.
++"""
++
++from __future__ import annotations
++
++from contextlib import contextmanager
++from dataclasses import dataclass, field
++import os
++import socket
++import threading
++from typing import Dict, Iterator, Mapping, MutableMapping, Optional, Set
++
++
++DEFAULT_TELEMETRY_ENV_OVERRIDES: Mapping[str, str] = {
++    # General
++    "DO_NOT_TRACK": "1",
++    # Python / tooling
++    "PYTHONWARNINGS": "ignore::UserWarning",
++    "PIP_DISABLE_PIP_VERSION_CHECK": "1",
++    "PIP_NO_PYTHON_VERSION_WARNING": "1",
++    "POETRY_NO_INTERACTION": "1",
++    # Node ecosystem (often present in mixed repos)
++    "NPM_CONFIG_FUND": "false",
++    "NPM_CONFIG_AUDIT": "false",
++    "YARN_ENABLE_TELEMETRY": "0",
++    "NEXT_TELEMETRY_DISABLED": "1",
++    "ASTRO_TELEMETRY_DISABLED": "1",
++    # Common SDK telemetry controls
++    "HF_HUB_DISABLE_TELEMETRY": "1",
++    "WANDB_DISABLED": "true",
++    "SENTRY_DSN": "",
++    "SEGMENT_WRITE_KEY": "",
++    "AMPLITUDE_API_KEY": "",
++    "POSTHOG_DISABLED": "1",
++}
++
++DEFAULT_TELEMETRY_BLOCKED_HOSTS: Set[str] = {
++    "segment.io",
++    "mixpanel.com",
++    "sentry.io",
++    "plausible.io",
++    "telemetry.pypi.org",
++    "amplitude.com",
++    "posthog.com",
++}
++
++
++@dataclass(frozen=True)
++class TelemetryPolicy:
++    """Defines environment-level and host-level telemetry restrictions."""
++
++    env_overrides: Mapping[str, str] = field(default_factory=lambda: dict(DEFAULT_TELEMETRY_ENV_OVERRIDES))
++    blocked_hosts: Set[str] = field(default_factory=lambda: set(DEFAULT_TELEMETRY_BLOCKED_HOSTS))
++
++
++_ORIGINAL_GETADDRINFO = socket.getaddrinfo
++_NETWORK_BLOCK_LOCK = threading.Lock()
++_NETWORK_BLOCK_REFCOUNT = 0
++_CURRENT_BLOCKED_HOSTS: Set[str] = set()
++
++
++class TelemetryBlockedError(ConnectionError):
++    """Raised when a blocked telemetry destination is requested."""
++
++
++class InvalidTelemetryPolicyError(ValueError):
++    """Raised when policy configuration is malformed."""
++
++
++def _normalize_host(host: object) -> str:
++    if host is None:
++        return ""
++
++    normalized = str(host).strip().lower().rstrip(".")
++    if "://" in normalized:
++        # Caller provided a URL; keep host-only behavior explicit and safe.
++        return ""
++
++    return normalized
++
++
++def _validate_env_overrides(env_overrides: Mapping[str, str]) -> None:
++    for key, value in env_overrides.items():
++        if not isinstance(key, str) or not key.strip():
++            raise InvalidTelemetryPolicyError("Environment override keys must be non-empty strings.")
++        if "=" in key:
++            raise InvalidTelemetryPolicyError(f"Invalid env key '{key}': must not contain '='.")
++        if not isinstance(value, str):
++            raise InvalidTelemetryPolicyError(f"Invalid env value for '{key}': expected string.")
++
++
++def normalize_policy(policy: TelemetryPolicy) -> TelemetryPolicy:
++    """Return a sanitized policy with normalized hosts and validated env overrides."""
++    _validate_env_overrides(policy.env_overrides)
++
++    normalized_hosts = {_normalize_host(host) for host in policy.blocked_hosts}
++    normalized_hosts = {host for host in normalized_hosts if host}
++
++    return TelemetryPolicy(env_overrides=dict(policy.env_overrides), blocked_hosts=normalized_hosts)
++
++
++def _is_host_blocked(host: object, blocked_hosts: Set[str]) -> bool:
++    normalized = _normalize_host(host)
++    if not normalized:
++        return False
++
++    # Exact host or subdomain match.
++    for blocked in blocked_hosts:
++        if normalized == blocked or normalized.endswith(f".{blocked}"):
++            return True
++    return False
++
++
++def merge_policies(*policies: TelemetryPolicy) -> TelemetryPolicy:
++    """Merge multiple policies into a single combined policy."""
++    combined_env: Dict[str, str] = {}
++    combined_hosts: Set[str] = set()
++
++    for policy in policies:
++        normalized = normalize_policy(policy)
++        combined_env.update(normalized.env_overrides)
++        combined_hosts |= normalized.blocked_hosts
++
++    return TelemetryPolicy(env_overrides=combined_env, blocked_hosts=combined_hosts)
++
++
++def apply_env_restrictions(
++    policy: TelemetryPolicy,
++    *,
++    environment: Optional[MutableMapping[str, str]] = None,
++) -> Dict[str, str]:
++    """Apply environment variable overrides and return previous values."""
++    normalized = normalize_policy(policy)
++    env = os.environ if environment is None else environment
++    previous: Dict[str, str] = {}
++
++    for key, value in normalized.env_overrides.items():
++        if key in env:
++            previous[key] = env[key]
++        env[key] = value
++
++    return previous
++
++
++def activate_network_block(policy: TelemetryPolicy) -> None:
++    """Monkey patch socket name resolution to deny selected telemetry hosts."""
++    global _NETWORK_BLOCK_REFCOUNT
++    global _CURRENT_BLOCKED_HOSTS
++
++    normalized = normalize_policy(policy)
++
++    with _NETWORK_BLOCK_LOCK:
++        _CURRENT_BLOCKED_HOSTS |= normalized.blocked_hosts
++
++        if _NETWORK_BLOCK_REFCOUNT == 0:
++
++            def _guarded_getaddrinfo(host, *args, **kwargs):
++                if _is_host_blocked(host, _CURRENT_BLOCKED_HOSTS):
++                    raise TelemetryBlockedError(f"Blocked telemetry destination: {host}")
++                return _ORIGINAL_GETADDRINFO(host, *args, **kwargs)
++
++            socket.getaddrinfo = _guarded_getaddrinfo
++
++        _NETWORK_BLOCK_REFCOUNT += 1
++
++
++def deactivate_network_block() -> None:
++    """Restore original socket name resolution when last activation exits."""
++    global _NETWORK_BLOCK_REFCOUNT
++    global _CURRENT_BLOCKED_HOSTS
++
++    with _NETWORK_BLOCK_LOCK:
++        if _NETWORK_BLOCK_REFCOUNT == 0:
++            return
++
++        _NETWORK_BLOCK_REFCOUNT -= 1
++        if _NETWORK_BLOCK_REFCOUNT == 0:
++            socket.getaddrinfo = _ORIGINAL_GETADDRINFO
++            _CURRENT_BLOCKED_HOSTS = set()
++
++
++def audit_policy_state(
++    policy: TelemetryPolicy,
++    *,
++    environment: Optional[Mapping[str, str]] = None,
++) -> Dict[str, object]:
++    """Return a report showing active restrictions."""
++    normalized = normalize_policy(policy)
++    env = os.environ if environment is None else environment
++
++    env_status = {
++        key: {
++            "expected": expected,
++            "actual": env.get(key),
++            "active": env.get(key) == expected,
++        }
++        for key, expected in normalized.env_overrides.items()
++    }
++
++    with _NETWORK_BLOCK_LOCK:
++        active_hosts = sorted(_CURRENT_BLOCKED_HOSTS)
++        is_active = _NETWORK_BLOCK_REFCOUNT > 0
++        refcount = _NETWORK_BLOCK_REFCOUNT
++
++    return {
++        "env": env_status,
++        "network_block_active": is_active,
++        "network_block_refcount": refcount,
++        "blocked_hosts": sorted(normalized.blocked_hosts),
++        "active_blocked_hosts": active_hosts,
++    }
++
++
++@contextmanager
++def telemetry_restricted(
++    policy: Optional[TelemetryPolicy] = None,
++    *,
++    environment: Optional[MutableMapping[str, str]] = None,
++    block_network: bool = True,
++) -> Iterator[TelemetryPolicy]:
++    """Context manager that applies telemetry restrictions for a code region."""
++    active_policy = normalize_policy(policy or TelemetryPolicy())
++    previous = apply_env_restrictions(active_policy, environment=environment)
++
++    if block_network:
++        activate_network_block(active_policy)
++
++    try:
++        yield active_policy
++    finally:
++        env = os.environ if environment is None else environment
++
++        for key in active_policy.env_overrides:
++            if key in previous:
++                env[key] = previous[key]
++            else:
++                env.pop(key, None)
++
++        if block_network:
++            deactivate_network_block()
++
++
++if __name__ == "__main__":
++    policy = normalize_policy(TelemetryPolicy())
++    apply_env_restrictions(policy)
++    activate_network_block(policy)
++
++    report = audit_policy_state(policy)
++    enabled_count = sum(1 for details in report["env"].values() if details["active"])
++
++    print("Telemetry restrictions enabled (process-local, opt-in).")
++    print(f"Environment overrides active: {enabled_count}/{len(policy.env_overrides)}")
++    print(f"Network block active: {report['network_block_active']} (refcount={report['network_block_refcount']})")
++    print(f"Blocked telemetry hosts: {', '.join(report['active_blocked_hosts'])}")
+diff --git a/test_telemetry_cyber_guard.py b/test_telemetry_cyber_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..c3b126a6f64f73dbc2897f39a9356afb03afaa11
+--- /dev/null
++++ b/test_telemetry_cyber_guard.py
+@@ -0,0 +1,33 @@
++import unittest
++
++from telemetry_cyber_guard import build_policy, parse_csv_hosts, probe_hosts
++from telemetry_restrictions import deactivate_network_block
++
++
++class TelemetryCyberGuardTests(unittest.TestCase):
++    def tearDown(self):
++        deactivate_network_block()
++        deactivate_network_block()
++
++    def test_parse_csv_hosts(self):
++        hosts = parse_csv_hosts(" segment.io, api.mixpanel.com ,, localhost ")
++        self.assertEqual(hosts, ["segment.io", "api.mixpanel.com", "localhost"])
++
++    def test_build_policy_strict_adds_controls(self):
++        policy = build_policy(extra_hosts=["custom.example"], strict_mode=True)
++
++        self.assertIn("OTEL_SDK_DISABLED", policy.env_overrides)
++        self.assertIn("custom.example", policy.blocked_hosts)
++        self.assertIn("segment.io", policy.blocked_hosts)
++
++    def test_probe_hosts_blocks_and_allows(self):
++        policy = build_policy(extra_hosts=["blocked.example"], strict_mode=False)
++        results = probe_hosts(policy, ["blocked.example", "localhost"])
++
++        by_host = {row["host"]: row for row in results}
++        self.assertEqual(by_host["blocked.example"]["status"], "blocked")
++        self.assertIn(by_host["localhost"]["status"], {"allowed", "error"})
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/test_telemetry_restrictions.py b/test_telemetry_restrictions.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..89fc75f8b1ac01a7e6f28f4fef6ae911d85bdd2b
+--- /dev/null
++++ b/test_telemetry_restrictions.py
+@@ -0,0 +1,133 @@
++import socket
++import unittest
++
++from telemetry_restrictions import (
++    InvalidTelemetryPolicyError,
++    TelemetryBlockedError,
++    TelemetryPolicy,
++    activate_network_block,
++    apply_env_restrictions,
++    audit_policy_state,
++    deactivate_network_block,
++    merge_policies,
++    normalize_policy,
++    telemetry_restricted,
++)
++
++
++class TelemetryRestrictionTests(unittest.TestCase):
++    def tearDown(self):
++        # Ensure all nested activations are cleared.
++        deactivate_network_block()
++        deactivate_network_block()
++        deactivate_network_block()
++
++    def test_apply_env_restrictions(self):
++        env = {"DO_NOT_TRACK": "0", "UNCHANGED": "yes"}
++        policy = TelemetryPolicy(env_overrides={"DO_NOT_TRACK": "1", "X": "abc"}, blocked_hosts=set())
++
++        previous = apply_env_restrictions(policy, environment=env)
++
++        self.assertEqual(previous, {"DO_NOT_TRACK": "0"})
++        self.assertEqual(env["DO_NOT_TRACK"], "1")
++        self.assertEqual(env["X"], "abc")
++        self.assertEqual(env["UNCHANGED"], "yes")
++
++    def test_policy_normalization_filters_invalid_hosts(self):
++        policy = TelemetryPolicy(env_overrides={"A": "1"}, blocked_hosts={" segment.io ", "", "https://bad"})
++        normalized = normalize_policy(policy)
++
++        self.assertEqual(normalized.blocked_hosts, {"segment.io"})
++
++    def test_policy_validation_rejects_invalid_env_key(self):
++        policy = TelemetryPolicy(env_overrides={"BAD=KEY": "1"}, blocked_hosts=set())
++
++        with self.assertRaises(InvalidTelemetryPolicyError):
++            normalize_policy(policy)
++
++    def test_network_block_blocks_exact_host(self):
++        policy = TelemetryPolicy(env_overrides={}, blocked_hosts={"segment.io"})
++        activate_network_block(policy)
++
++        with self.assertRaises(TelemetryBlockedError):
++            socket.getaddrinfo("segment.io", 443)
++
++    def test_network_block_blocks_subdomain(self):
++        policy = TelemetryPolicy(env_overrides={}, blocked_hosts={"segment.io"})
++        activate_network_block(policy)
++
++        with self.assertRaises(TelemetryBlockedError):
++            socket.getaddrinfo("api.segment.io", 443)
++
++    def test_network_block_allows_other_hosts(self):
++        policy = TelemetryPolicy(env_overrides={}, blocked_hosts={"segment.io"})
++        activate_network_block(policy)
++
++        result = socket.getaddrinfo("localhost", 80)
++        self.assertTrue(len(result) > 0)
++
++    def test_nested_activation_refcount(self):
++        p1 = TelemetryPolicy(env_overrides={}, blocked_hosts={"segment.io"})
++        p2 = TelemetryPolicy(env_overrides={}, blocked_hosts={"sentry.io"})
++
++        activate_network_block(p1)
++        activate_network_block(p2)
++
++        with self.assertRaises(TelemetryBlockedError):
++            socket.getaddrinfo("segment.io", 443)
++        with self.assertRaises(TelemetryBlockedError):
++            socket.getaddrinfo("sentry.io", 443)
++
++        report = audit_policy_state(p1, environment={})
++        self.assertTrue(report["network_block_active"])
++        self.assertEqual(report["network_block_refcount"], 2)
++
++        deactivate_network_block()
++
++        # Still active because one activation remains.
++        with self.assertRaises(TelemetryBlockedError):
++            socket.getaddrinfo("segment.io", 443)
++
++        deactivate_network_block()
++
++        # Fully restored; localhost should resolve.
++        result = socket.getaddrinfo("localhost", 80)
++        self.assertTrue(len(result) > 0)
++
++    def test_merge_policies(self):
++        p1 = TelemetryPolicy(env_overrides={"A": "1"}, blocked_hosts={"segment.io"})
++        p2 = TelemetryPolicy(env_overrides={"B": "2", "A": "override"}, blocked_hosts={"sentry.io"})
++
++        merged = merge_policies(p1, p2)
++
++        self.assertEqual(merged.env_overrides["A"], "override")
++        self.assertEqual(merged.env_overrides["B"], "2")
++        self.assertEqual(merged.blocked_hosts, {"segment.io", "sentry.io"})
++
++    def test_context_manager_restores_env(self):
++        env = {"DO_NOT_TRACK": "0"}
++        policy = TelemetryPolicy(env_overrides={"DO_NOT_TRACK": "1", "TEMP_KEY": "value"}, blocked_hosts=set())
++
++        with telemetry_restricted(policy, environment=env, block_network=False):
++            self.assertEqual(env["DO_NOT_TRACK"], "1")
++            self.assertEqual(env["TEMP_KEY"], "value")
++
++        self.assertEqual(env["DO_NOT_TRACK"], "0")
++        self.assertNotIn("TEMP_KEY", env)
++
++    def test_audit_policy_state(self):
++        env = {"DO_NOT_TRACK": "1", "WANDB_DISABLED": "true"}
++        policy = TelemetryPolicy(
++            env_overrides={"DO_NOT_TRACK": "1", "WANDB_DISABLED": "true"},
++            blocked_hosts={"segment.io"},
++        )
++
++        report = audit_policy_state(policy, environment=env)
++
++        self.assertTrue(report["env"]["DO_NOT_TRACK"]["active"])
++        self.assertTrue(report["env"]["WANDB_DISABLED"]["active"])
++        self.assertEqual(report["blocked_hosts"], ["segment.io"])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/test_telemetry_defense_guard.rb b/test_telemetry_defense_guard.rb
+new file mode 100644
+index 0000000000000000000000000000000000000000..f6afd8183f66bd2fa3c0817c42fddfcdaf7fa595
+--- /dev/null
++++ b/test_telemetry_defense_guard.rb
+@@ -0,0 +1,46 @@
++# frozen_string_literal: true
++
++require 'minitest/autorun'
++require_relative 'telemetry_defense_guard'
++
++class TelemetryDefenseGuardTest < Minitest::Test
++  def teardown
++    # best-effort cleanup in case tests fail mid-way
++    ENV.delete('TDG_TEST_FLAG')
++  end
++
++  def test_build_policy_merges_defaults_and_extras
++    policy = TelemetryDefenseGuard.build_policy(
++      env_overrides: { TDG_TEST_FLAG: 'on' },
++      blocked_hosts: [' example.com ']
++    )
++
++    assert_equal 'on', policy[:env_overrides]['TDG_TEST_FLAG']
++    assert_includes policy[:blocked_hosts], 'example.com'
++    assert_includes policy[:blocked_hosts], 'segment.io'
++  end
++
++  def test_blocked_helper
++    assert TelemetryDefenseGuard.blocked?('api.segment.io', ['segment.io'])
++    refute TelemetryDefenseGuard.blocked?('localhost', ['segment.io'])
++  end
++
++  def test_activate_and_deactivate
++    policy = TelemetryDefenseGuard.build_policy(
++      env_overrides: { TDG_TEST_FLAG: 'enabled' },
++      blocked_hosts: ['blocked.example']
++    )
++
++    state = TelemetryDefenseGuard.activate!(policy: policy, watchdog_interval: 0.1)
++
++    assert_equal 'enabled', ENV['TDG_TEST_FLAG']
++    assert state.network_active
++
++    blocked = TelemetryDefenseGuard.probe_host('blocked.example')
++    assert_equal 'blocked', blocked[:status]
++
++    TelemetryDefenseGuard.deactivate!(state)
++    refute state.network_active
++    assert_nil ENV['TDG_TEST_FLAG']
++  end
++end
+diff --git a/test_telemetry_data_hygiene.rb b/test_telemetry_data_hygiene.rb
+new file mode 100644
+index 0000000000000000000000000000000000000000..bc87307a22c5f50aaab31ff1c75acbd7f0eff53f
+--- /dev/null
++++ b/test_telemetry_data_hygiene.rb
+@@ -0,0 +1,56 @@
++# frozen_string_literal: true
++
++require 'json'
++require 'minitest/autorun'
++require 'tmpdir'
++require_relative 'telemetry_data_hygiene'
++
++class TelemetryDataHygieneTest < Minitest::Test
++  def test_marker_record_detection
++    record = { 'id' => '1', 'tags' => ['baseline', 'placeholder'] }
++    assert TelemetryDataHygiene.marker_record?(record)
++  end
++
++  def test_suspicious_capability_detection
++    record = { 'id' => '2', 'power_extraction' => true }
++    assert TelemetryDataHygiene.suspicious_capability_record?(record)
++  end
++
++  def test_redaction
++    record = { 'id' => '3', 'biometric_signature' => 'abc', 'ok' => 1 }
++    sanitized = TelemetryDataHygiene.redact_record(record)
++
++    assert_equal '[REDACTED]', sanitized['biometric_signature']
++    assert_equal 1, sanitized['ok']
++  end
++
++  def test_run_pipeline
++    Dir.mktmpdir do |dir|
++      input = File.join(dir, 'in.jsonl')
++      output = File.join(dir, 'out.jsonl')
++      report = File.join(dir, 'report.json')
++
++      rows = [
++        { 'id' => 'keep-1', 'type' => 'normal', 'biometric_signature' => 'secret' },
++        { 'id' => 'drop-1', 'tags' => ['placebo'] },
++        { 'id' => 'drop-2', 'power_extraction' => true }
++      ]
++
++      File.open(input, 'w') { |f| rows.each { |r| f.puts(JSON.generate(r)) } }
++
++      result = TelemetryDataHygiene.run!(input: input, output: output, report_path: report)
++
++      assert_equal 3, result[:input_records]
++      assert_equal 1, result[:output_records]
++      assert_equal 2, result[:dropped_records]
++
++      out_rows = File.readlines(output, chomp: true).map { |line| JSON.parse(line) }
++      assert_equal 1, out_rows.length
++      assert_equal 'keep-1', out_rows[0]['id']
++      assert_equal '[REDACTED]', out_rows[0]['biometric_signature']
++
++      report_obj = JSON.parse(File.read(report))
++      assert_equal 2, report_obj['dropped_records']
++    end
++  end
++end
+diff --git a/test_telemetry_cyber_guard.py b/test_telemetry_cyber_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..c3b126a6f64f73dbc2897f39a9356afb03afaa11
+--- /dev/null
++++ b/test_telemetry_cyber_guard.py
+@@ -0,0 +1,33 @@
++import unittest
++
++from telemetry_cyber_guard import build_policy, parse_csv_hosts, probe_hosts
++from telemetry_restrictions import deactivate_network_block
++
++
++class TelemetryCyberGuardTests(unittest.TestCase):
++    def tearDown(self):
++        deactivate_network_block()
++        deactivate_network_block()
++
++    def test_parse_csv_hosts(self):
++        hosts = parse_csv_hosts(" segment.io, api.mixpanel.com ,, localhost ")
++        self.assertEqual(hosts, ["segment.io", "api.mixpanel.com", "localhost"])
++
++    def test_build_policy_strict_adds_controls(self):
++        policy = build_policy(extra_hosts=["custom.example"], strict_mode=True)
++
++        self.assertIn("OTEL_SDK_DISABLED", policy.env_overrides)
++        self.assertIn("custom.example", policy.blocked_hosts)
++        self.assertIn("segment.io", policy.blocked_hosts)
++
++    def test_probe_hosts_blocks_and_allows(self):
++        policy = build_policy(extra_hosts=["blocked.example"], strict_mode=False)
++        results = probe_hosts(policy, ["blocked.example", "localhost"])
++
++        by_host = {row["host"]: row for row in results}
++        self.assertEqual(by_host["blocked.example"]["status"], "blocked")
++        self.assertIn(by_host["localhost"]["status"], {"allowed", "error"})
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/telemetry_restrictions.py b/telemetry_restrictions.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..a4d6c600e236af3dcaa45caf5cdb6036c843eaee
+--- /dev/null
++++ b/telemetry_restrictions.py
+@@ -0,0 +1,261 @@
++"""Telemetry restriction utilities.
++
++This module provides a defensive, opt-out-oriented approach to reduce telemetry
++emission from Python processes without destructive system behavior.
++
++Important scope note:
++- This is process-local and opt-in.
++- It does not rewrite or deactivate arbitrary applications.
++"""
++
++from __future__ import annotations
++
++from contextlib import contextmanager
++from dataclasses import dataclass, field
++import os
++import socket
++import threading
++from typing import Dict, Iterator, Mapping, MutableMapping, Optional, Set
++
++
++DEFAULT_TELEMETRY_ENV_OVERRIDES: Mapping[str, str] = {
++    # General
++    "DO_NOT_TRACK": "1",
++    # Python / tooling
++    "PYTHONWARNINGS": "ignore::UserWarning",
++    "PIP_DISABLE_PIP_VERSION_CHECK": "1",
++    "PIP_NO_PYTHON_VERSION_WARNING": "1",
++    "POETRY_NO_INTERACTION": "1",
++    # Node ecosystem (often present in mixed repos)
++    "NPM_CONFIG_FUND": "false",
++    "NPM_CONFIG_AUDIT": "false",
++    "YARN_ENABLE_TELEMETRY": "0",
++    "NEXT_TELEMETRY_DISABLED": "1",
++    "ASTRO_TELEMETRY_DISABLED": "1",
++    # Common SDK telemetry controls
++    "HF_HUB_DISABLE_TELEMETRY": "1",
++    "WANDB_DISABLED": "true",
++    "SENTRY_DSN": "",
++    "SEGMENT_WRITE_KEY": "",
++    "AMPLITUDE_API_KEY": "",
++    "POSTHOG_DISABLED": "1",
++}
++
++DEFAULT_TELEMETRY_BLOCKED_HOSTS: Set[str] = {
++    "segment.io",
++    "mixpanel.com",
++    "sentry.io",
++    "plausible.io",
++    "telemetry.pypi.org",
++    "amplitude.com",
++    "posthog.com",
++}
++
++
++@dataclass(frozen=True)
++class TelemetryPolicy:
++    """Defines environment-level and host-level telemetry restrictions."""
++
++    env_overrides: Mapping[str, str] = field(default_factory=lambda: dict(DEFAULT_TELEMETRY_ENV_OVERRIDES))
++    blocked_hosts: Set[str] = field(default_factory=lambda: set(DEFAULT_TELEMETRY_BLOCKED_HOSTS))
++
++
++_ORIGINAL_GETADDRINFO = socket.getaddrinfo
++_NETWORK_BLOCK_LOCK = threading.Lock()
++_NETWORK_BLOCK_REFCOUNT = 0
++_CURRENT_BLOCKED_HOSTS: Set[str] = set()
++
++
++class TelemetryBlockedError(ConnectionError):
++    """Raised when a blocked telemetry destination is requested."""
++
++
++class InvalidTelemetryPolicyError(ValueError):
++    """Raised when policy configuration is malformed."""
++
++
++def _normalize_host(host: object) -> str:
++    if host is None:
++        return ""
++
++    normalized = str(host).strip().lower().rstrip(".")
++    if "://" in normalized:
++        # Caller provided a URL; keep host-only behavior explicit and safe.
++        return ""
++
++    return normalized
++
++
++def _validate_env_overrides(env_overrides: Mapping[str, str]) -> None:
++    for key, value in env_overrides.items():
++        if not isinstance(key, str) or not key.strip():
++            raise InvalidTelemetryPolicyError("Environment override keys must be non-empty strings.")
++        if "=" in key:
++            raise InvalidTelemetryPolicyError(f"Invalid env key '{key}': must not contain '='.")
++        if not isinstance(value, str):
++            raise InvalidTelemetryPolicyError(f"Invalid env value for '{key}': expected string.")
++
++
++def normalize_policy(policy: TelemetryPolicy) -> TelemetryPolicy:
++    """Return a sanitized policy with normalized hosts and validated env overrides."""
++    _validate_env_overrides(policy.env_overrides)
++
++    normalized_hosts = {_normalize_host(host) for host in policy.blocked_hosts}
++    normalized_hosts = {host for host in normalized_hosts if host}
++
++    return TelemetryPolicy(env_overrides=dict(policy.env_overrides), blocked_hosts=normalized_hosts)
++
++
++def _is_host_blocked(host: object, blocked_hosts: Set[str]) -> bool:
++    normalized = _normalize_host(host)
++    if not normalized:
++        return False
++
++    # Exact host or subdomain match.
++    for blocked in blocked_hosts:
++        if normalized == blocked or normalized.endswith(f".{blocked}"):
++            return True
++    return False
++
++
++def merge_policies(*policies: TelemetryPolicy) -> TelemetryPolicy:
++    """Merge multiple policies into a single combined policy."""
++    combined_env: Dict[str, str] = {}
++    combined_hosts: Set[str] = set()
++
++    for policy in policies:
++        normalized = normalize_policy(policy)
++        combined_env.update(normalized.env_overrides)
++        combined_hosts |= normalized.blocked_hosts
++
++    return TelemetryPolicy(env_overrides=combined_env, blocked_hosts=combined_hosts)
++
++
++def apply_env_restrictions(
++    policy: TelemetryPolicy,
++    *,
++    environment: Optional[MutableMapping[str, str]] = None,
++) -> Dict[str, str]:
++    """Apply environment variable overrides and return previous values."""
++    normalized = normalize_policy(policy)
++    env = os.environ if environment is None else environment
++    previous: Dict[str, str] = {}
++
++    for key, value in normalized.env_overrides.items():
++        if key in env:
++            previous[key] = env[key]
++        env[key] = value
++
++    return previous
++
++
++def activate_network_block(policy: TelemetryPolicy) -> None:
++    """Monkey patch socket name resolution to deny selected telemetry hosts."""
++    global _NETWORK_BLOCK_REFCOUNT
++    global _CURRENT_BLOCKED_HOSTS
++
++    normalized = normalize_policy(policy)
++
++    with _NETWORK_BLOCK_LOCK:
++        _CURRENT_BLOCKED_HOSTS |= normalized.blocked_hosts
++
++        if _NETWORK_BLOCK_REFCOUNT == 0:
++
++            def _guarded_getaddrinfo(host, *args, **kwargs):
++                if _is_host_blocked(host, _CURRENT_BLOCKED_HOSTS):
++                    raise TelemetryBlockedError(f"Blocked telemetry destination: {host}")
++                return _ORIGINAL_GETADDRINFO(host, *args, **kwargs)
++
++            socket.getaddrinfo = _guarded_getaddrinfo
++
++        _NETWORK_BLOCK_REFCOUNT += 1
++
++
++def deactivate_network_block() -> None:
++    """Restore original socket name resolution when last activation exits."""
++    global _NETWORK_BLOCK_REFCOUNT
++    global _CURRENT_BLOCKED_HOSTS
++
++    with _NETWORK_BLOCK_LOCK:
++        if _NETWORK_BLOCK_REFCOUNT == 0:
++            return
++
++        _NETWORK_BLOCK_REFCOUNT -= 1
++        if _NETWORK_BLOCK_REFCOUNT == 0:
++            socket.getaddrinfo = _ORIGINAL_GETADDRINFO
++            _CURRENT_BLOCKED_HOSTS = set()
++
++
++def audit_policy_state(
++    policy: TelemetryPolicy,
++    *,
++    environment: Optional[Mapping[str, str]] = None,
++) -> Dict[str, object]:
++    """Return a report showing active restrictions."""
++    normalized = normalize_policy(policy)
++    env = os.environ if environment is None else environment
++
++    env_status = {
++        key: {
++            "expected": expected,
++            "actual": env.get(key),
++            "active": env.get(key) == expected,
++        }
++        for key, expected in normalized.env_overrides.items()
++    }
++
++    with _NETWORK_BLOCK_LOCK:
++        active_hosts = sorted(_CURRENT_BLOCKED_HOSTS)
++        is_active = _NETWORK_BLOCK_REFCOUNT > 0
++        refcount = _NETWORK_BLOCK_REFCOUNT
++
++    return {
++        "env": env_status,
++        "network_block_active": is_active,
++        "network_block_refcount": refcount,
++        "blocked_hosts": sorted(normalized.blocked_hosts),
++        "active_blocked_hosts": active_hosts,
++    }
++
++
++@contextmanager
++def telemetry_restricted(
++    policy: Optional[TelemetryPolicy] = None,
++    *,
++    environment: Optional[MutableMapping[str, str]] = None,
++    block_network: bool = True,
++) -> Iterator[TelemetryPolicy]:
++    """Context manager that applies telemetry restrictions for a code region."""
++    active_policy = normalize_policy(policy or TelemetryPolicy())
++    previous = apply_env_restrictions(active_policy, environment=environment)
++
++    if block_network:
++        activate_network_block(active_policy)
++
++    try:
++        yield active_policy
++    finally:
++        env = os.environ if environment is None else environment
++
++        for key in active_policy.env_overrides:
++            if key in previous:
++                env[key] = previous[key]
++            else:
++                env.pop(key, None)
++
++        if block_network:
++            deactivate_network_block()
++
++
++if __name__ == "__main__":
++    policy = normalize_policy(TelemetryPolicy())
++    apply_env_restrictions(policy)
++    activate_network_block(policy)
++
++    report = audit_policy_state(policy)
++    enabled_count = sum(1 for details in report["env"].values() if details["active"])
++
++    print("Telemetry restrictions enabled (process-local, opt-in).")
++    print(f"Environment overrides active: {enabled_count}/{len(policy.env_overrides)}")
++    print(f"Network block active: {report['network_block_active']} (refcount={report['network_block_refcount']})")
++    print(f"Blocked telemetry hosts: {', '.join(report['active_blocked_hosts'])}")
+diff --git a/telemetry_defense_guard.rb b/telemetry_defense_guard.rb
+new file mode 100644
+index 0000000000000000000000000000000000000000..b996a62f1c373d1391eab02ae4466f6ecee7dd10
+--- /dev/null
++++ b/telemetry_defense_guard.rb
+@@ -0,0 +1,280 @@
++#!/usr/bin/env ruby
++# frozen_string_literal: true
++
++# Defensive, process-local telemetry hardening for Ruby runtimes.
++#
++# What this does:
++# - Enforces telemetry opt-out environment variables.
++# - Blocks DNS resolution to configured telemetry hosts/subdomains.
++# - Runs tamper watchdog checks for env + network hook integrity.
++# - Emits tamper events to an append-only local log.
++#
++# What this does NOT do:
++# - It cannot guarantee global/system-wide prevention by itself.
++# - It only protects the current process unless integrated by launcher/service.
++
++require 'digest'
++require 'json'
++require 'socket'
++require 'thread'
++require 'time'
++
++module TelemetryDefenseGuard
++  class TelemetryBlockedError < StandardError; end
++
++  class TamperDetectedError < StandardError; end
++
++  DEFAULT_ENV_OVERRIDES = {
++    'DO_NOT_TRACK' => '1',
++    'OTEL_SDK_DISABLED' => 'true',
++    'CHECKPOINT_DISABLE_TELEMETRY' => '1',
++    'SENTRY_DSN' => '',
++    'SEGMENT_WRITE_KEY' => '',
++    'AMPLITUDE_API_KEY' => '',
++    'POSTHOG_DISABLED' => '1'
++  }.freeze
++
++  DEFAULT_BLOCKED_HOSTS = %w[
++    segment.io
++    mixpanel.com
++    sentry.io
++    plausible.io
++    amplitude.com
++    posthog.com
++    telemetry.pypi.org
++  ].freeze
++
++  State = Struct.new(
++    :env_before,
++    :policy,
++    :original_socket_method,
++    :network_active,
++    :watchdog_thread,
++    :watchdog_stop,
++    :lock,
++    keyword_init: true
++  )
++
++  module_function
++
++  def build_policy(env_overrides: {}, blocked_hosts: [])
++    merged_env = DEFAULT_ENV_OVERRIDES.merge(stringify_hash(env_overrides))
++    merged_hosts = (DEFAULT_BLOCKED_HOSTS + blocked_hosts.map { |h| normalize_host(h) }).reject(&:empty?).uniq
++
++    {
++      env_overrides: merged_env.freeze,
++      blocked_hosts: merged_hosts.freeze,
++      integrity_hash: Digest::SHA256.hexdigest(JSON.generate({ env: merged_env, hosts: merged_hosts }))
++    }.freeze
++  end
++
++  def activate!(policy: build_policy, tamper_log: 'telemetry_tamper.log', watchdog_interval: 0.5)
++    state = State.new(
++      env_before: {},
++      policy: policy,
++      original_socket_method: Socket.method(:getaddrinfo),
++      network_active: false,
++      watchdog_stop: false,
++      lock: Mutex.new
++    )
++
++    enforce_env!(state)
++    install_network_block!(state)
++    start_watchdog!(state, tamper_log: tamper_log, interval: watchdog_interval)
++    trap_signals!(state, tamper_log: tamper_log)
++
++    state
++  end
++
++  def deactivate!(state)
++    state.lock.synchronize do
++      restore_env!(state)
++      restore_network_block!(state)
++      stop_watchdog!(state)
++    end
++  end
++
++  def audit(state)
++    env_status = {}
++    state.policy[:env_overrides].each do |k, expected|
++      actual = ENV[k]
++      env_status[k] = { expected: expected, actual: actual, active: (actual == expected) }
++    end
++
++    {
++      env: env_status,
++      blocked_hosts: state.policy[:blocked_hosts],
++      network_block_active: state.network_active,
++      policy_integrity_hash: state.policy[:integrity_hash]
++    }
++  end
++
++  def probe_host(host)
++    Socket.getaddrinfo(host, 443)
++    { host: host, status: 'allowed' }
++  rescue TelemetryBlockedError => e
++    { host: host, status: 'blocked', detail: e.message }
++  rescue StandardError => e
++    { host: host, status: 'error', detail: e.message }
++  end
++
++  def run_cli!
++    strict_hosts = (ENV['TDG_EXTRA_BLOCKED_HOSTS'] || '').split(',').map(&:strip).reject(&:empty?)
++    policy = build_policy(blocked_hosts: strict_hosts)
++    state = activate!(policy: policy)
++
++    at_exit { deactivate!(state) }
++
++    output = {
++      summary: {
++        blocked_hosts: policy[:blocked_hosts].length,
++        env_overrides: policy[:env_overrides].length,
++        network_block_active: state.network_active
++      },
++      audit: audit(state)
++    }
++
++    probe = (ENV['TDG_PROBE_HOSTS'] || '').split(',').map(&:strip).reject(&:empty?)
++    output[:probe_results] = probe.map { |h| probe_host(h) } unless probe.empty?
++
++    puts JSON.pretty_generate(output)
++  end
++
++  def enforce_env!(state)
++    state.policy[:env_overrides].each do |key, value|
++      state.env_before[key] = ENV[key] if ENV.key?(key)
++      ENV[key] = value
++    end
++  end
++  private_class_method :enforce_env!
++
++  def restore_env!(state)
++    state.policy[:env_overrides].each_key do |key|
++      if state.env_before.key?(key)
++        ENV[key] = state.env_before[key]
++      else
++        ENV.delete(key)
++      end
++    end
++  end
++  private_class_method :restore_env!
++
++  def install_network_block!(state)
++    return if state.network_active
++
++    blocked = state.policy[:blocked_hosts]
++
++    Socket.singleton_class.class_eval do
++      define_method(:getaddrinfo) do |host, *args|
++        normalized = TelemetryDefenseGuard.normalize_host(host)
++        if TelemetryDefenseGuard.blocked?(normalized, blocked)
++          raise TelemetryDefenseGuard::TelemetryBlockedError, "Blocked telemetry destination: #{host}"
++        end
++
++        Socket.method(:__tdg_original_getaddrinfo).call(host, *args)
++      end
++    end
++
++    Socket.singleton_class.class_eval do
++      define_method(:__tdg_original_getaddrinfo, &state.original_socket_method)
++    end
++
++    state.network_active = true
++  end
++  private_class_method :install_network_block!
++
++  def restore_network_block!(state)
++    return unless state.network_active
++
++    original = state.original_socket_method
++    Socket.singleton_class.class_eval do
++      define_method(:getaddrinfo, &original)
++      remove_method(:__tdg_original_getaddrinfo) if method_defined?(:__tdg_original_getaddrinfo)
++    end
++
++    state.network_active = false
++  end
++  private_class_method :restore_network_block!
++
++  def start_watchdog!(state, tamper_log:, interval:)
++    state.watchdog_thread = Thread.new do
++      Thread.current.abort_on_exception = false
++
++      until state.watchdog_stop
++        begin
++          verify_integrity!(state)
++        rescue TamperDetectedError => e
++          append_tamper_log(tamper_log, e.message)
++        end
++        sleep(interval)
++      end
++    end
++  end
++  private_class_method :start_watchdog!
++
++  def stop_watchdog!(state)
++    return unless state.watchdog_thread
++
++    state.watchdog_stop = true
++    state.watchdog_thread.join(1)
++    state.watchdog_thread = nil
++  end
++  private_class_method :stop_watchdog!
++
++  def verify_integrity!(state)
++    state.policy[:env_overrides].each do |k, v|
++      next if ENV[k] == v
++
++      ENV[k] = v
++      raise TamperDetectedError, "Env override tampered and restored: #{k}"
++    end
++
++    unless Socket.method(:getaddrinfo).owner == Socket.singleton_class
++      raise TamperDetectedError, 'Socket.getaddrinfo hook tampered'
++    end
++  end
++  private_class_method :verify_integrity!
++
++  def trap_signals!(state, tamper_log:)
++    %w[INT TERM].each do |sig|
++      Signal.trap(sig) do
++        append_tamper_log(tamper_log, "Received signal #{sig}; shutting down guard")
++        deactivate!(state)
++        exit(0)
++      end
++    end
++  rescue ArgumentError
++    # Signal unavailable on current platform/runtime.
++  end
++  private_class_method :trap_signals!
++
++  def append_tamper_log(path, message)
++    File.open(path, 'a') do |f|
++      f.puts("#{Time.now.utc.iso8601} #{message}")
++    end
++  rescue StandardError
++    nil
++  end
++  private_class_method :append_tamper_log
++
++  def blocked?(normalized_host, blocked_hosts)
++    blocked_hosts.any? do |blocked|
++      normalized_host == blocked || normalized_host.end_with?(".#{blocked}")
++    end
++  end
++  module_function :blocked?
++
++  def normalize_host(host)
++    return '' if host.nil?
++
++    host.to_s.strip.downcase.sub(/\.+\z/, '')
++  end
++  module_function :normalize_host
++
++  def stringify_hash(h)
++    h.each_with_object({}) { |(k, v), acc| acc[k.to_s] = v.to_s }
++  end
++  private_class_method :stringify_hash
++end
++
++TelemetryDefenseGuard.run_cli! if $PROGRAM_NAME == __FILE__
