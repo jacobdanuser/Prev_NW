@@ -1,0 +1,591 @@
+diff --git a/metaphysical_coda.py b/metaphysical_coda.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..fffbfc63134ad9abbdb652aac60c694d3a989b2d
+--- /dev/null
++++ b/metaphysical_coda.py
+@@ -0,0 +1,172 @@
++"""Metaphysical Coda encoder for image and ethereal audio formatting.
++
++This module provides a technical "coda" pipeline that normalizes image targets
++(JPEG/HPEG/generic image assets, including Imgur links) and produces a SAT
++(Spectral Analysis Topology) profile for ethereal sound + bass design.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, asdict
++from enum import Enum
++from typing import Any, Dict, List
++from urllib.parse import urlparse
++
++
++class ImageFormat(str, Enum):
++    """Canonical image encodings handled by the coda pipeline."""
++
++    JPEG = "jpeg"
++    HPEG = "hpeg"
++    PNG = "png"
++    WEBP = "webp"
++    GIF = "gif"
++    BMP = "bmp"
++    TIFF = "tiff"
++    SVG = "svg"
++    AVIF = "avif"
++    UNKNOWN = "unknown"
++
++
++@dataclass
++class ImageTarget:
++    """Input media endpoint specification."""
++
++    source: str
++    declared_format: str | None = None
++
++
++@dataclass
++class SatBandProfile:
++    """SAT (Spectral Analysis Topology) controls for sound design."""
++
++    sub_bass_hz: int
++    bass_hz: int
++    low_mid_hz: int
++    high_mid_hz: int
++    air_hz: int
++    shimmer_ratio: float
++
++
++@dataclass
++class EtherealAudioProfile:
++    """Audio synthesis parameters tuned for ambient metaphysical output."""
++
++    bpm: float
++    key_center_hz: float
++    drone_layers: int
++    reverb_seconds: float
++    stereo_width: float
++    bass_emphasis_db: float
++    sat: SatBandProfile
++
++
++@dataclass
++class MetaphysicalCoda:
++    """Full transcoding + synthesis instruction payload."""
++
++    input_source: str
++    normalized_format: ImageFormat
++    remote_host: str | None
++    is_imgur: bool
++    transcode_chain: List[str]
++    spectral_pipeline: List[str]
++    audio_profile: EtherealAudioProfile
++
++    def as_payload(self) -> Dict[str, Any]:
++        """Return a serializable payload suitable for API delivery."""
++        data = asdict(self)
++        data["normalized_format"] = self.normalized_format.value
++        return data
++
++
++def _normalize_extension(source: str) -> str:
++    path = urlparse(source).path if "://" in source else source
++    token = path.split("?")[0].rsplit(".", 1)
++    return token[-1].lower() if len(token) == 2 else ""
++
++
++def normalize_image_format(target: ImageTarget) -> ImageFormat:
++    """Resolve the canonical format from declared format and source path."""
++    raw = (target.declared_format or _normalize_extension(target.source)).strip().lower()
++
++    aliases = {
++        "jpg": ImageFormat.JPEG,
++        "jpeg": ImageFormat.JPEG,
++        "jpe": ImageFormat.JPEG,
++        "hpeg": ImageFormat.HPEG,
++        "png": ImageFormat.PNG,
++        "webp": ImageFormat.WEBP,
++        "gif": ImageFormat.GIF,
++        "bmp": ImageFormat.BMP,
++        "tif": ImageFormat.TIFF,
++        "tiff": ImageFormat.TIFF,
++        "svg": ImageFormat.SVG,
++        "avif": ImageFormat.AVIF,
++        "img": ImageFormat.UNKNOWN,
++    }
++    return aliases.get(raw, ImageFormat.UNKNOWN)
++
++
++def create_ethereal_audio_profile(bpm: float = 72.0, bass_focus_db: float = 4.5) -> EtherealAudioProfile:
++    """Build a technically constrained ambient profile for SAT/sound/bass."""
++    sat = SatBandProfile(
++        sub_bass_hz=38,
++        bass_hz=92,
++        low_mid_hz=320,
++        high_mid_hz=2400,
++        air_hz=12000,
++        shimmer_ratio=0.67,
++    )
++    return EtherealAudioProfile(
++        bpm=bpm,
++        key_center_hz=432.0,
++        drone_layers=3,
++        reverb_seconds=8.4,
++        stereo_width=0.92,
++        bass_emphasis_db=bass_focus_db,
++        sat=sat,
++    )
++
++
++def build_metaphysical_coda(target: ImageTarget) -> MetaphysicalCoda:
++    """Construct complete coda instructions for image + ethereal audio handling."""
++    normalized_format = normalize_image_format(target)
++    parsed = urlparse(target.source) if "://" in target.source else None
++    host = parsed.netloc.lower() if parsed else None
++    is_imgur = bool(host and "imgur.com" in host)
++
++    transcode_chain = [
++        "ingest:crc32-validation",
++        "decode:colorspace->linear-rgb",
++        f"normalize:container->{normalized_format.value}",
++        "encode:chroma-subsampling-4:4:4",
++        "emit:metadata-preserve-exif-off",
++    ]
++
++    if normalized_format in {ImageFormat.UNKNOWN, ImageFormat.HPEG}:
++        transcode_chain.insert(3, "compat:rewrite->jpeg-baseline")
++
++    spectral_pipeline = [
++        "sat:window=4096 hop=1024",
++        "eq:sub-bass-shelf@38Hz:+3.5dB",
++        "eq:bass-bell@92Hz:+2.2dB Q=1.1",
++        "texture:granular-ethereal-density=0.42",
++        "space:convolution-reverb ir=cathedral_18m",
++        "limit:true-peak=-0.9dBTP",
++    ]
++
++    return MetaphysicalCoda(
++        input_source=target.source,
++        normalized_format=normalized_format,
++        remote_host=host,
++        is_imgur=is_imgur,
++        transcode_chain=transcode_chain,
++        spectral_pipeline=spectral_pipeline,
++        audio_profile=create_ethereal_audio_profile(),
++    )
++
++
++if __name__ == "__main__":
++    demo = build_metaphysical_coda(ImageTarget("https://i.imgur.com/ethereal.jpg"))
++    print(demo.as_payload())
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..c70d542b9d5817d7dee7f1fa623de73a6b881b22 100644
+--- a/examples.py
++++ b/examples.py
+@@ -1,37 +1,38 @@
+ """
+ Example usage demonstrating the metaphysical capabilities restriction system.
+ Shows both game mechanics and philosophical frameworks in action.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalCapability, MetaphysicalPractitioner,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework,
+     create_balanced_magic_system, create_restricted_reality_warper
+ )
++from metaphysical_coda import reconstruct_metaphysical_coda
+ 
+ 
+ def example_1_basic_capability_restriction():
+     """Example 1: Basic capability with multiple restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 1: Basic Capability Restriction")
+     print("="*70)
+     
+     # Create a simple telekinesis ability
+     telekinesis = MetaphysicalCapability(
+         name="Advanced Telekinesis",
+         capability_type=CapabilityType.TELEKINESIS,
+         base_power_level=60.0
+     )
+     
+     print(f"\nOriginal capability: {telekinesis}")
+     print(f"Effective power: {telekinesis.get_effective_power():.1f}")
+     
+     # Add restrictions one by one
+     restrictions = [
+         RestrictionRule(
+             RestrictionType.ENERGY_COST,
+             severity=0.3,
+             description="High energy consumption"
+         ),
+@@ -196,82 +197,101 @@ def example_6_multiple_uses_and_cooldown():
+     ))
+     
+     practitioner.add_capability(ability)
+     
+     print(f"Starting energy: {practitioner.energy_pool}/{practitioner.max_energy}")
+     print(f"Ability effective power: {ability.get_effective_power():.1f}")
+     
+     # Use the ability multiple times
+     print("\n--- Sequential Uses ---")
+     for i in range(5):
+         result = practitioner.use_capability(ability)
+         if result['success']:
+             print(f"Use {i+1}: SUCCESS - Energy remaining: {result['remaining_energy']:.1f}")
+         else:
+             print(f"Use {i+1}: FAILED - {result['reason']}")
+             break
+     
+     print(f"\nTotal uses completed: {ability.use_count}")
+ 
+ 
+ def example_7_restriction_modification():
+     """Example 7: Dynamically adding and removing restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 7: Dynamic Restriction Modification")
+     print("="*70)
+-    
++
+     ability = MetaphysicalCapability(
+         "Dimensional Portal",
+         CapabilityType.DIMENSIONAL_TRAVEL,
+         base_power_level=75.0
+     )
+-    
++
+     print(f"Initial power: {ability.get_effective_power():.1f}")
+-    
++
+     # Add restrictions due to environmental factors
+     print("\n--- Adding Environmental Restrictions ---")
+-    
++
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+-    
++
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+-    
++
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+-        print(f"Removed entropy cost restriction")
++        print("Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++def example_8_metaphysical_coda_media_plan():
++    """Example 8: Build a technical image/audio formatting plan."""
++    print("\n" + "=" * 70)
++    print("EXAMPLE 8: Metaphysical Coda Media Plan")
++    print("=" * 70)
++
++    plan = reconstruct_metaphysical_coda(
++        [
++            "./j.pg",
++            "https://i.imgur.com/demo.jpeg",
++            "./concept_art.png",
++        ],
++        include_hpeg=True,
++        include_imgur_targets=True,
++    )
++    print(plan.as_dict())
++
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
++    example_8_metaphysical_coda_media_plan()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/metaphysical_coda.py b/metaphysical_coda.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..05e9e0f198e59bae73f752a04870c1cad8592193
+--- /dev/null
++++ b/metaphysical_coda.py
+@@ -0,0 +1,254 @@
++"""Metaphysical coda media and user-locked music transformation planner.
++
++Builds technical formatting plans for image assets and a high-detail audio
++transformation profile with user-specific access control.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from hashlib import blake2b
++from pathlib import Path
++from typing import Dict, Iterable, List, Optional
++from urllib.parse import urlparse
++
++
++class ImageFormat(str, Enum):
++    """Supported image codecs/container labels."""
++
++    JPEG = "jpeg"
++    JPG = "jpg"
++    HPEG = "hpeg"
++    PNG = "png"
++    WEBP = "webp"
++    AVIF = "avif"
++    HEIF = "heif"
++    TIFF = "tiff"
++    BMP = "bmp"
++    GIF = "gif"
++
++
++class AudioRenderMode(str, Enum):
++    """Intent-based mastering target for sonic coloration."""
++
++    SAT = "sat"
++    SOUND = "sound"
++    BASS = "bass"
++    ETHEREAL = "ethereal"
++
++
++@dataclass(frozen=True)
++class ImageDescriptor:
++    """Reference to an image source with normalized metadata."""
++
++    source: str
++    format_hint: Optional[ImageFormat] = None
++
++    def inferred_format(self) -> Optional[ImageFormat]:
++        if self.format_hint:
++            return self.format_hint
++
++        parsed = urlparse(self.source)
++        suffix = Path(parsed.path if parsed.scheme else self.source).suffix.lower().lstrip(".")
++        if not suffix:
++            return None
++
++        try:
++            return ImageFormat(suffix)
++        except ValueError:
++            return None
++
++    def is_imgur(self) -> bool:
++        parsed = urlparse(self.source)
++        host = parsed.netloc.lower()
++        return "imgur.com" in host or "i.imgur.com" in host
++
++
++@dataclass
++class ToneReference:
++    """Reference measurements for exact tonal and dynamic reconstruction."""
++
++    spectral_tilt_db_per_octave: float = -4.5
++    transient_sharpness: float = 0.72
++    crest_factor_db: float = 10.5
++    dynamic_range_db: float = 8.0
++    low_band_ratio: float = 0.34
++    mid_band_ratio: float = 0.43
++    high_band_ratio: float = 0.23
++
++
++@dataclass
++class AudioProfile:
++    """Detailed DSP profile for stylized output and exact tone matching."""
++
++    mode: AudioRenderMode
++    sample_rate_hz: int = 48_000
++    bit_depth: int = 24
++    channels: int = 2
++    target_lufs: float = -14.0
++    saturation_drive_db: float = 2.0
++    low_shelf_gain_db: float = 3.0
++    low_shelf_frequency_hz: float = 90.0
++    reverb_wet_mix: float = 0.22
++    shimmer_amount: float = 0.35
++    stereo_width: float = 1.1
++    tone_reference: ToneReference = field(default_factory=ToneReference)
++
++    def to_dsp_chain(self) -> List[Dict[str, float]]:
++        """Return a serializable processing graph for deterministic rendering."""
++        chain: List[Dict[str, float]] = [
++            {"stage": "input_normalize", "target_lufs": self.target_lufs},
++            {
++                "stage": "tone_match",
++                "spectral_tilt_db_per_octave": self.tone_reference.spectral_tilt_db_per_octave,
++                "transient_sharpness": self.tone_reference.transient_sharpness,
++                "crest_factor_db": self.tone_reference.crest_factor_db,
++            },
++            {
++                "stage": "multiband_balance",
++                "low_band_ratio": self.tone_reference.low_band_ratio,
++                "mid_band_ratio": self.tone_reference.mid_band_ratio,
++                "high_band_ratio": self.tone_reference.high_band_ratio,
++                "dynamic_range_db": self.tone_reference.dynamic_range_db,
++            },
++            {"stage": "saturation", "drive_db": self.saturation_drive_db},
++            {
++                "stage": "eq_low_shelf",
++                "frequency_hz": self.low_shelf_frequency_hz,
++                "gain_db": self.low_shelf_gain_db,
++            },
++        ]
++
++        if self.mode == AudioRenderMode.ETHEREAL:
++            chain.append({"stage": "shimmer", "mix": self.shimmer_amount})
++            chain.append({"stage": "reverb", "wet_mix": self.reverb_wet_mix})
++
++        chain.append({"stage": "stereo_imager", "width": self.stereo_width})
++        chain.append({"stage": "true_peak_limiter", "ceiling_dbtp": -1.0})
++        return chain
++
++
++@dataclass(frozen=True)
++class PersonalAccess:
++    """User/device lock to make transformation available only to one owner."""
++
++    owner_id: str
++    device_fingerprint: str
++    secret_phrase: str
++
++    def token(self) -> str:
++        digest = blake2b(digest_size=24)
++        digest.update(self.owner_id.encode("utf-8"))
++        digest.update(self.device_fingerprint.encode("utf-8"))
++        digest.update(self.secret_phrase.encode("utf-8"))
++        return digest.hexdigest()
++
++
++@dataclass
++class MetaphysicalCodaPlan:
++    """Unified transcoding, audio voicing, and ownership-locked transform plan."""
++
++    images: List[ImageDescriptor] = field(default_factory=list)
++    requested_formats: List[ImageFormat] = field(default_factory=list)
++    audio_profiles: List[AudioProfile] = field(default_factory=list)
++    access: Optional[PersonalAccess] = None
++
++    def verify_access(self, owner_id: str, device_fingerprint: str, secret_phrase: str) -> bool:
++        """Validate ownership lock for plan usage."""
++        if not self.access:
++            return True
++        candidate = PersonalAccess(owner_id, device_fingerprint, secret_phrase)
++        return candidate.token() == self.access.token()
++
++    def as_dict(self) -> Dict[str, object]:
++        image_matrix = []
++        for image in self.images:
++            inferred = image.inferred_format()
++            image_matrix.append(
++                {
++                    "source": image.source,
++                    "is_imgur": image.is_imgur(),
++                    "detected_format": inferred.value if inferred else None,
++                    "targets": [fmt.value for fmt in self.requested_formats],
++                    "pipeline": {
++                        "decode": "colorspace=bt709",
++                        "resample": "lanczos3",
++                        "quantization": "perceptual",
++                    },
++                }
++            )
++
++        payload: Dict[str, object] = {
++            "image_transcoding": image_matrix,
++            "audio_mastering": [
++                {
++                    "mode": profile.mode.value,
++                    "sample_rate_hz": profile.sample_rate_hz,
++                    "bit_depth": profile.bit_depth,
++                    "channels": profile.channels,
++                    "dsp_chain": profile.to_dsp_chain(),
++                }
++                for profile in self.audio_profiles
++            ],
++        }
++        if self.access:
++            payload["usage_lock"] = {
++                "owner_id": self.access.owner_id,
++                "device_fingerprint": self.access.device_fingerprint,
++                "access_token": self.access.token(),
++                "policy": "single-owner-execution",
++            }
++        return payload
++
++
++def reconstruct_metaphysical_coda(
++    image_sources: Iterable[str],
++    include_hpeg: bool = True,
++    include_imgur_targets: bool = True,
++) -> MetaphysicalCodaPlan:
++    """Build a comprehensive technical plan from image inputs."""
++    descriptors = [ImageDescriptor(source=src) for src in image_sources]
++    if not include_imgur_targets:
++        descriptors = [d for d in descriptors if not d.is_imgur()]
++
++    targets: List[ImageFormat] = [ImageFormat.JPEG, ImageFormat.PNG, ImageFormat.WEBP, ImageFormat.AVIF]
++    if include_hpeg:
++        targets.append(ImageFormat.HPEG)
++
++    profiles = [
++        AudioProfile(mode=AudioRenderMode.SAT, saturation_drive_db=4.0),
++        AudioProfile(mode=AudioRenderMode.SOUND, saturation_drive_db=2.5, reverb_wet_mix=0.15),
++        AudioProfile(mode=AudioRenderMode.BASS, low_shelf_gain_db=6.5, low_shelf_frequency_hz=75.0),
++        AudioProfile(mode=AudioRenderMode.ETHEREAL, reverb_wet_mix=0.42, shimmer_amount=0.58, stereo_width=1.25),
++    ]
++
++    return MetaphysicalCodaPlan(images=descriptors, requested_formats=targets, audio_profiles=profiles)
++
++
++def create_personal_music_lock(
++    owner_id: str,
++    device_fingerprint: str,
++    secret_phrase: str,
++    image_sources: Iterable[str],
++) -> MetaphysicalCodaPlan:
++    """Create a coda plan with an ownership lock for one specific user."""
++    plan = reconstruct_metaphysical_coda(image_sources=image_sources, include_hpeg=True, include_imgur_targets=True)
++    plan.access = PersonalAccess(
++        owner_id=owner_id,
++        device_fingerprint=device_fingerprint,
++        secret_phrase=secret_phrase,
++    )
++    return plan
++
++
++if __name__ == "__main__":
++    import json
++
++    locked_plan = create_personal_music_lock(
++        owner_id="user_me",
++        device_fingerprint="device_7f3a",
++        secret_phrase="my-private-coda",
++        image_sources=["./j.pg", "https://i.imgur.com/example.jpg", "./cover.jpeg"],
++    )
++    print(json.dumps(locked_plan.as_dict(), indent=2))
+
