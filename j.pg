@@ -1,0 +1,3350 @@
+diff --git a/deep_gong_root_analyzer.py b/deep_gong_root_analyzer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e08d83102915dcef73430bfa42482e38ffc21bf9
+--- /dev/null
++++ b/deep_gong_root_analyzer.py
+@@ -0,0 +1,628 @@
++#!/usr/bin/env python3
++"""Deep Gong Root Analyzer + Mitigator.
++
++A platform-ready Python CLI for two tasks:
++1) Analyze deep/gong-like low-frequency WAV audio and explain why/how it happens,
++   likely reason, and physical/metaphysical interpretation.
++2) Alter mitigation behavior through system rules (JSON) so process handling is
++   programmable through code.
++
++Policy: excludes "forces of evil" explanations by design.
++"""
++
++from __future__ import annotations
++
++import argparse
++import csv
++import json
++import math
++import platform
++import statistics
++import subprocess
++import wave
++from dataclasses import asdict, dataclass
++from pathlib import Path
++from typing import Dict, List, Sequence, Tuple
++
++
++DEFAULT_COMBATIVE_KEYWORDS = [
++    "combative",
++    "aggressive",
++    "noiseflood",
++    "ultrasonic",
++    "sonic",
++    "attack",
++]
++
++SUPPORTED_ACTIONS = {"report", "terminate", "suspend", "resume"}
++BLOCKED_DESTRUCTIVE_ACTIONS = {"erase", "wipe", "self_destruct", "delete_history", "scrub_others"}
++
++
++@dataclass
++class GongMetrics:
++    sample_rate: int
++    duration_s: float
++    fundamental_hz: float
++    low_band_ratio: float
++    decay_time_s: float
++    spectral_flatness: float
++    pulse_rate_hz: float
++
++
++@dataclass
++class GongAssessment:
++    why: str
++    how: str
++    likely_reason: str
++    is_it_bad_or_good: str
++    physical_view: str
++    metaphysical_view: str
++    confidence_0_to_1: float
++
++
++@dataclass
++class SystemRules:
++    keywords: List[str]
++    action: str
++    case_sensitive: bool = False
++
++
++@dataclass
++class ProcessInsight:
++    pid: int
++    name: str
++    ppid: str = ""
++    user: str = ""
++    cpu_percent: str = ""
++    mem_percent: str = ""
++    elapsed: str = ""
++    cmdline: str = ""
++    risk_score: float = 0.0
++    reasons: List[str] | None = None
++
++
++def read_wav_mono(path: Path) -> Tuple[int, List[float]]:
++    with wave.open(str(path), "rb") as wf:
++        channels = wf.getnchannels()
++        sample_width = wf.getsampwidth()
++        sample_rate = wf.getframerate()
++        frames = wf.getnframes()
++        raw = wf.readframes(frames)
++
++    if sample_width != 2:
++        raise ValueError("Only 16-bit PCM WAV is supported in this version.")
++
++    total_samples = len(raw) // 2
++    values = [int.from_bytes(raw[i * 2:(i + 1) * 2], "little", signed=True) for i in range(total_samples)]
++
++    if channels > 1:
++        mono: List[float] = []
++        for i in range(0, len(values), channels):
++            mono.append(sum(values[i:i + channels]) / channels)
++        values_f = mono
++    else:
++        values_f = [float(v) for v in values]
++
++    peak = max(1.0, max(abs(v) for v in values_f))
++    normalized = [v / peak for v in values_f]
++    return sample_rate, normalized
++
++
++def rms(signal_values: Sequence[float]) -> float:
++    if not signal_values:
++        return 0.0
++    return math.sqrt(sum(s * s for s in signal_values) / len(signal_values))
++
++
++def dft_magnitude(signal_values: Sequence[float], sample_rate: int, max_hz: int = 400) -> List[Tuple[float, float]]:
++    n = len(signal_values)
++    if n == 0:
++        return []
++    bin_hz = sample_rate / n
++    max_k = min(int(max_hz / bin_hz), n // 2)
++    spectrum: List[Tuple[float, float]] = []
++
++    for k in range(1, max_k + 1):
++        re = 0.0
++        im = 0.0
++        for t, x in enumerate(signal_values):
++            angle = 2.0 * math.pi * k * t / n
++            re += x * math.cos(angle)
++            im -= x * math.sin(angle)
++        mag = math.sqrt(re * re + im * im)
++        spectrum.append((k * bin_hz, mag))
++
++    return spectrum
++
++
++def estimate_decay(signal_values: Sequence[float], sample_rate: int, window_ms: int = 50) -> float:
++    if not signal_values:
++        return 0.0
++    w = max(1, sample_rate * window_ms // 1000)
++    windows = [signal_values[i:i + w] for i in range(0, len(signal_values), w)]
++    energies = [rms(win) for win in windows if win]
++    if not energies:
++        return 0.0
++
++    peak = max(energies)
++    target = peak * 0.37
++    for idx, val in enumerate(energies):
++        if val <= target:
++            return idx * (window_ms / 1000.0)
++    return len(energies) * (window_ms / 1000.0)
++
++
++def estimate_pulse_rate(signal_values: Sequence[float], sample_rate: int) -> float:
++    if not signal_values:
++        return 0.0
++    env_win = max(1, sample_rate // 100)
++    env = [rms(signal_values[i:i + env_win]) for i in range(0, len(signal_values), env_win)]
++    if len(env) < 5:
++        return 0.0
++
++    threshold = statistics.mean(env) + statistics.pstdev(env) * 0.5
++    peaks = [i for i in range(1, len(env) - 1) if env[i] > env[i - 1] and env[i] > env[i + 1] and env[i] > threshold]
++
++    if len(peaks) < 2:
++        return 0.0
++
++    intervals = [(peaks[i] - peaks[i - 1]) * (env_win / sample_rate) for i in range(1, len(peaks))]
++    avg = statistics.mean(intervals)
++    return 0.0 if avg <= 0 else 1.0 / avg
++
++
++def analyze_metrics(sample_rate: int, signal_values: Sequence[float]) -> GongMetrics:
++    duration = len(signal_values) / sample_rate if sample_rate else 0.0
++    clipped = signal_values[: min(len(signal_values), sample_rate * 3)]
++    spectrum = dft_magnitude(clipped, sample_rate, max_hz=400)
++
++    if spectrum:
++        fundamental = max(spectrum, key=lambda p: p[1])[0]
++        low_energy = sum(m for f, m in spectrum if f <= 120.0)
++        total_energy = sum(m for _, m in spectrum) + 1e-9
++        low_ratio = low_energy / total_energy
++        mags = [m + 1e-12 for _, m in spectrum]
++        gmean = math.exp(sum(math.log(m) for m in mags) / len(mags))
++        amean = sum(mags) / len(mags)
++        flatness = gmean / amean
++    else:
++        fundamental = 0.0
++        low_ratio = 0.0
++        flatness = 0.0
++
++    return GongMetrics(
++        sample_rate=sample_rate,
++        duration_s=duration,
++        fundamental_hz=fundamental,
++        low_band_ratio=low_ratio,
++        decay_time_s=estimate_decay(signal_values, sample_rate),
++        spectral_flatness=flatness,
++        pulse_rate_hz=estimate_pulse_rate(signal_values, sample_rate),
++    )
++
++
++def build_assessment(metrics: GongMetrics) -> GongAssessment:
++    low = metrics.fundamental_hz <= 120 and metrics.low_band_ratio > 0.55
++    long_decay = metrics.decay_time_s > 0.9
++    pulsed = 0.15 <= metrics.pulse_rate_hz <= 2.2
++
++    why = (
++        "The sound is likely structural or cavity resonance: a low mode is being excited and rings out like a gong."
++        if low and long_decay
++        else "The sound has partial gong traits and may involve a mixed source (mechanical + ambient + room modes)."
++    )
++
++    how = (
++        "An impulse or periodic forcing (impact, pressure change, HVAC cycle, traffic vibration, or bass source) "
++        "injects energy into a resonant object/space. The dominant resonant mode amplifies then decays."
++    )
++
++    likely_reason = (
++        "Most likely: resonance in architecture, ducts, fixtures, large metal objects, pipes, or room standing waves."
++    )
++
++    if low and long_decay and not pulsed:
++        good_bad = "Usually neutral to mildly negative (annoying), not inherently dangerous at typical household levels."
++    elif pulsed and low:
++        good_bad = "Potentially stressful if repetitive; mitigation is recommended for sleep and concentration quality."
++    else:
++        good_bad = "Likely benign; monitor if intensity rises, causes structural vibration, or disrupts health/sleep."
++
++    physical_view = (
++        "Physically this is consistent with resonance, damping, material geometry, and boundary conditions. "
++        "Inspect vents, pipes, suspended metal, appliances, subwoofers, and nearby transport cycles."
++    )
++
++    metaphysical_view = (
++        "Metaphysically (non-combative and non-evil framing), low gong tones are often interpreted as "
++        "grounding/transition cues for attention and state shifts. This is symbolic interpretation, not causal proof."
++    )
++
++    score = 0.35 + (0.3 if low else 0.0) + (0.2 if long_decay else 0.0) + (0.1 if pulsed else 0.0)
++    score = min(1.0, score)
++
++    return GongAssessment(
++        why=why,
++        how=how,
++        likely_reason=likely_reason,
++        is_it_bad_or_good=good_bad,
++        physical_view=physical_view,
++        metaphysical_view=metaphysical_view,
++        confidence_0_to_1=score,
++    )
++
++
++
++
++def validate_safe_intent(rules: SystemRules) -> None:
++    if rules.action in BLOCKED_DESTRUCTIVE_ACTIONS:
++        raise ValueError(
++            "Destructive erasure actions are blocked. Use investigation/reporting and explicit admin remediation instead."
++        )
++
++def load_rules(path: Path) -> SystemRules:
++    data = json.loads(path.read_text())
++    keywords = data.get("keywords", DEFAULT_COMBATIVE_KEYWORDS)
++    action = str(data.get("action", "report")).lower()
++    case_sensitive = bool(data.get("case_sensitive", False))
++
++    if not isinstance(keywords, list) or not all(isinstance(k, str) for k in keywords):
++        raise ValueError("rules.keywords must be a list of strings")
++    if action in BLOCKED_DESTRUCTIVE_ACTIONS:
++        raise ValueError(
++            "Destructive erasure actions are blocked. Allowed actions: "
++            + ", ".join(sorted(SUPPORTED_ACTIONS))
++        )
++    if action not in SUPPORTED_ACTIONS:
++        raise ValueError(f"rules.action must be one of: {', '.join(sorted(SUPPORTED_ACTIONS))}")
++
++    rules = SystemRules(keywords=keywords, action=action, case_sensitive=case_sensitive)
++    validate_safe_intent(rules)
++    return rules
++
++
++def list_processes() -> List[Tuple[int, str]]:
++    os_name = platform.system().lower()
++    processes: List[Tuple[int, str]] = []
++
++    if os_name == "windows":
++        output = subprocess.check_output(["tasklist", "/FO", "CSV", "/NH"], text=True, errors="ignore")
++        for line in output.splitlines():
++            parts = [p.strip().strip('"') for p in line.split('","')]
++            if len(parts) >= 2 and parts[1].isdigit():
++                processes.append((int(parts[1]), parts[0]))
++        return processes
++
++    output = subprocess.check_output(["ps", "-eo", "pid=,comm="], text=True, errors="ignore")
++    for line in output.splitlines():
++        bits = line.strip().split(maxsplit=1)
++        if len(bits) == 2 and bits[0].isdigit():
++            processes.append((int(bits[0]), bits[1]))
++    return processes
++
++
++def find_processes(keywords: Sequence[str], case_sensitive: bool = False) -> List[Tuple[int, str]]:
++    if case_sensitive:
++        rule_words = list(keywords)
++        checker = lambda n: any(word in n for word in rule_words)
++    else:
++        rule_words = [k.lower() for k in keywords]
++        checker = lambda n: any(word in n.lower() for word in rule_words)
++
++    found: List[Tuple[int, str]] = []
++    for pid, name in list_processes():
++        if checker(name):
++            found.append((pid, name))
++    return found
++
++
++def _score_process_for_keywords(name: str, cmdline: str, keywords: Sequence[str], case_sensitive: bool) -> Tuple[float, List[str]]:
++    reasons: List[str] = []
++    score = 0.0
++    if not case_sensitive:
++        name_cmp = name.lower()
++        cmd_cmp = cmdline.lower()
++        keywords_cmp = [k.lower() for k in keywords]
++    else:
++        name_cmp = name
++        cmd_cmp = cmdline
++        keywords_cmp = list(keywords)
++
++    for kw in keywords_cmp:
++        if kw in name_cmp:
++            reasons.append(f"name_contains:{kw}")
++            score += 0.6
++        if kw in cmd_cmp:
++            reasons.append(f"cmdline_contains:{kw}")
++            score += 0.4
++
++    return min(1.0, score), reasons
++
++
++def inspect_processes(keywords: Sequence[str], case_sensitive: bool = False, limit: int = 50) -> List[ProcessInsight]:
++    os_name = platform.system().lower()
++    insights: List[ProcessInsight] = []
++
++    if os_name == "windows":
++        output = subprocess.check_output(["tasklist", "/V", "/FO", "CSV", "/NH"], text=True, errors="ignore")
++        reader = csv.reader(output.splitlines())
++        for row in reader:
++            if len(row) < 2:
++                continue
++            name, pid_str = row[0], row[1]
++            if not pid_str.isdigit():
++                continue
++            pid = int(pid_str)
++            score, reasons = _score_process_for_keywords(name, "", keywords, case_sensitive)
++            if score <= 0:
++                continue
++            insights.append(
++                ProcessInsight(
++                    pid=pid,
++                    name=name,
++                    user=row[6] if len(row) > 6 else "",
++                    mem_percent=row[4] if len(row) > 4 else "",
++                    cmdline="",
++                    risk_score=score,
++                    reasons=reasons,
++                )
++            )
++    else:
++        output = subprocess.check_output(
++            ["ps", "-eo", "pid=,ppid=,user=,pcpu=,pmem=,etime=,comm=,args="],
++            text=True,
++            errors="ignore",
++        )
++        for line in output.splitlines():
++            parts = line.strip().split(maxsplit=7)
++            if len(parts) < 8 or not parts[0].isdigit():
++                continue
++            pid = int(parts[0])
++            ppid, user, pcpu, pmem, etime, comm, args = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7]
++            score, reasons = _score_process_for_keywords(comm, args, keywords, case_sensitive)
++            if score <= 0:
++                continue
++            insights.append(
++                ProcessInsight(
++                    pid=pid,
++                    name=comm,
++                    ppid=ppid,
++                    user=user,
++                    cpu_percent=pcpu,
++                    mem_percent=pmem,
++                    elapsed=etime,
++                    cmdline=args,
++                    risk_score=score,
++                    reasons=reasons,
++                )
++            )
++
++    insights.sort(key=lambda x: x.risk_score, reverse=True)
++    return insights[: max(1, limit)]
++
++
++def act_on_process(pid: int, action: str) -> None:
++    os_name = platform.system().lower()
++
++    if action == "report":
++        return
++
++    if os_name == "windows":
++        if action == "terminate":
++            subprocess.check_call(["taskkill", "/PID", str(pid), "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++            return
++        raise ValueError("Windows backend currently supports actions: report, terminate")
++
++    if action == "terminate":
++        subprocess.check_call(["kill", "-15", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    elif action == "suspend":
++        subprocess.check_call(["kill", "-STOP", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    elif action == "resume":
++        subprocess.check_call(["kill", "-CONT", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    else:
++        raise ValueError(f"Unsupported action: {action}")
++
++
++def run_analysis(path: Path, as_json: bool) -> int:
++    sample_rate, signal_values = read_wav_mono(path)
++    metrics = analyze_metrics(sample_rate, signal_values)
++    assessment = build_assessment(metrics)
++
++    payload: Dict[str, object] = {
++        "platform": {
++            "os": platform.system(),
++            "release": platform.release(),
++            "python": platform.python_version(),
++        },
++        "input": {"file": str(path), "samples": len(signal_values)},
++        "metrics": asdict(metrics),
++        "assessment": asdict(assessment),
++        "policy": "Excludes forces-of-evil explanations by design.",
++    }
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== Deep Gong Root Analyzer ==")
++    print(f"File: {path}")
++    print(f"Platform: {payload['platform']}")
++    print("\n-- Metrics --")
++    for k, v in payload["metrics"].items():
++        print(f"{k}: {v}")
++    print("\n-- Assessment --")
++    for k, v in payload["assessment"].items():
++        print(f"{k}: {v}")
++    print(f"\nPolicy: {payload['policy']}")
++    return 0
++
++
++def run_system_alteration(rules: SystemRules, execute: bool, as_json: bool) -> int:
++    matches = find_processes(rules.keywords, case_sensitive=rules.case_sensitive)
++    actions: List[Dict[str, object]] = []
++
++    for pid, name in matches:
++        item = {
++            "pid": pid,
++            "name": name,
++            "action": rules.action,
++            "performed": False,
++            "error": None,
++        }
++        if execute:
++            try:
++                act_on_process(pid, rules.action)
++                item["performed"] = True
++            except Exception as exc:  # process race/permissions are runtime concerns
++                item["error"] = str(exc)
++        actions.append(item)
++
++    payload = {
++        "mode": "system_program_alteration",
++        "execute": execute,
++        "rules": asdict(rules),
++        "matches": actions,
++        "summary": {
++            "matched": len(actions),
++            "performed": sum(1 for a in actions if a["performed"]),
++            "failed": sum(1 for a in actions if a["error"]),
++        },
++    }
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== System Alteration Run ==")
++    print(f"Mode: {'EXECUTE' if execute else 'DRY-RUN'}")
++    print(f"Action: {rules.action}")
++    print(f"Keywords: {', '.join(rules.keywords)}")
++    if not actions:
++        print("No matching processes found.")
++        return 0
++
++    for item in actions:
++        state = "performed" if item["performed"] else "matched"
++        if item["error"]:
++            state = f"error: {item['error']}"
++        print(f"PID {item['pid']:<7} {item['name']:<25} -> {state}")
++
++    if not execute:
++        print("\nDry-run only. Add --execute to perform configured action.")
++    return 0
++
++
++def run_investigation(keywords: Sequence[str], case_sensitive: bool, limit: int, as_json: bool, save_report: Path | None) -> int:
++    insights = inspect_processes(keywords, case_sensitive=case_sensitive, limit=limit)
++    payload = {
++        "mode": "programmable_individuals_investigation",
++        "keywords": list(keywords),
++        "case_sensitive": case_sensitive,
++        "count": len(insights),
++        "results": [asdict(item) for item in insights],
++    }
++
++    if save_report is not None:
++        save_report.write_text(json.dumps(payload, indent=2))
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== Programmable Individuals Investigation ==")
++    print(f"Keywords: {', '.join(keywords)}")
++    print(f"Matches: {len(insights)}")
++    if save_report is not None:
++        print(f"Report saved to: {save_report}")
++    for item in insights:
++        reasons = ", ".join(item.reasons or [])
++        print(
++            f"PID {item.pid:<7} score={item.risk_score:.2f} name={item.name:<20} "
++            f"cpu={item.cpu_percent or '-':<6} mem={item.mem_percent or '-':<8} reasons=[{reasons}]"
++        )
++    return 0
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(
++        description="Analyze gong-like audio and alter process behavior using code-defined system rules. Destructive erasure behaviors are intentionally blocked."
++    )
++    sub = parser.add_subparsers(dest="command", required=True)
++
++    analyze = sub.add_parser("analyze", help="Analyze a 16-bit PCM WAV file.")
++    analyze.add_argument("wav_file", type=Path, help="Path to a 16-bit PCM WAV file.")
++    analyze.add_argument("--json", action="store_true", help="Output JSON.")
++
++    deactivate = sub.add_parser(
++        "deactivate",
++        help="Backwards-compatible quick mode (equivalent to alter with inline keywords and terminate action).",
++    )
++    deactivate.add_argument("--match", nargs="+", default=DEFAULT_COMBATIVE_KEYWORDS, help="Keywords to match.")
++    deactivate.add_argument("--execute", action="store_true", help="Actually terminate matching processes.")
++    deactivate.add_argument("--json", action="store_true", help="Output JSON.")
++
++    alter = sub.add_parser(
++        "alter",
++        help="Alter programmable system behavior from JSON rules (keywords + action).",
++    )
++    alter.add_argument("--rules", type=Path, required=True, help="Path to JSON rules file.")
++    alter.add_argument("--execute", action="store_true", help="Perform actions; default is dry-run.")
++    alter.add_argument("--json", action="store_true", help="Output JSON.")
++
++    rules_template = sub.add_parser("rules-template", help="Print a starter JSON rules template.")
++    rules_template.add_argument("--json", action="store_true", help="Output JSON (same as plain text template).")
++
++    investigate = sub.add_parser(
++        "investigate",
++        help="Deeply inspect programmable individuals (processes) with keyword-based scoring.",
++    )
++    investigate.add_argument("--match", nargs="+", default=DEFAULT_COMBATIVE_KEYWORDS, help="Keywords to investigate.")
++    investigate.add_argument("--case-sensitive", action="store_true", help="Use case-sensitive matching.")
++    investigate.add_argument("--limit", type=int, default=50, help="Max number of results to return.")
++    investigate.add_argument("--save-report", type=Path, help="Write JSON report to file.")
++    investigate.add_argument("--json", action="store_true", help="Output JSON.")
++
++    return parser.parse_args()
++
++
++def run_deactivate_compat(match_words: Sequence[str], execute: bool, as_json: bool) -> int:
++    rules = SystemRules(keywords=list(match_words), action="terminate", case_sensitive=False)
++    validate_safe_intent(rules)
++    return run_system_alteration(rules, execute=execute, as_json=as_json)
++
++
++def print_rules_template() -> int:
++    template = {
++        "keywords": ["combative", "aggressive", "sonic"],
++        "action": "terminate",
++        "case_sensitive": False,
++        "notes": "action can be: report, terminate, suspend, resume",
++    }
++    print(json.dumps(template, indent=2))
++    return 0
++
++
++def main() -> int:
++    args = parse_args()
++    if args.command == "analyze":
++        return run_analysis(args.wav_file, as_json=args.json)
++    if args.command == "deactivate":
++        return run_deactivate_compat(args.match, execute=args.execute, as_json=args.json)
++    if args.command == "alter":
++        rules = load_rules(args.rules)
++        return run_system_alteration(rules, execute=args.execute, as_json=args.json)
++    if args.command == "rules-template":
++        return print_rules_template()
++    if args.command == "investigate":
++        return run_investigation(
++            args.match,
++            case_sensitive=args.case_sensitive,
++            limit=args.limit,
++            as_json=args.json,
++            save_report=args.save_report,
++        )
++    return 2
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/deep_gong_root_analyzer.py b/deep_gong_root_analyzer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..391f81a91f49fe98c3e9776028f71bedbc313b21
+--- /dev/null
++++ b/deep_gong_root_analyzer.py
+@@ -0,0 +1,684 @@
++#!/usr/bin/env python3
++"""Deep Gong Root Analyzer + Mitigator.
++
++A platform-ready Python CLI for two tasks:
++1) Analyze deep/gong-like low-frequency WAV audio and explain why/how it happens,
++   likely reason, and physical/metaphysical interpretation.
++2) Alter mitigation behavior through system rules (JSON) so process handling is
++   programmable through code.
++
++Policy: excludes "forces of evil" explanations by design.
++"""
++
++from __future__ import annotations
++
++import argparse
++import csv
++import json
++import math
++import os
++import platform
++import statistics
++import subprocess
++import wave
++from dataclasses import asdict, dataclass
++from pathlib import Path
++from typing import Dict, List, Sequence, Tuple
++
++
++DEFAULT_COMBATIVE_KEYWORDS = [
++    "combative",
++    "aggressive",
++    "noiseflood",
++    "ultrasonic",
++    "sonic",
++    "attack",
++]
++
++SUPPORTED_ACTIONS = {"report", "terminate", "suspend", "resume"}
++BLOCKED_DESTRUCTIVE_ACTIONS = {"erase", "wipe", "self_destruct", "delete_history", "scrub_others"}
++
++
++@dataclass
++class GongMetrics:
++    sample_rate: int
++    duration_s: float
++    fundamental_hz: float
++    low_band_ratio: float
++    decay_time_s: float
++    spectral_flatness: float
++    pulse_rate_hz: float
++
++
++@dataclass
++class GongAssessment:
++    why: str
++    how: str
++    likely_reason: str
++    is_it_bad_or_good: str
++    physical_view: str
++    metaphysical_view: str
++    confidence_0_to_1: float
++
++
++@dataclass
++class SystemRules:
++    keywords: List[str]
++    action: str
++    case_sensitive: bool = False
++
++
++@dataclass
++class ProcessInsight:
++    pid: int
++    name: str
++    ppid: str = ""
++    user: str = ""
++    cpu_percent: str = ""
++    mem_percent: str = ""
++    elapsed: str = ""
++    cmdline: str = ""
++    risk_score: float = 0.0
++    reasons: List[str] | None = None
++
++
++def read_wav_mono(path: Path) -> Tuple[int, List[float]]:
++    with wave.open(str(path), "rb") as wf:
++        channels = wf.getnchannels()
++        sample_width = wf.getsampwidth()
++        sample_rate = wf.getframerate()
++        frames = wf.getnframes()
++        raw = wf.readframes(frames)
++
++    if sample_width != 2:
++        raise ValueError("Only 16-bit PCM WAV is supported in this version.")
++
++    total_samples = len(raw) // 2
++    values = [int.from_bytes(raw[i * 2:(i + 1) * 2], "little", signed=True) for i in range(total_samples)]
++
++    if channels > 1:
++        mono: List[float] = []
++        for i in range(0, len(values), channels):
++            mono.append(sum(values[i:i + channels]) / channels)
++        values_f = mono
++    else:
++        values_f = [float(v) for v in values]
++
++    peak = max(1.0, max(abs(v) for v in values_f))
++    normalized = [v / peak for v in values_f]
++    return sample_rate, normalized
++
++
++def rms(signal_values: Sequence[float]) -> float:
++    if not signal_values:
++        return 0.0
++    return math.sqrt(sum(s * s for s in signal_values) / len(signal_values))
++
++
++def dft_magnitude(signal_values: Sequence[float], sample_rate: int, max_hz: int = 400) -> List[Tuple[float, float]]:
++    n = len(signal_values)
++    if n == 0:
++        return []
++    bin_hz = sample_rate / n
++    max_k = min(int(max_hz / bin_hz), n // 2)
++    spectrum: List[Tuple[float, float]] = []
++
++    for k in range(1, max_k + 1):
++        re = 0.0
++        im = 0.0
++        for t, x in enumerate(signal_values):
++            angle = 2.0 * math.pi * k * t / n
++            re += x * math.cos(angle)
++            im -= x * math.sin(angle)
++        mag = math.sqrt(re * re + im * im)
++        spectrum.append((k * bin_hz, mag))
++
++    return spectrum
++
++
++def estimate_decay(signal_values: Sequence[float], sample_rate: int, window_ms: int = 50) -> float:
++    if not signal_values:
++        return 0.0
++    w = max(1, sample_rate * window_ms // 1000)
++    windows = [signal_values[i:i + w] for i in range(0, len(signal_values), w)]
++    energies = [rms(win) for win in windows if win]
++    if not energies:
++        return 0.0
++
++    peak = max(energies)
++    target = peak * 0.37
++    for idx, val in enumerate(energies):
++        if val <= target:
++            return idx * (window_ms / 1000.0)
++    return len(energies) * (window_ms / 1000.0)
++
++
++def estimate_pulse_rate(signal_values: Sequence[float], sample_rate: int) -> float:
++    if not signal_values:
++        return 0.0
++    env_win = max(1, sample_rate // 100)
++    env = [rms(signal_values[i:i + env_win]) for i in range(0, len(signal_values), env_win)]
++    if len(env) < 5:
++        return 0.0
++
++    threshold = statistics.mean(env) + statistics.pstdev(env) * 0.5
++    peaks = [i for i in range(1, len(env) - 1) if env[i] > env[i - 1] and env[i] > env[i + 1] and env[i] > threshold]
++
++    if len(peaks) < 2:
++        return 0.0
++
++    intervals = [(peaks[i] - peaks[i - 1]) * (env_win / sample_rate) for i in range(1, len(peaks))]
++    avg = statistics.mean(intervals)
++    return 0.0 if avg <= 0 else 1.0 / avg
++
++
++def analyze_metrics(sample_rate: int, signal_values: Sequence[float]) -> GongMetrics:
++    duration = len(signal_values) / sample_rate if sample_rate else 0.0
++    clipped = signal_values[: min(len(signal_values), sample_rate * 3)]
++    spectrum = dft_magnitude(clipped, sample_rate, max_hz=400)
++
++    if spectrum:
++        fundamental = max(spectrum, key=lambda p: p[1])[0]
++        low_energy = sum(m for f, m in spectrum if f <= 120.0)
++        total_energy = sum(m for _, m in spectrum) + 1e-9
++        low_ratio = low_energy / total_energy
++        mags = [m + 1e-12 for _, m in spectrum]
++        gmean = math.exp(sum(math.log(m) for m in mags) / len(mags))
++        amean = sum(mags) / len(mags)
++        flatness = gmean / amean
++    else:
++        fundamental = 0.0
++        low_ratio = 0.0
++        flatness = 0.0
++
++    return GongMetrics(
++        sample_rate=sample_rate,
++        duration_s=duration,
++        fundamental_hz=fundamental,
++        low_band_ratio=low_ratio,
++        decay_time_s=estimate_decay(signal_values, sample_rate),
++        spectral_flatness=flatness,
++        pulse_rate_hz=estimate_pulse_rate(signal_values, sample_rate),
++    )
++
++
++def build_assessment(metrics: GongMetrics) -> GongAssessment:
++    low = metrics.fundamental_hz <= 120 and metrics.low_band_ratio > 0.55
++    long_decay = metrics.decay_time_s > 0.9
++    pulsed = 0.15 <= metrics.pulse_rate_hz <= 2.2
++
++    why = (
++        "The sound is likely structural or cavity resonance: a low mode is being excited and rings out like a gong."
++        if low and long_decay
++        else "The sound has partial gong traits and may involve a mixed source (mechanical + ambient + room modes)."
++    )
++
++    how = (
++        "An impulse or periodic forcing (impact, pressure change, HVAC cycle, traffic vibration, or bass source) "
++        "injects energy into a resonant object/space. The dominant resonant mode amplifies then decays."
++    )
++
++    likely_reason = (
++        "Most likely: resonance in architecture, ducts, fixtures, large metal objects, pipes, or room standing waves."
++    )
++
++    if low and long_decay and not pulsed:
++        good_bad = "Usually neutral to mildly negative (annoying), not inherently dangerous at typical household levels."
++    elif pulsed and low:
++        good_bad = "Potentially stressful if repetitive; mitigation is recommended for sleep and concentration quality."
++    else:
++        good_bad = "Likely benign; monitor if intensity rises, causes structural vibration, or disrupts health/sleep."
++
++    physical_view = (
++        "Physically this is consistent with resonance, damping, material geometry, and boundary conditions. "
++        "Inspect vents, pipes, suspended metal, appliances, subwoofers, and nearby transport cycles."
++    )
++
++    metaphysical_view = (
++        "Metaphysically (non-combative and non-evil framing), low gong tones are often interpreted as "
++        "grounding/transition cues for attention and state shifts. This is symbolic interpretation, not causal proof."
++    )
++
++    score = 0.35 + (0.3 if low else 0.0) + (0.2 if long_decay else 0.0) + (0.1 if pulsed else 0.0)
++    score = min(1.0, score)
++
++    return GongAssessment(
++        why=why,
++        how=how,
++        likely_reason=likely_reason,
++        is_it_bad_or_good=good_bad,
++        physical_view=physical_view,
++        metaphysical_view=metaphysical_view,
++        confidence_0_to_1=score,
++    )
++
++
++
++
++def validate_safe_intent(rules: SystemRules) -> None:
++    if rules.action in BLOCKED_DESTRUCTIVE_ACTIONS:
++        raise ValueError(
++            "Destructive erasure actions are blocked. Use investigation/reporting and explicit admin remediation instead."
++        )
++
++def load_rules(path: Path) -> SystemRules:
++    data = json.loads(path.read_text())
++    keywords = data.get("keywords", DEFAULT_COMBATIVE_KEYWORDS)
++    action = str(data.get("action", "report")).lower()
++    case_sensitive = bool(data.get("case_sensitive", False))
++
++    if not isinstance(keywords, list) or not all(isinstance(k, str) for k in keywords):
++        raise ValueError("rules.keywords must be a list of strings")
++    if action in BLOCKED_DESTRUCTIVE_ACTIONS:
++        raise ValueError(
++            "Destructive erasure actions are blocked. Allowed actions: "
++            + ", ".join(sorted(SUPPORTED_ACTIONS))
++        )
++    if action not in SUPPORTED_ACTIONS:
++        raise ValueError(f"rules.action must be one of: {', '.join(sorted(SUPPORTED_ACTIONS))}")
++
++    rules = SystemRules(keywords=keywords, action=action, case_sensitive=case_sensitive)
++    validate_safe_intent(rules)
++    return rules
++
++
++def list_processes() -> List[Tuple[int, str]]:
++    os_name = platform.system().lower()
++    processes: List[Tuple[int, str]] = []
++
++    if os_name == "windows":
++        output = subprocess.check_output(["tasklist", "/FO", "CSV", "/NH"], text=True, errors="ignore")
++        for line in output.splitlines():
++            parts = [p.strip().strip('"') for p in line.split('","')]
++            if len(parts) >= 2 and parts[1].isdigit():
++                processes.append((int(parts[1]), parts[0]))
++        return processes
++
++    output = subprocess.check_output(["ps", "-eo", "pid=,comm="], text=True, errors="ignore")
++    for line in output.splitlines():
++        bits = line.strip().split(maxsplit=1)
++        if len(bits) == 2 and bits[0].isdigit():
++            processes.append((int(bits[0]), bits[1]))
++    return processes
++
++
++def find_processes(
++    keywords: Sequence[str],
++    case_sensitive: bool = False,
++    exclude_pids: Sequence[int] | None = None,
++) -> List[Tuple[int, str]]:
++    if case_sensitive:
++        rule_words = list(keywords)
++        checker = lambda n: any(word in n for word in rule_words)
++    else:
++        rule_words = [k.lower() for k in keywords]
++        checker = lambda n: any(word in n.lower() for word in rule_words)
++
++    excluded = set(exclude_pids or [])
++    found: List[Tuple[int, str]] = []
++    for pid, name in list_processes():
++        if pid in excluded:
++            continue
++        if checker(name):
++            found.append((pid, name))
++    return found
++
++
++def _score_process_for_keywords(name: str, cmdline: str, keywords: Sequence[str], case_sensitive: bool) -> Tuple[float, List[str]]:
++    reasons: List[str] = []
++    score = 0.0
++    if not case_sensitive:
++        name_cmp = name.lower()
++        cmd_cmp = cmdline.lower()
++        keywords_cmp = [k.lower() for k in keywords]
++    else:
++        name_cmp = name
++        cmd_cmp = cmdline
++        keywords_cmp = list(keywords)
++
++    for kw in keywords_cmp:
++        if kw in name_cmp:
++            reasons.append(f"name_contains:{kw}")
++            score += 0.6
++        if kw in cmd_cmp:
++            reasons.append(f"cmdline_contains:{kw}")
++            score += 0.4
++
++    return min(1.0, score), reasons
++
++
++def inspect_processes(
++    keywords: Sequence[str],
++    case_sensitive: bool = False,
++    limit: int = 50,
++    exclude_pids: Sequence[int] | None = None,
++) -> List[ProcessInsight]:
++    os_name = platform.system().lower()
++    insights: List[ProcessInsight] = []
++    excluded = set(exclude_pids or [])
++
++    if os_name == "windows":
++        output = subprocess.check_output(["tasklist", "/V", "/FO", "CSV", "/NH"], text=True, errors="ignore")
++        reader = csv.reader(output.splitlines())
++        for row in reader:
++            if len(row) < 2:
++                continue
++            name, pid_str = row[0], row[1]
++            if not pid_str.isdigit():
++                continue
++            pid = int(pid_str)
++            if pid in excluded:
++                continue
++            score, reasons = _score_process_for_keywords(name, "", keywords, case_sensitive)
++            if score <= 0:
++                continue
++            insights.append(
++                ProcessInsight(
++                    pid=pid,
++                    name=name,
++                    user=row[6] if len(row) > 6 else "",
++                    mem_percent=row[4] if len(row) > 4 else "",
++                    cmdline="",
++                    risk_score=score,
++                    reasons=reasons,
++                )
++            )
++    else:
++        output = subprocess.check_output(
++            ["ps", "-eo", "pid=,ppid=,user=,pcpu=,pmem=,etime=,comm=,args="],
++            text=True,
++            errors="ignore",
++        )
++        for line in output.splitlines():
++            parts = line.strip().split(maxsplit=7)
++            if len(parts) < 8 or not parts[0].isdigit():
++                continue
++            pid = int(parts[0])
++            if pid in excluded:
++                continue
++            ppid, user, pcpu, pmem, etime, comm, args = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7]
++            score, reasons = _score_process_for_keywords(comm, args, keywords, case_sensitive)
++            if score <= 0:
++                continue
++            insights.append(
++                ProcessInsight(
++                    pid=pid,
++                    name=comm,
++                    ppid=ppid,
++                    user=user,
++                    cpu_percent=pcpu,
++                    mem_percent=pmem,
++                    elapsed=etime,
++                    cmdline=args,
++                    risk_score=score,
++                    reasons=reasons,
++                )
++            )
++
++    insights.sort(key=lambda x: x.risk_score, reverse=True)
++    return insights[: max(1, limit)]
++
++
++def act_on_process(pid: int, action: str) -> None:
++    os_name = platform.system().lower()
++
++    if action == "report":
++        return
++
++    if os_name == "windows":
++        if action == "terminate":
++            subprocess.check_call(["taskkill", "/PID", str(pid), "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++            return
++        raise ValueError("Windows backend currently supports actions: report, terminate")
++
++    if action == "terminate":
++        subprocess.check_call(["kill", "-15", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    elif action == "suspend":
++        subprocess.check_call(["kill", "-STOP", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    elif action == "resume":
++        subprocess.check_call(["kill", "-CONT", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    else:
++        raise ValueError(f"Unsupported action: {action}")
++
++
++def run_analysis(path: Path, as_json: bool) -> int:
++    sample_rate, signal_values = read_wav_mono(path)
++    metrics = analyze_metrics(sample_rate, signal_values)
++    assessment = build_assessment(metrics)
++
++    payload: Dict[str, object] = {
++        "platform": {
++            "os": platform.system(),
++            "release": platform.release(),
++            "python": platform.python_version(),
++        },
++        "input": {"file": str(path), "samples": len(signal_values)},
++        "metrics": asdict(metrics),
++        "assessment": asdict(assessment),
++        "policy": "Excludes forces-of-evil explanations by design.",
++    }
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== Deep Gong Root Analyzer ==")
++    print(f"File: {path}")
++    print(f"Platform: {payload['platform']}")
++    print("\n-- Metrics --")
++    for k, v in payload["metrics"].items():
++        print(f"{k}: {v}")
++    print("\n-- Assessment --")
++    for k, v in payload["assessment"].items():
++        print(f"{k}: {v}")
++    print(f"\nPolicy: {payload['policy']}")
++    return 0
++
++
++def run_system_alteration(
++    rules: SystemRules,
++    execute: bool,
++    as_json: bool,
++    include_self: bool = False,
++) -> int:
++    excluded = [] if include_self else [os.getpid()]
++    matches = find_processes(rules.keywords, case_sensitive=rules.case_sensitive, exclude_pids=excluded)
++    actions: List[Dict[str, object]] = []
++
++    for pid, name in matches:
++        item = {
++            "pid": pid,
++            "name": name,
++            "action": rules.action,
++            "performed": False,
++            "error": None,
++        }
++        if execute:
++            try:
++                act_on_process(pid, rules.action)
++                item["performed"] = True
++            except Exception as exc:  # process race/permissions are runtime concerns
++                item["error"] = str(exc)
++        actions.append(item)
++
++    payload = {
++        "mode": "system_program_alteration",
++        "execute": execute,
++        "rules": asdict(rules),
++        "matches": actions,
++        "summary": {
++            "matched": len(actions),
++            "performed": sum(1 for a in actions if a["performed"]),
++            "failed": sum(1 for a in actions if a["error"]),
++        },
++    }
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== System Alteration Run ==")
++    print(f"Mode: {'EXECUTE' if execute else 'DRY-RUN'}")
++    print(f"Action: {rules.action}")
++    print(f"Keywords: {', '.join(rules.keywords)}")
++    if not actions:
++        print("No matching processes found.")
++        return 0
++
++    for item in actions:
++        state = "performed" if item["performed"] else "matched"
++        if item["error"]:
++            state = f"error: {item['error']}"
++        print(f"PID {item['pid']:<7} {item['name']:<25} -> {state}")
++
++    if not execute:
++        print("\nDry-run only. Add --execute to perform configured action.")
++    return 0
++
++
++def run_investigation(
++    keywords: Sequence[str],
++    case_sensitive: bool,
++    limit: int,
++    as_json: bool,
++    save_report: Path | None,
++    include_self: bool = False,
++) -> int:
++    excluded = [] if include_self else [os.getpid()]
++    insights = inspect_processes(keywords, case_sensitive=case_sensitive, limit=limit, exclude_pids=excluded)
++    by_name: Dict[str, int] = {}
++    for item in insights:
++        by_name[item.name] = by_name.get(item.name, 0) + 1
++
++    payload = {
++        "mode": "programmable_individuals_investigation",
++        "keywords": list(keywords),
++        "case_sensitive": case_sensitive,
++        "count": len(insights),
++        "results": [asdict(item) for item in insights],
++        "summary_by_name": by_name,
++    }
++
++    if save_report is not None:
++        save_report.write_text(json.dumps(payload, indent=2))
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== Programmable Individuals Investigation ==")
++    print(f"Keywords: {', '.join(keywords)}")
++    print(f"Matches: {len(insights)}")
++    if save_report is not None:
++        print(f"Report saved to: {save_report}")
++    for item in insights:
++        reasons = ", ".join(item.reasons or [])
++        print(
++            f"PID {item.pid:<7} score={item.risk_score:.2f} name={item.name:<20} "
++            f"cpu={item.cpu_percent or '-':<6} mem={item.mem_percent or '-':<8} reasons=[{reasons}]"
++        )
++    return 0
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(
++        description="Analyze gong-like audio and alter process behavior using code-defined system rules. Destructive erasure behaviors are intentionally blocked."
++    )
++    sub = parser.add_subparsers(dest="command", required=True)
++
++    analyze = sub.add_parser("analyze", help="Analyze a 16-bit PCM WAV file.")
++    analyze.add_argument("wav_file", type=Path, help="Path to a 16-bit PCM WAV file.")
++    analyze.add_argument("--json", action="store_true", help="Output JSON.")
++
++    deactivate = sub.add_parser(
++        "deactivate",
++        help="Backwards-compatible quick mode (equivalent to alter with inline keywords and terminate action).",
++    )
++    deactivate.add_argument("--match", nargs="+", default=DEFAULT_COMBATIVE_KEYWORDS, help="Keywords to match.")
++    deactivate.add_argument("--execute", action="store_true", help="Actually terminate matching processes.")
++    deactivate.add_argument("--json", action="store_true", help="Output JSON.")
++    deactivate.add_argument("--include-self", action="store_true", help="Include this CLI process in matching.")
++
++    alter = sub.add_parser(
++        "alter",
++        help="Alter programmable system behavior from JSON rules (keywords + action).",
++    )
++    alter.add_argument("--rules", type=Path, required=True, help="Path to JSON rules file.")
++    alter.add_argument("--execute", action="store_true", help="Perform actions; default is dry-run.")
++    alter.add_argument("--json", action="store_true", help="Output JSON.")
++    alter.add_argument("--include-self", action="store_true", help="Include this CLI process in matching.")
++
++    rules_template = sub.add_parser("rules-template", help="Print a starter JSON rules template.")
++    rules_template.add_argument("--json", action="store_true", help="Output JSON (same as plain text template).")
++
++    investigate = sub.add_parser(
++        "investigate",
++        help="Deeply inspect programmable individuals (processes) with keyword-based scoring.",
++    )
++    investigate.add_argument("--match", nargs="+", default=DEFAULT_COMBATIVE_KEYWORDS, help="Keywords to investigate.")
++    investigate.add_argument("--case-sensitive", action="store_true", help="Use case-sensitive matching.")
++    investigate.add_argument("--limit", type=int, default=50, help="Max number of results to return.")
++    investigate.add_argument("--save-report", type=Path, help="Write JSON report to file.")
++    investigate.add_argument("--json", action="store_true", help="Output JSON.")
++    investigate.add_argument("--include-self", action="store_true", help="Include this CLI process in results.")
++
++    return parser.parse_args()
++
++
++def run_deactivate_compat(
++    match_words: Sequence[str],
++    execute: bool,
++    as_json: bool,
++    include_self: bool = False,
++) -> int:
++    rules = SystemRules(keywords=list(match_words), action="terminate", case_sensitive=False)
++    validate_safe_intent(rules)
++    return run_system_alteration(rules, execute=execute, as_json=as_json, include_self=include_self)
++
++
++def print_rules_template() -> int:
++    template = {
++        "keywords": ["combative", "aggressive", "sonic"],
++        "action": "terminate",
++        "case_sensitive": False,
++        "notes": "action can be: report, terminate, suspend, resume",
++    }
++    print(json.dumps(template, indent=2))
++    return 0
++
++
++def main() -> int:
++    args = parse_args()
++    if args.command == "analyze":
++        return run_analysis(args.wav_file, as_json=args.json)
++    if args.command == "deactivate":
++        return run_deactivate_compat(
++            args.match,
++            execute=args.execute,
++            as_json=args.json,
++            include_self=args.include_self,
++        )
++    if args.command == "alter":
++        rules = load_rules(args.rules)
++        return run_system_alteration(
++            rules,
++            execute=args.execute,
++            as_json=args.json,
++            include_self=args.include_self,
++        )
++    if args.command == "rules-template":
++        return print_rules_template()
++    if args.command == "investigate":
++        return run_investigation(
++            args.match,
++            case_sensitive=args.case_sensitive,
++            limit=args.limit,
++            as_json=args.json,
++            save_report=args.save_report,
++            include_self=args.include_self,
++        )
++    return 2
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/deep_gong_root_analyzer.py b/deep_gong_root_analyzer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3d87c03269c09f1c353dbdaba58e1ca05c48d7ff
+--- /dev/null
++++ b/deep_gong_root_analyzer.py
+@@ -0,0 +1,650 @@
++#!/usr/bin/env python3
++"""Deep Gong Root Analyzer + Mitigator.
++
++A platform-ready Python CLI for two tasks:
++1) Analyze deep/gong-like low-frequency WAV audio and explain why/how it happens,
++   likely reason, and physical/metaphysical interpretation.
++2) Alter mitigation behavior through system rules (JSON) so process handling is
++   programmable through code.
++
++Policy: excludes "forces of evil" explanations by design.
++"""
++
++from __future__ import annotations
++
++import argparse
++import csv
++import json
++import math
++import platform
++import statistics
++import subprocess
++import sys
++import wave
++from dataclasses import asdict, dataclass
++from pathlib import Path
++from typing import Dict, List, Sequence, Tuple
++
++
++DEFAULT_COMBATIVE_KEYWORDS = [
++    "combative",
++    "aggressive",
++    "noiseflood",
++    "ultrasonic",
++    "sonic",
++    "attack",
++]
++
++SUPPORTED_ACTIONS = {"report", "terminate", "suspend", "resume"}
++BLOCKED_DESTRUCTIVE_ACTIONS = {"erase", "wipe", "self_destruct", "delete_history", "scrub_others"}
++MAX_ALTER_MATCHES_DEFAULT = 200
++
++
++@dataclass
++class GongMetrics:
++    sample_rate: int
++    duration_s: float
++    fundamental_hz: float
++    low_band_ratio: float
++    decay_time_s: float
++    spectral_flatness: float
++    pulse_rate_hz: float
++
++
++@dataclass
++class GongAssessment:
++    why: str
++    how: str
++    likely_reason: str
++    is_it_bad_or_good: str
++    physical_view: str
++    metaphysical_view: str
++    confidence_0_to_1: float
++
++
++@dataclass
++class SystemRules:
++    keywords: List[str]
++    action: str
++    case_sensitive: bool = False
++
++
++@dataclass
++class ProcessInsight:
++    pid: int
++    name: str
++    ppid: str = ""
++    user: str = ""
++    cpu_percent: str = ""
++    mem_percent: str = ""
++    elapsed: str = ""
++    cmdline: str = ""
++    risk_score: float = 0.0
++    reasons: List[str] | None = None
++
++
++def read_wav_mono(path: Path) -> Tuple[int, List[float]]:
++    with wave.open(str(path), "rb") as wf:
++        channels = wf.getnchannels()
++        sample_width = wf.getsampwidth()
++        sample_rate = wf.getframerate()
++        frames = wf.getnframes()
++        raw = wf.readframes(frames)
++
++    if sample_width != 2:
++        raise ValueError("Only 16-bit PCM WAV is supported in this version.")
++
++    total_samples = len(raw) // 2
++    values = [int.from_bytes(raw[i * 2:(i + 1) * 2], "little", signed=True) for i in range(total_samples)]
++
++    if channels > 1:
++        mono: List[float] = []
++        for i in range(0, len(values), channels):
++            mono.append(sum(values[i:i + channels]) / channels)
++        values_f = mono
++    else:
++        values_f = [float(v) for v in values]
++
++    peak = max(1.0, max(abs(v) for v in values_f))
++    normalized = [v / peak for v in values_f]
++    return sample_rate, normalized
++
++
++def rms(signal_values: Sequence[float]) -> float:
++    if not signal_values:
++        return 0.0
++    return math.sqrt(sum(s * s for s in signal_values) / len(signal_values))
++
++
++def dft_magnitude(signal_values: Sequence[float], sample_rate: int, max_hz: int = 400) -> List[Tuple[float, float]]:
++    n = len(signal_values)
++    if n == 0:
++        return []
++    bin_hz = sample_rate / n
++    max_k = min(int(max_hz / bin_hz), n // 2)
++    spectrum: List[Tuple[float, float]] = []
++
++    for k in range(1, max_k + 1):
++        re = 0.0
++        im = 0.0
++        for t, x in enumerate(signal_values):
++            angle = 2.0 * math.pi * k * t / n
++            re += x * math.cos(angle)
++            im -= x * math.sin(angle)
++        mag = math.sqrt(re * re + im * im)
++        spectrum.append((k * bin_hz, mag))
++
++    return spectrum
++
++
++def estimate_decay(signal_values: Sequence[float], sample_rate: int, window_ms: int = 50) -> float:
++    if not signal_values:
++        return 0.0
++    w = max(1, sample_rate * window_ms // 1000)
++    windows = [signal_values[i:i + w] for i in range(0, len(signal_values), w)]
++    energies = [rms(win) for win in windows if win]
++    if not energies:
++        return 0.0
++
++    peak = max(energies)
++    target = peak * 0.37
++    for idx, val in enumerate(energies):
++        if val <= target:
++            return idx * (window_ms / 1000.0)
++    return len(energies) * (window_ms / 1000.0)
++
++
++def estimate_pulse_rate(signal_values: Sequence[float], sample_rate: int) -> float:
++    if not signal_values:
++        return 0.0
++    env_win = max(1, sample_rate // 100)
++    env = [rms(signal_values[i:i + env_win]) for i in range(0, len(signal_values), env_win)]
++    if len(env) < 5:
++        return 0.0
++
++    threshold = statistics.mean(env) + statistics.pstdev(env) * 0.5
++    peaks = [i for i in range(1, len(env) - 1) if env[i] > env[i - 1] and env[i] > env[i + 1] and env[i] > threshold]
++
++    if len(peaks) < 2:
++        return 0.0
++
++    intervals = [(peaks[i] - peaks[i - 1]) * (env_win / sample_rate) for i in range(1, len(peaks))]
++    avg = statistics.mean(intervals)
++    return 0.0 if avg <= 0 else 1.0 / avg
++
++
++def analyze_metrics(sample_rate: int, signal_values: Sequence[float]) -> GongMetrics:
++    duration = len(signal_values) / sample_rate if sample_rate else 0.0
++    clipped = signal_values[: min(len(signal_values), sample_rate * 3)]
++    spectrum = dft_magnitude(clipped, sample_rate, max_hz=400)
++
++    if spectrum:
++        fundamental = max(spectrum, key=lambda p: p[1])[0]
++        low_energy = sum(m for f, m in spectrum if f <= 120.0)
++        total_energy = sum(m for _, m in spectrum) + 1e-9
++        low_ratio = low_energy / total_energy
++        mags = [m + 1e-12 for _, m in spectrum]
++        gmean = math.exp(sum(math.log(m) for m in mags) / len(mags))
++        amean = sum(mags) / len(mags)
++        flatness = gmean / amean
++    else:
++        fundamental = 0.0
++        low_ratio = 0.0
++        flatness = 0.0
++
++    return GongMetrics(
++        sample_rate=sample_rate,
++        duration_s=duration,
++        fundamental_hz=fundamental,
++        low_band_ratio=low_ratio,
++        decay_time_s=estimate_decay(signal_values, sample_rate),
++        spectral_flatness=flatness,
++        pulse_rate_hz=estimate_pulse_rate(signal_values, sample_rate),
++    )
++
++
++def build_assessment(metrics: GongMetrics) -> GongAssessment:
++    low = metrics.fundamental_hz <= 120 and metrics.low_band_ratio > 0.55
++    long_decay = metrics.decay_time_s > 0.9
++    pulsed = 0.15 <= metrics.pulse_rate_hz <= 2.2
++
++    why = (
++        "The sound is likely structural or cavity resonance: a low mode is being excited and rings out like a gong."
++        if low and long_decay
++        else "The sound has partial gong traits and may involve a mixed source (mechanical + ambient + room modes)."
++    )
++
++    how = (
++        "An impulse or periodic forcing (impact, pressure change, HVAC cycle, traffic vibration, or bass source) "
++        "injects energy into a resonant object/space. The dominant resonant mode amplifies then decays."
++    )
++
++    likely_reason = (
++        "Most likely: resonance in architecture, ducts, fixtures, large metal objects, pipes, or room standing waves."
++    )
++
++    if low and long_decay and not pulsed:
++        good_bad = "Usually neutral to mildly negative (annoying), not inherently dangerous at typical household levels."
++    elif pulsed and low:
++        good_bad = "Potentially stressful if repetitive; mitigation is recommended for sleep and concentration quality."
++    else:
++        good_bad = "Likely benign; monitor if intensity rises, causes structural vibration, or disrupts health/sleep."
++
++    physical_view = (
++        "Physically this is consistent with resonance, damping, material geometry, and boundary conditions. "
++        "Inspect vents, pipes, suspended metal, appliances, subwoofers, and nearby transport cycles."
++    )
++
++    metaphysical_view = (
++        "Metaphysically (non-combative and non-evil framing), low gong tones are often interpreted as "
++        "grounding/transition cues for attention and state shifts. This is symbolic interpretation, not causal proof."
++    )
++
++    score = 0.35 + (0.3 if low else 0.0) + (0.2 if long_decay else 0.0) + (0.1 if pulsed else 0.0)
++    score = min(1.0, score)
++
++    return GongAssessment(
++        why=why,
++        how=how,
++        likely_reason=likely_reason,
++        is_it_bad_or_good=good_bad,
++        physical_view=physical_view,
++        metaphysical_view=metaphysical_view,
++        confidence_0_to_1=score,
++    )
++
++
++
++
++def validate_safe_intent(rules: SystemRules) -> None:
++    if rules.action in BLOCKED_DESTRUCTIVE_ACTIONS:
++        raise ValueError(
++            "Destructive erasure actions are blocked. Use investigation/reporting and explicit admin remediation instead."
++        )
++
++def load_rules(path: Path) -> SystemRules:
++    data = json.loads(path.read_text())
++    keywords = data.get("keywords", DEFAULT_COMBATIVE_KEYWORDS)
++    action = str(data.get("action", "report")).lower()
++    case_sensitive = bool(data.get("case_sensitive", False))
++
++    if not isinstance(keywords, list) or not all(isinstance(k, str) for k in keywords):
++        raise ValueError("rules.keywords must be a list of strings")
++    if action in BLOCKED_DESTRUCTIVE_ACTIONS:
++        raise ValueError(
++            "Destructive erasure actions are blocked. Allowed actions: "
++            + ", ".join(sorted(SUPPORTED_ACTIONS))
++        )
++    if action not in SUPPORTED_ACTIONS:
++        raise ValueError(f"rules.action must be one of: {', '.join(sorted(SUPPORTED_ACTIONS))}")
++
++    rules = SystemRules(keywords=keywords, action=action, case_sensitive=case_sensitive)
++    validate_safe_intent(rules)
++    return rules
++
++
++def list_processes() -> List[Tuple[int, str]]:
++    os_name = platform.system().lower()
++    processes: List[Tuple[int, str]] = []
++
++    if os_name == "windows":
++        output = subprocess.check_output(["tasklist", "/FO", "CSV", "/NH"], text=True, errors="ignore")
++        for line in output.splitlines():
++            parts = [p.strip().strip('"') for p in line.split('","')]
++            if len(parts) >= 2 and parts[1].isdigit():
++                processes.append((int(parts[1]), parts[0]))
++        return processes
++
++    output = subprocess.check_output(["ps", "-eo", "pid=,comm="], text=True, errors="ignore")
++    for line in output.splitlines():
++        bits = line.strip().split(maxsplit=1)
++        if len(bits) == 2 and bits[0].isdigit():
++            processes.append((int(bits[0]), bits[1]))
++    return processes
++
++
++def find_processes(keywords: Sequence[str], case_sensitive: bool = False) -> List[Tuple[int, str]]:
++    if case_sensitive:
++        rule_words = list(keywords)
++        checker = lambda n: any(word in n for word in rule_words)
++    else:
++        rule_words = [k.lower() for k in keywords]
++        checker = lambda n: any(word in n.lower() for word in rule_words)
++
++    found: List[Tuple[int, str]] = []
++    for pid, name in list_processes():
++        if checker(name):
++            found.append((pid, name))
++    return found
++
++
++def _score_process_for_keywords(name: str, cmdline: str, keywords: Sequence[str], case_sensitive: bool) -> Tuple[float, List[str]]:
++    reasons: List[str] = []
++    score = 0.0
++    if not case_sensitive:
++        name_cmp = name.lower()
++        cmd_cmp = cmdline.lower()
++        keywords_cmp = [k.lower() for k in keywords]
++    else:
++        name_cmp = name
++        cmd_cmp = cmdline
++        keywords_cmp = list(keywords)
++
++    for kw in keywords_cmp:
++        if kw in name_cmp:
++            reasons.append(f"name_contains:{kw}")
++            score += 0.6
++        if kw in cmd_cmp:
++            reasons.append(f"cmdline_contains:{kw}")
++            score += 0.4
++
++    return min(1.0, score), reasons
++
++
++def inspect_processes(keywords: Sequence[str], case_sensitive: bool = False, limit: int = 50) -> List[ProcessInsight]:
++    os_name = platform.system().lower()
++    insights: List[ProcessInsight] = []
++    limit = max(1, limit)
++
++    if os_name == "windows":
++        output = subprocess.check_output(["tasklist", "/V", "/FO", "CSV", "/NH"], text=True, errors="ignore")
++        reader = csv.reader(output.splitlines())
++        for row in reader:
++            if len(row) < 2:
++                continue
++            name, pid_str = row[0], row[1]
++            if not pid_str.isdigit():
++                continue
++            pid = int(pid_str)
++            score, reasons = _score_process_for_keywords(name, "", keywords, case_sensitive)
++            if score <= 0:
++                continue
++            insights.append(
++                ProcessInsight(
++                    pid=pid,
++                    name=name,
++                    user=row[6] if len(row) > 6 else "",
++                    mem_percent=row[4] if len(row) > 4 else "",
++                    cmdline="",
++                    risk_score=score,
++                    reasons=reasons,
++                )
++            )
++    else:
++        output = subprocess.check_output(
++            ["ps", "-eo", "pid=,ppid=,user=,pcpu=,pmem=,etime=,comm=,args="],
++            text=True,
++            errors="ignore",
++        )
++        for line in output.splitlines():
++            parts = line.strip().split(maxsplit=7)
++            if len(parts) < 8 or not parts[0].isdigit():
++                continue
++            pid = int(parts[0])
++            ppid, user, pcpu, pmem, etime, comm, args = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7]
++            score, reasons = _score_process_for_keywords(comm, args, keywords, case_sensitive)
++            if score <= 0:
++                continue
++            insights.append(
++                ProcessInsight(
++                    pid=pid,
++                    name=comm,
++                    ppid=ppid,
++                    user=user,
++                    cpu_percent=pcpu,
++                    mem_percent=pmem,
++                    elapsed=etime,
++                    cmdline=args,
++                    risk_score=score,
++                    reasons=reasons,
++                )
++            )
++
++    insights.sort(key=lambda x: x.risk_score, reverse=True)
++    return insights[: max(1, limit)]
++
++
++def act_on_process(pid: int, action: str) -> None:
++    os_name = platform.system().lower()
++
++    if action == "report":
++        return
++
++    if os_name == "windows":
++        if action == "terminate":
++            subprocess.check_call(["taskkill", "/PID", str(pid), "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++            return
++        raise ValueError("Windows backend currently supports actions: report, terminate")
++
++    if action == "terminate":
++        subprocess.check_call(["kill", "-15", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    elif action == "suspend":
++        subprocess.check_call(["kill", "-STOP", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    elif action == "resume":
++        subprocess.check_call(["kill", "-CONT", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    else:
++        raise ValueError(f"Unsupported action: {action}")
++
++
++def run_analysis(path: Path, as_json: bool) -> int:
++    sample_rate, signal_values = read_wav_mono(path)
++    metrics = analyze_metrics(sample_rate, signal_values)
++    assessment = build_assessment(metrics)
++
++    payload: Dict[str, object] = {
++        "platform": {
++            "os": platform.system(),
++            "release": platform.release(),
++            "python": platform.python_version(),
++        },
++        "input": {"file": str(path), "samples": len(signal_values)},
++        "metrics": asdict(metrics),
++        "assessment": asdict(assessment),
++        "policy": "Excludes forces-of-evil explanations by design.",
++    }
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== Deep Gong Root Analyzer ==")
++    print(f"File: {path}")
++    print(f"Platform: {payload['platform']}")
++    print("\n-- Metrics --")
++    for k, v in payload["metrics"].items():
++        print(f"{k}: {v}")
++    print("\n-- Assessment --")
++    for k, v in payload["assessment"].items():
++        print(f"{k}: {v}")
++    print(f"\nPolicy: {payload['policy']}")
++    return 0
++
++
++def safe_load_rules(path: Path) -> SystemRules:
++    try:
++        return load_rules(path)
++    except (OSError, json.JSONDecodeError, ValueError) as exc:
++        raise ValueError(f"Failed to load rules: {exc}") from exc
++
++
++def run_system_alteration(rules: SystemRules, execute: bool, as_json: bool, max_matches: int = MAX_ALTER_MATCHES_DEFAULT) -> int:
++    max_matches = max(1, max_matches)
++    matches = find_processes(rules.keywords, case_sensitive=rules.case_sensitive)[:max_matches]
++    actions: List[Dict[str, object]] = []
++
++    for pid, name in matches:
++        item = {
++            "pid": pid,
++            "name": name,
++            "action": rules.action,
++            "performed": False,
++            "error": None,
++        }
++        if execute:
++            try:
++                act_on_process(pid, rules.action)
++                item["performed"] = True
++            except Exception as exc:  # process race/permissions are runtime concerns
++                item["error"] = str(exc)
++        actions.append(item)
++
++    payload = {
++        "mode": "system_program_alteration",
++        "execute": execute,
++        "rules": asdict(rules),
++        "matches": actions,
++        "max_matches": max_matches,
++        "truncated": len(find_processes(rules.keywords, case_sensitive=rules.case_sensitive)) > len(matches),
++        "summary": {
++            "matched": len(actions),
++            "performed": sum(1 for a in actions if a["performed"]),
++            "failed": sum(1 for a in actions if a["error"]),
++        },
++    }
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== System Alteration Run ==")
++    print(f"Mode: {'EXECUTE' if execute else 'DRY-RUN'}")
++    print(f"Action: {rules.action}")
++    print(f"Keywords: {', '.join(rules.keywords)}")
++    if not actions:
++        print("No matching processes found.")
++        return 0
++
++    for item in actions:
++        state = "performed" if item["performed"] else "matched"
++        if item["error"]:
++            state = f"error: {item['error']}"
++        print(f"PID {item['pid']:<7} {item['name']:<25} -> {state}")
++
++    if not execute:
++        print("\nDry-run only. Add --execute to perform configured action.")
++    return 0
++
++
++def run_investigation(keywords: Sequence[str], case_sensitive: bool, limit: int, min_score: float, as_json: bool, save_report: Path | None) -> int:
++    insights = [i for i in inspect_processes(keywords, case_sensitive=case_sensitive, limit=limit) if i.risk_score >= min_score]
++    payload = {
++        "mode": "programmable_individuals_investigation",
++        "keywords": list(keywords),
++        "case_sensitive": case_sensitive,
++        "min_score": min_score,
++        "count": len(insights),
++        "results": [asdict(item) for item in insights],
++    }
++
++    if save_report is not None:
++        save_report.write_text(json.dumps(payload, indent=2))
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== Programmable Individuals Investigation ==")
++    print(f"Keywords: {', '.join(keywords)}")
++    print(f"Matches: {len(insights)}")
++    if save_report is not None:
++        print(f"Report saved to: {save_report}")
++    for item in insights:
++        reasons = ", ".join(item.reasons or [])
++        print(
++            f"PID {item.pid:<7} score={item.risk_score:.2f} name={item.name:<20} "
++            f"cpu={item.cpu_percent or '-':<6} mem={item.mem_percent or '-':<8} reasons=[{reasons}]"
++        )
++    return 0
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(
++        description="Analyze gong-like audio and alter process behavior using code-defined system rules. Destructive erasure behaviors are intentionally blocked."
++    )
++    sub = parser.add_subparsers(dest="command", required=True)
++
++    analyze = sub.add_parser("analyze", help="Analyze a 16-bit PCM WAV file.")
++    analyze.add_argument("wav_file", type=Path, help="Path to a 16-bit PCM WAV file.")
++    analyze.add_argument("--json", action="store_true", help="Output JSON.")
++
++    deactivate = sub.add_parser(
++        "deactivate",
++        help="Backwards-compatible quick mode (equivalent to alter with inline keywords and terminate action).",
++    )
++    deactivate.add_argument("--match", nargs="+", default=DEFAULT_COMBATIVE_KEYWORDS, help="Keywords to match.")
++    deactivate.add_argument("--execute", action="store_true", help="Actually terminate matching processes.")
++    deactivate.add_argument("--json", action="store_true", help="Output JSON.")
++    deactivate.add_argument("--max-matches", type=int, default=MAX_ALTER_MATCHES_DEFAULT, help="Maximum matched processes to act on.")
++
++    alter = sub.add_parser(
++        "alter",
++        help="Alter programmable system behavior from JSON rules (keywords + action).",
++    )
++    alter.add_argument("--rules", type=Path, required=True, help="Path to JSON rules file.")
++    alter.add_argument("--execute", action="store_true", help="Perform actions; default is dry-run.")
++    alter.add_argument("--json", action="store_true", help="Output JSON.")
++    alter.add_argument("--max-matches", type=int, default=MAX_ALTER_MATCHES_DEFAULT, help="Maximum matched processes to act on.")
++
++    rules_template = sub.add_parser("rules-template", help="Print a starter JSON rules template.")
++    rules_template.add_argument("--json", action="store_true", help="Output JSON (same as plain text template).")
++
++    investigate = sub.add_parser(
++        "investigate",
++        help="Deeply inspect programmable individuals (processes) with keyword-based scoring.",
++    )
++    investigate.add_argument("--match", nargs="+", default=DEFAULT_COMBATIVE_KEYWORDS, help="Keywords to investigate.")
++    investigate.add_argument("--case-sensitive", action="store_true", help="Use case-sensitive matching.")
++    investigate.add_argument("--limit", type=int, default=50, help="Max number of results to return.")
++    investigate.add_argument("--min-score", type=float, default=0.2, help="Minimum risk score (0..1) to include.")
++    investigate.add_argument("--save-report", type=Path, help="Write JSON report to file.")
++    investigate.add_argument("--json", action="store_true", help="Output JSON.")
++
++    return parser.parse_args()
++
++
++def run_deactivate_compat(match_words: Sequence[str], execute: bool, as_json: bool, max_matches: int = MAX_ALTER_MATCHES_DEFAULT) -> int:
++    rules = SystemRules(keywords=list(match_words), action="terminate", case_sensitive=False)
++    validate_safe_intent(rules)
++    return run_system_alteration(rules, execute=execute, as_json=as_json, max_matches=max_matches)
++
++
++def print_rules_template() -> int:
++    template = {
++        "keywords": ["combative", "aggressive", "sonic"],
++        "action": "terminate",
++        "case_sensitive": False,
++        "notes": "action can be: report, terminate, suspend, resume",
++    }
++    print(json.dumps(template, indent=2))
++    return 0
++
++
++def main() -> int:
++    args = parse_args()
++    if args.command == "analyze":
++        return run_analysis(args.wav_file, as_json=args.json)
++    if args.command == "deactivate":
++        return run_deactivate_compat(args.match, execute=args.execute, as_json=args.json, max_matches=args.max_matches)
++    if args.command == "alter":
++        rules = safe_load_rules(args.rules)
++        return run_system_alteration(rules, execute=args.execute, as_json=args.json, max_matches=args.max_matches)
++    if args.command == "rules-template":
++        return print_rules_template()
++    if args.command == "investigate":
++        return run_investigation(
++            args.match,
++            case_sensitive=args.case_sensitive,
++            limit=args.limit,
++            min_score=args.min_score,
++            as_json=args.json,
++            save_report=args.save_report,
++        )
++    return 2
++
++
++if __name__ == "__main__":
++    try:
++        raise SystemExit(main())
++    except ValueError as exc:
++        print(f"error: {exc}", file=sys.stderr)
++        raise SystemExit(2)
+diff --git a/deep_gong_root_analyzer.py b/deep_gong_root_analyzer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7ca4518f764ad8e18120c7db9985d46741367769
+--- /dev/null
++++ b/deep_gong_root_analyzer.py
+@@ -0,0 +1,694 @@
++#!/usr/bin/env python3
++"""Deep Gong Root Analyzer + Mitigator.
++
++A platform-ready Python CLI for two tasks:
++1) Analyze deep/gong-like low-frequency WAV audio and explain why/how it happens,
++   likely reason, and physical/metaphysical interpretation.
++2) Alter mitigation behavior through system rules (JSON) so process handling is
++   programmable through code.
++
++Policy: excludes "forces of evil" explanations by design.
++"""
++
++from __future__ import annotations
++
++import argparse
++import csv
++import json
++import math
++import platform
++import statistics
++import subprocess
++import wave
++from dataclasses import asdict, dataclass
++from pathlib import Path
++from typing import Dict, List, Sequence, Tuple
++
++
++DEFAULT_COMBATIVE_KEYWORDS = [
++    "combative",
++    "aggressive",
++    "noiseflood",
++    "ultrasonic",
++    "sonic",
++    "attack",
++]
++
++SUPPORTED_ACTIONS = {"report", "terminate", "suspend", "resume"}
++BLOCKED_DESTRUCTIVE_ACTIONS = {"erase", "wipe", "self_destruct", "delete_history", "scrub_others"}
++
++
++@dataclass
++class GongMetrics:
++    sample_rate: int
++    duration_s: float
++    fundamental_hz: float
++    low_band_ratio: float
++    decay_time_s: float
++    spectral_flatness: float
++    pulse_rate_hz: float
++
++
++@dataclass
++class GongAssessment:
++    why: str
++    how: str
++    likely_reason: str
++    is_it_bad_or_good: str
++    physical_view: str
++    metaphysical_view: str
++    confidence_0_to_1: float
++
++
++@dataclass
++class SystemRules:
++    keywords: List[str]
++    action: str
++    case_sensitive: bool = False
++
++
++@dataclass
++class ProcessInsight:
++    pid: int
++    name: str
++    ppid: str = ""
++    user: str = ""
++    cpu_percent: str = ""
++    mem_percent: str = ""
++    elapsed: str = ""
++    cmdline: str = ""
++    risk_score: float = 0.0
++    reasons: List[str] | None = None
++
++
++def read_wav_mono(path: Path) -> Tuple[int, List[float]]:
++    with wave.open(str(path), "rb") as wf:
++        channels = wf.getnchannels()
++        sample_width = wf.getsampwidth()
++        sample_rate = wf.getframerate()
++        frames = wf.getnframes()
++        raw = wf.readframes(frames)
++
++    if sample_width != 2:
++        raise ValueError("Only 16-bit PCM WAV is supported in this version.")
++
++    total_samples = len(raw) // 2
++    values = [int.from_bytes(raw[i * 2:(i + 1) * 2], "little", signed=True) for i in range(total_samples)]
++
++    if channels > 1:
++        mono: List[float] = []
++        for i in range(0, len(values), channels):
++            mono.append(sum(values[i:i + channels]) / channels)
++        values_f = mono
++    else:
++        values_f = [float(v) for v in values]
++
++    peak = max(1.0, max(abs(v) for v in values_f))
++    normalized = [v / peak for v in values_f]
++    return sample_rate, normalized
++
++
++def rms(signal_values: Sequence[float]) -> float:
++    if not signal_values:
++        return 0.0
++    return math.sqrt(sum(s * s for s in signal_values) / len(signal_values))
++
++
++def dft_magnitude(signal_values: Sequence[float], sample_rate: int, max_hz: int = 400) -> List[Tuple[float, float]]:
++    n = len(signal_values)
++    if n == 0:
++        return []
++    bin_hz = sample_rate / n
++    max_k = min(int(max_hz / bin_hz), n // 2)
++    spectrum: List[Tuple[float, float]] = []
++
++    for k in range(1, max_k + 1):
++        re = 0.0
++        im = 0.0
++        for t, x in enumerate(signal_values):
++            angle = 2.0 * math.pi * k * t / n
++            re += x * math.cos(angle)
++            im -= x * math.sin(angle)
++        mag = math.sqrt(re * re + im * im)
++        spectrum.append((k * bin_hz, mag))
++
++    return spectrum
++
++
++def estimate_decay(signal_values: Sequence[float], sample_rate: int, window_ms: int = 50) -> float:
++    if not signal_values:
++        return 0.0
++    w = max(1, sample_rate * window_ms // 1000)
++    windows = [signal_values[i:i + w] for i in range(0, len(signal_values), w)]
++    energies = [rms(win) for win in windows if win]
++    if not energies:
++        return 0.0
++
++    peak = max(energies)
++    target = peak * 0.37
++    for idx, val in enumerate(energies):
++        if val <= target:
++            return idx * (window_ms / 1000.0)
++    return len(energies) * (window_ms / 1000.0)
++
++
++def estimate_pulse_rate(signal_values: Sequence[float], sample_rate: int) -> float:
++    if not signal_values:
++        return 0.0
++    env_win = max(1, sample_rate // 100)
++    env = [rms(signal_values[i:i + env_win]) for i in range(0, len(signal_values), env_win)]
++    if len(env) < 5:
++        return 0.0
++
++    threshold = statistics.mean(env) + statistics.pstdev(env) * 0.5
++    peaks = [i for i in range(1, len(env) - 1) if env[i] > env[i - 1] and env[i] > env[i + 1] and env[i] > threshold]
++
++    if len(peaks) < 2:
++        return 0.0
++
++    intervals = [(peaks[i] - peaks[i - 1]) * (env_win / sample_rate) for i in range(1, len(peaks))]
++    avg = statistics.mean(intervals)
++    return 0.0 if avg <= 0 else 1.0 / avg
++
++
++def analyze_metrics(sample_rate: int, signal_values: Sequence[float]) -> GongMetrics:
++    duration = len(signal_values) / sample_rate if sample_rate else 0.0
++    clipped = signal_values[: min(len(signal_values), sample_rate * 3)]
++    spectrum = dft_magnitude(clipped, sample_rate, max_hz=400)
++
++    if spectrum:
++        fundamental = max(spectrum, key=lambda p: p[1])[0]
++        low_energy = sum(m for f, m in spectrum if f <= 120.0)
++        total_energy = sum(m for _, m in spectrum) + 1e-9
++        low_ratio = low_energy / total_energy
++        mags = [m + 1e-12 for _, m in spectrum]
++        gmean = math.exp(sum(math.log(m) for m in mags) / len(mags))
++        amean = sum(mags) / len(mags)
++        flatness = gmean / amean
++    else:
++        fundamental = 0.0
++        low_ratio = 0.0
++        flatness = 0.0
++
++    return GongMetrics(
++        sample_rate=sample_rate,
++        duration_s=duration,
++        fundamental_hz=fundamental,
++        low_band_ratio=low_ratio,
++        decay_time_s=estimate_decay(signal_values, sample_rate),
++        spectral_flatness=flatness,
++        pulse_rate_hz=estimate_pulse_rate(signal_values, sample_rate),
++    )
++
++
++def build_assessment(metrics: GongMetrics) -> GongAssessment:
++    low = metrics.fundamental_hz <= 120 and metrics.low_band_ratio > 0.55
++    long_decay = metrics.decay_time_s > 0.9
++    pulsed = 0.15 <= metrics.pulse_rate_hz <= 2.2
++
++    why = (
++        "The sound is likely structural or cavity resonance: a low mode is being excited and rings out like a gong."
++        if low and long_decay
++        else "The sound has partial gong traits and may involve a mixed source (mechanical + ambient + room modes)."
++    )
++
++    how = (
++        "An impulse or periodic forcing (impact, pressure change, HVAC cycle, traffic vibration, or bass source) "
++        "injects energy into a resonant object/space. The dominant resonant mode amplifies then decays."
++    )
++
++    likely_reason = (
++        "Most likely: resonance in architecture, ducts, fixtures, large metal objects, pipes, or room standing waves."
++    )
++
++    if low and long_decay and not pulsed:
++        good_bad = "Usually neutral to mildly negative (annoying), not inherently dangerous at typical household levels."
++    elif pulsed and low:
++        good_bad = "Potentially stressful if repetitive; mitigation is recommended for sleep and concentration quality."
++    else:
++        good_bad = "Likely benign; monitor if intensity rises, causes structural vibration, or disrupts health/sleep."
++
++    physical_view = (
++        "Physically this is consistent with resonance, damping, material geometry, and boundary conditions. "
++        "Inspect vents, pipes, suspended metal, appliances, subwoofers, and nearby transport cycles."
++    )
++
++    metaphysical_view = (
++        "Metaphysically (non-combative and non-evil framing), low gong tones are often interpreted as "
++        "grounding/transition cues for attention and state shifts. This is symbolic interpretation, not causal proof."
++    )
++
++    score = 0.35 + (0.3 if low else 0.0) + (0.2 if long_decay else 0.0) + (0.1 if pulsed else 0.0)
++    score = min(1.0, score)
++
++    return GongAssessment(
++        why=why,
++        how=how,
++        likely_reason=likely_reason,
++        is_it_bad_or_good=good_bad,
++        physical_view=physical_view,
++        metaphysical_view=metaphysical_view,
++        confidence_0_to_1=score,
++    )
++
++
++
++
++def validate_safe_intent(rules: SystemRules) -> None:
++    if rules.action in BLOCKED_DESTRUCTIVE_ACTIONS:
++        raise ValueError(
++            "Destructive erasure actions are blocked. Use investigation/reporting and explicit admin remediation instead."
++        )
++
++def load_rules(path: Path) -> SystemRules:
++    data = json.loads(path.read_text())
++    keywords = data.get("keywords", DEFAULT_COMBATIVE_KEYWORDS)
++    action = str(data.get("action", "report")).lower()
++    case_sensitive = bool(data.get("case_sensitive", False))
++
++    if not isinstance(keywords, list) or not all(isinstance(k, str) for k in keywords):
++        raise ValueError("rules.keywords must be a list of strings")
++    if action in BLOCKED_DESTRUCTIVE_ACTIONS:
++        raise ValueError(
++            "Destructive erasure actions are blocked. Allowed actions: "
++            + ", ".join(sorted(SUPPORTED_ACTIONS))
++        )
++    if action not in SUPPORTED_ACTIONS:
++        raise ValueError(f"rules.action must be one of: {', '.join(sorted(SUPPORTED_ACTIONS))}")
++
++    rules = SystemRules(keywords=keywords, action=action, case_sensitive=case_sensitive)
++    validate_safe_intent(rules)
++    return rules
++
++
++def list_processes() -> List[Tuple[int, str]]:
++    os_name = platform.system().lower()
++    processes: List[Tuple[int, str]] = []
++
++    if os_name == "windows":
++        output = subprocess.check_output(["tasklist", "/FO", "CSV", "/NH"], text=True, errors="ignore")
++        for line in output.splitlines():
++            parts = [p.strip().strip('"') for p in line.split('","')]
++            if len(parts) >= 2 and parts[1].isdigit():
++                processes.append((int(parts[1]), parts[0]))
++        return processes
++
++    output = subprocess.check_output(["ps", "-eo", "pid=,comm="], text=True, errors="ignore")
++    for line in output.splitlines():
++        bits = line.strip().split(maxsplit=1)
++        if len(bits) == 2 and bits[0].isdigit():
++            processes.append((int(bits[0]), bits[1]))
++    return processes
++
++
++def find_processes(keywords: Sequence[str], case_sensitive: bool = False) -> List[Tuple[int, str]]:
++    if case_sensitive:
++        rule_words = list(keywords)
++        checker = lambda n: any(word in n for word in rule_words)
++    else:
++        rule_words = [k.lower() for k in keywords]
++        checker = lambda n: any(word in n.lower() for word in rule_words)
++
++    found: List[Tuple[int, str]] = []
++    for pid, name in list_processes():
++        if checker(name):
++            found.append((pid, name))
++    return found
++
++
++def _score_process_for_keywords(name: str, cmdline: str, keywords: Sequence[str], case_sensitive: bool) -> Tuple[float, List[str]]:
++    reasons: List[str] = []
++    score = 0.0
++    if not case_sensitive:
++        name_cmp = name.lower()
++        cmd_cmp = cmdline.lower()
++        keywords_cmp = [k.lower() for k in keywords]
++    else:
++        name_cmp = name
++        cmd_cmp = cmdline
++        keywords_cmp = list(keywords)
++
++    for kw in keywords_cmp:
++        if kw in name_cmp:
++            reasons.append(f"name_contains:{kw}")
++            score += 0.6
++        if kw in cmd_cmp:
++            reasons.append(f"cmdline_contains:{kw}")
++            score += 0.4
++
++    return min(1.0, score), reasons
++
++
++def inspect_processes(keywords: Sequence[str], case_sensitive: bool = False, limit: int = 50) -> List[ProcessInsight]:
++    os_name = platform.system().lower()
++    insights: List[ProcessInsight] = []
++
++    if os_name == "windows":
++        output = subprocess.check_output(["tasklist", "/V", "/FO", "CSV", "/NH"], text=True, errors="ignore")
++        reader = csv.reader(output.splitlines())
++        for row in reader:
++            if len(row) < 2:
++                continue
++            name, pid_str = row[0], row[1]
++            if not pid_str.isdigit():
++                continue
++            pid = int(pid_str)
++            score, reasons = _score_process_for_keywords(name, "", keywords, case_sensitive)
++            if score <= 0:
++                continue
++            insights.append(
++                ProcessInsight(
++                    pid=pid,
++                    name=name,
++                    user=row[6] if len(row) > 6 else "",
++                    mem_percent=row[4] if len(row) > 4 else "",
++                    cmdline="",
++                    risk_score=score,
++                    reasons=reasons,
++                )
++            )
++    else:
++        output = subprocess.check_output(
++            ["ps", "-eo", "pid=,ppid=,user=,pcpu=,pmem=,etime=,comm=,args="],
++            text=True,
++            errors="ignore",
++        )
++        for line in output.splitlines():
++            parts = line.strip().split(maxsplit=7)
++            if len(parts) < 8 or not parts[0].isdigit():
++                continue
++            pid = int(parts[0])
++            ppid, user, pcpu, pmem, etime, comm, args = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7]
++            score, reasons = _score_process_for_keywords(comm, args, keywords, case_sensitive)
++            if score <= 0:
++                continue
++            insights.append(
++                ProcessInsight(
++                    pid=pid,
++                    name=comm,
++                    ppid=ppid,
++                    user=user,
++                    cpu_percent=pcpu,
++                    mem_percent=pmem,
++                    elapsed=etime,
++                    cmdline=args,
++                    risk_score=score,
++                    reasons=reasons,
++                )
++            )
++
++    insights.sort(key=lambda x: x.risk_score, reverse=True)
++    return insights[: max(1, limit)]
++
++
++def act_on_process(pid: int, action: str) -> None:
++    os_name = platform.system().lower()
++
++    if action == "report":
++        return
++
++    if os_name == "windows":
++        if action == "terminate":
++            subprocess.check_call(["taskkill", "/PID", str(pid), "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++            return
++        raise ValueError("Windows backend currently supports actions: report, terminate")
++
++    if action == "terminate":
++        subprocess.check_call(["kill", "-15", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    elif action == "suspend":
++        subprocess.check_call(["kill", "-STOP", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    elif action == "resume":
++        subprocess.check_call(["kill", "-CONT", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    else:
++        raise ValueError(f"Unsupported action: {action}")
++
++
++def run_analysis(path: Path, as_json: bool) -> int:
++    sample_rate, signal_values = read_wav_mono(path)
++    metrics = analyze_metrics(sample_rate, signal_values)
++    assessment = build_assessment(metrics)
++
++    payload: Dict[str, object] = {
++        "platform": {
++            "os": platform.system(),
++            "release": platform.release(),
++            "python": platform.python_version(),
++        },
++        "input": {"file": str(path), "samples": len(signal_values)},
++        "metrics": asdict(metrics),
++        "assessment": asdict(assessment),
++        "policy": "Excludes forces-of-evil explanations by design.",
++    }
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== Deep Gong Root Analyzer ==")
++    print(f"File: {path}")
++    print(f"Platform: {payload['platform']}")
++    print("\n-- Metrics --")
++    for k, v in payload["metrics"].items():
++        print(f"{k}: {v}")
++    print("\n-- Assessment --")
++    for k, v in payload["assessment"].items():
++        print(f"{k}: {v}")
++    print(f"\nPolicy: {payload['policy']}")
++    return 0
++
++
++def run_system_alteration(rules: SystemRules, execute: bool, as_json: bool) -> int:
++    matches = find_processes(rules.keywords, case_sensitive=rules.case_sensitive)
++    actions: List[Dict[str, object]] = []
++
++    for pid, name in matches:
++        item = {
++            "pid": pid,
++            "name": name,
++            "action": rules.action,
++            "performed": False,
++            "error": None,
++        }
++        if execute:
++            try:
++                act_on_process(pid, rules.action)
++                item["performed"] = True
++            except Exception as exc:  # process race/permissions are runtime concerns
++                item["error"] = str(exc)
++        actions.append(item)
++
++    payload = {
++        "mode": "system_program_alteration",
++        "execute": execute,
++        "rules": asdict(rules),
++        "matches": actions,
++        "summary": {
++            "matched": len(actions),
++            "performed": sum(1 for a in actions if a["performed"]),
++            "failed": sum(1 for a in actions if a["error"]),
++        },
++    }
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== System Alteration Run ==")
++    print(f"Mode: {'EXECUTE' if execute else 'DRY-RUN'}")
++    print(f"Action: {rules.action}")
++    print(f"Keywords: {', '.join(rules.keywords)}")
++    if not actions:
++        print("No matching processes found.")
++        return 0
++
++    for item in actions:
++        state = "performed" if item["performed"] else "matched"
++        if item["error"]:
++            state = f"error: {item['error']}"
++        print(f"PID {item['pid']:<7} {item['name']:<25} -> {state}")
++
++    if not execute:
++        print("\nDry-run only. Add --execute to perform configured action.")
++    return 0
++
++
++def normalize_keywords(keywords: Sequence[str], case_sensitive: bool) -> List[str]:
++    seen = set()
++    normalized: List[str] = []
++    for item in keywords:
++        word = item.strip()
++        if not word:
++            continue
++        key = word if case_sensitive else word.lower()
++        if key in seen:
++            continue
++        seen.add(key)
++        normalized.append(word)
++    return normalized
++
++
++def build_investigation_recommendations(insights: Sequence[ProcessInsight]) -> List[str]:
++    if not insights:
++        return ["No matching programmable individuals found."]
++
++    high = sum(1 for item in insights if item.risk_score >= 0.8)
++    medium = sum(1 for item in insights if 0.4 <= item.risk_score < 0.8)
++    recs = [
++        f"High-risk matches: {high}",
++        f"Medium-risk matches: {medium}",
++        "Run 'investigate --save-report report.json' to persist evidence.",
++        "Use 'alter' in dry-run mode first, then --execute only after review.",
++    ]
++    return recs
++
++
++def build_investigation_summary(insights: Sequence[ProcessInsight]) -> Dict[str, object]:
++    by_user: Dict[str, int] = {}
++    for item in insights:
++        key = item.user or "unknown"
++        by_user[key] = by_user.get(key, 0) + 1
++
++    top_score = max((i.risk_score for i in insights), default=0.0)
++    avg_score = (sum(i.risk_score for i in insights) / len(insights)) if insights else 0.0
++    return {
++        "top_risk_score": round(top_score, 3),
++        "average_risk_score": round(avg_score, 3),
++        "by_user": by_user,
++    }
++
++
++def run_investigation(
++    keywords: Sequence[str],
++    case_sensitive: bool,
++    limit: int,
++    min_score: float,
++    as_json: bool,
++    save_report: Path | None,
++) -> int:
++    normalized_keywords = normalize_keywords(keywords, case_sensitive=case_sensitive)
++    insights = inspect_processes(normalized_keywords, case_sensitive=case_sensitive, limit=limit)
++    filtered = [item for item in insights if item.risk_score >= min_score]
++    summary = build_investigation_summary(filtered)
++    recommendations = build_investigation_recommendations(filtered)
++
++    payload = {
++        "mode": "programmable_individuals_investigation",
++        "keywords": normalized_keywords,
++        "case_sensitive": case_sensitive,
++        "min_score": min_score,
++        "count": len(filtered),
++        "summary": summary,
++        "recommendations": recommendations,
++        "results": [asdict(item) for item in filtered],
++    }
++
++    if save_report is not None:
++        save_report.write_text(json.dumps(payload, indent=2))
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== Programmable Individuals Investigation ==")
++    print(f"Keywords: {', '.join(normalized_keywords)}")
++    print(f"Threshold: min_score={min_score}")
++    print(f"Matches: {len(filtered)}")
++    print(f"Summary: top={summary['top_risk_score']} avg={summary['average_risk_score']}")
++    if save_report is not None:
++        print(f"Report saved to: {save_report}")
++    for rec in recommendations:
++        print(f"- {rec}")
++    for item in filtered:
++        reasons = ", ".join(item.reasons or [])
++        print(
++            f"PID {item.pid:<7} score={item.risk_score:.2f} name={item.name:<20} "
++            f"cpu={item.cpu_percent or '-':<6} mem={item.mem_percent or '-':<8} reasons=[{reasons}]"
++        )
++    return 0
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(
++        description="Analyze gong-like audio and alter process behavior using code-defined system rules. Destructive erasure behaviors are intentionally blocked."
++    )
++    sub = parser.add_subparsers(dest="command", required=True)
++
++    analyze = sub.add_parser("analyze", help="Analyze a 16-bit PCM WAV file.")
++    analyze.add_argument("wav_file", type=Path, help="Path to a 16-bit PCM WAV file.")
++    analyze.add_argument("--json", action="store_true", help="Output JSON.")
++
++    deactivate = sub.add_parser(
++        "deactivate",
++        help="Backwards-compatible quick mode (equivalent to alter with inline keywords and terminate action).",
++    )
++    deactivate.add_argument("--match", nargs="+", default=DEFAULT_COMBATIVE_KEYWORDS, help="Keywords to match.")
++    deactivate.add_argument("--execute", action="store_true", help="Actually terminate matching processes.")
++    deactivate.add_argument("--json", action="store_true", help="Output JSON.")
++
++    alter = sub.add_parser(
++        "alter",
++        help="Alter programmable system behavior from JSON rules (keywords + action).",
++    )
++    alter.add_argument("--rules", type=Path, required=True, help="Path to JSON rules file.")
++    alter.add_argument("--execute", action="store_true", help="Perform actions; default is dry-run.")
++    alter.add_argument("--json", action="store_true", help="Output JSON.")
++
++    rules_template = sub.add_parser("rules-template", help="Print a starter JSON rules template.")
++    rules_template.add_argument("--json", action="store_true", help="Output JSON (same as plain text template).")
++
++    investigate = sub.add_parser(
++        "investigate",
++        help="Deeply inspect programmable individuals (processes) with keyword-based scoring.",
++    )
++    investigate.add_argument("--match", nargs="+", default=DEFAULT_COMBATIVE_KEYWORDS, help="Keywords to investigate.")
++    investigate.add_argument("--case-sensitive", action="store_true", help="Use case-sensitive matching.")
++    investigate.add_argument("--limit", type=int, default=50, help="Max number of results to return.")
++    investigate.add_argument("--min-score", type=float, default=0.0, help="Filter results by minimum risk score (0.0-1.0).")
++    investigate.add_argument("--save-report", type=Path, help="Write JSON report to file.")
++    investigate.add_argument("--json", action="store_true", help="Output JSON.")
++
++    return parser.parse_args()
++
++
++def run_deactivate_compat(match_words: Sequence[str], execute: bool, as_json: bool) -> int:
++    rules = SystemRules(keywords=list(match_words), action="terminate", case_sensitive=False)
++    validate_safe_intent(rules)
++    return run_system_alteration(rules, execute=execute, as_json=as_json)
++
++
++def print_rules_template() -> int:
++    template = {
++        "keywords": ["combative", "aggressive", "sonic"],
++        "action": "terminate",
++        "case_sensitive": False,
++        "notes": "action can be: report, terminate, suspend, resume",
++    }
++    print(json.dumps(template, indent=2))
++    return 0
++
++
++def main() -> int:
++    args = parse_args()
++    if args.command == "analyze":
++        return run_analysis(args.wav_file, as_json=args.json)
++    if args.command == "deactivate":
++        return run_deactivate_compat(args.match, execute=args.execute, as_json=args.json)
++    if args.command == "alter":
++        rules = load_rules(args.rules)
++        return run_system_alteration(rules, execute=args.execute, as_json=args.json)
++    if args.command == "rules-template":
++        return print_rules_template()
++    if args.command == "investigate":
++        return run_investigation(
++            args.match,
++            case_sensitive=args.case_sensitive,
++            limit=args.limit,
++            min_score=max(0.0, min(1.0, args.min_score)),
++            as_json=args.json,
++            save_report=args.save_report,
++        )
++    return 2
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/deep_gong_root_analyzer.py b/deep_gong_root_analyzer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3dbbbf6974f892f1807f5eeec18a31ec89274db6
+--- /dev/null
++++ b/deep_gong_root_analyzer.py
+@@ -0,0 +1,664 @@
++#!/usr/bin/env python3
++"""Deep Gong Root Analyzer + Mitigator.
++
++A platform-ready Python CLI for two tasks:
++1) Analyze deep/gong-like low-frequency WAV audio and explain why/how it happens,
++   likely reason, and physical/metaphysical interpretation.
++2) Alter mitigation behavior through system rules (JSON) so process handling is
++   programmable through code.
++
++Policy: excludes "forces of evil" explanations by design.
++"""
++
++from __future__ import annotations
++
++import argparse
++import csv
++import json
++import math
++import platform
++import statistics
++import subprocess
++import wave
++from dataclasses import asdict, dataclass
++from pathlib import Path
++from typing import Dict, List, Sequence, Tuple
++
++
++DEFAULT_COMBATIVE_KEYWORDS = [
++    "combative",
++    "aggressive",
++    "noiseflood",
++    "ultrasonic",
++    "sonic",
++    "attack",
++]
++
++SUPPORTED_ACTIONS = {"report", "terminate", "suspend", "resume"}
++BLOCKED_DESTRUCTIVE_ACTIONS = {"erase", "wipe", "self_destruct", "delete_history", "scrub_others"}
++
++
++@dataclass
++class GongMetrics:
++    sample_rate: int
++    duration_s: float
++    fundamental_hz: float
++    low_band_ratio: float
++    decay_time_s: float
++    spectral_flatness: float
++    pulse_rate_hz: float
++
++
++@dataclass
++class GongAssessment:
++    why: str
++    how: str
++    likely_reason: str
++    is_it_bad_or_good: str
++    physical_view: str
++    metaphysical_view: str
++    confidence_0_to_1: float
++
++
++@dataclass
++class SystemRules:
++    keywords: List[str]
++    action: str
++    case_sensitive: bool = False
++
++
++@dataclass
++class ProcessInsight:
++    pid: int
++    name: str
++    ppid: str = ""
++    user: str = ""
++    cpu_percent: str = ""
++    mem_percent: str = ""
++    elapsed: str = ""
++    cmdline: str = ""
++    risk_score: float = 0.0
++    reasons: List[str] | None = None
++
++
++def read_wav_mono(path: Path) -> Tuple[int, List[float]]:
++    with wave.open(str(path), "rb") as wf:
++        channels = wf.getnchannels()
++        sample_width = wf.getsampwidth()
++        sample_rate = wf.getframerate()
++        frames = wf.getnframes()
++        raw = wf.readframes(frames)
++
++    if sample_width != 2:
++        raise ValueError("Only 16-bit PCM WAV is supported in this version.")
++
++    total_samples = len(raw) // 2
++    values = [int.from_bytes(raw[i * 2:(i + 1) * 2], "little", signed=True) for i in range(total_samples)]
++
++    if channels > 1:
++        mono: List[float] = []
++        for i in range(0, len(values), channels):
++            mono.append(sum(values[i:i + channels]) / channels)
++        values_f = mono
++    else:
++        values_f = [float(v) for v in values]
++
++    peak = max(1.0, max(abs(v) for v in values_f))
++    normalized = [v / peak for v in values_f]
++    return sample_rate, normalized
++
++
++def rms(signal_values: Sequence[float]) -> float:
++    if not signal_values:
++        return 0.0
++    return math.sqrt(sum(s * s for s in signal_values) / len(signal_values))
++
++
++def dft_magnitude(signal_values: Sequence[float], sample_rate: int, max_hz: int = 400) -> List[Tuple[float, float]]:
++    n = len(signal_values)
++    if n == 0:
++        return []
++    bin_hz = sample_rate / n
++    max_k = min(int(max_hz / bin_hz), n // 2)
++    spectrum: List[Tuple[float, float]] = []
++
++    for k in range(1, max_k + 1):
++        re = 0.0
++        im = 0.0
++        for t, x in enumerate(signal_values):
++            angle = 2.0 * math.pi * k * t / n
++            re += x * math.cos(angle)
++            im -= x * math.sin(angle)
++        mag = math.sqrt(re * re + im * im)
++        spectrum.append((k * bin_hz, mag))
++
++    return spectrum
++
++
++def estimate_decay(signal_values: Sequence[float], sample_rate: int, window_ms: int = 50) -> float:
++    if not signal_values:
++        return 0.0
++    w = max(1, sample_rate * window_ms // 1000)
++    windows = [signal_values[i:i + w] for i in range(0, len(signal_values), w)]
++    energies = [rms(win) for win in windows if win]
++    if not energies:
++        return 0.0
++
++    peak = max(energies)
++    target = peak * 0.37
++    for idx, val in enumerate(energies):
++        if val <= target:
++            return idx * (window_ms / 1000.0)
++    return len(energies) * (window_ms / 1000.0)
++
++
++def estimate_pulse_rate(signal_values: Sequence[float], sample_rate: int) -> float:
++    if not signal_values:
++        return 0.0
++    env_win = max(1, sample_rate // 100)
++    env = [rms(signal_values[i:i + env_win]) for i in range(0, len(signal_values), env_win)]
++    if len(env) < 5:
++        return 0.0
++
++    threshold = statistics.mean(env) + statistics.pstdev(env) * 0.5
++    peaks = [i for i in range(1, len(env) - 1) if env[i] > env[i - 1] and env[i] > env[i + 1] and env[i] > threshold]
++
++    if len(peaks) < 2:
++        return 0.0
++
++    intervals = [(peaks[i] - peaks[i - 1]) * (env_win / sample_rate) for i in range(1, len(peaks))]
++    avg = statistics.mean(intervals)
++    return 0.0 if avg <= 0 else 1.0 / avg
++
++
++def analyze_metrics(sample_rate: int, signal_values: Sequence[float]) -> GongMetrics:
++    duration = len(signal_values) / sample_rate if sample_rate else 0.0
++    clipped = signal_values[: min(len(signal_values), sample_rate * 3)]
++    spectrum = dft_magnitude(clipped, sample_rate, max_hz=400)
++
++    if spectrum:
++        fundamental = max(spectrum, key=lambda p: p[1])[0]
++        low_energy = sum(m for f, m in spectrum if f <= 120.0)
++        total_energy = sum(m for _, m in spectrum) + 1e-9
++        low_ratio = low_energy / total_energy
++        mags = [m + 1e-12 for _, m in spectrum]
++        gmean = math.exp(sum(math.log(m) for m in mags) / len(mags))
++        amean = sum(mags) / len(mags)
++        flatness = gmean / amean
++    else:
++        fundamental = 0.0
++        low_ratio = 0.0
++        flatness = 0.0
++
++    return GongMetrics(
++        sample_rate=sample_rate,
++        duration_s=duration,
++        fundamental_hz=fundamental,
++        low_band_ratio=low_ratio,
++        decay_time_s=estimate_decay(signal_values, sample_rate),
++        spectral_flatness=flatness,
++        pulse_rate_hz=estimate_pulse_rate(signal_values, sample_rate),
++    )
++
++
++def build_assessment(metrics: GongMetrics) -> GongAssessment:
++    low = metrics.fundamental_hz <= 120 and metrics.low_band_ratio > 0.55
++    long_decay = metrics.decay_time_s > 0.9
++    pulsed = 0.15 <= metrics.pulse_rate_hz <= 2.2
++
++    why = (
++        "The sound is likely structural or cavity resonance: a low mode is being excited and rings out like a gong."
++        if low and long_decay
++        else "The sound has partial gong traits and may involve a mixed source (mechanical + ambient + room modes)."
++    )
++
++    how = (
++        "An impulse or periodic forcing (impact, pressure change, HVAC cycle, traffic vibration, or bass source) "
++        "injects energy into a resonant object/space. The dominant resonant mode amplifies then decays."
++    )
++
++    likely_reason = (
++        "Most likely: resonance in architecture, ducts, fixtures, large metal objects, pipes, or room standing waves."
++    )
++
++    if low and long_decay and not pulsed:
++        good_bad = "Usually neutral to mildly negative (annoying), not inherently dangerous at typical household levels."
++    elif pulsed and low:
++        good_bad = "Potentially stressful if repetitive; mitigation is recommended for sleep and concentration quality."
++    else:
++        good_bad = "Likely benign; monitor if intensity rises, causes structural vibration, or disrupts health/sleep."
++
++    physical_view = (
++        "Physically this is consistent with resonance, damping, material geometry, and boundary conditions. "
++        "Inspect vents, pipes, suspended metal, appliances, subwoofers, and nearby transport cycles."
++    )
++
++    metaphysical_view = (
++        "Metaphysically (non-combative and non-evil framing), low gong tones are often interpreted as "
++        "grounding/transition cues for attention and state shifts. This is symbolic interpretation, not causal proof."
++    )
++
++    score = 0.35 + (0.3 if low else 0.0) + (0.2 if long_decay else 0.0) + (0.1 if pulsed else 0.0)
++    score = min(1.0, score)
++
++    return GongAssessment(
++        why=why,
++        how=how,
++        likely_reason=likely_reason,
++        is_it_bad_or_good=good_bad,
++        physical_view=physical_view,
++        metaphysical_view=metaphysical_view,
++        confidence_0_to_1=score,
++    )
++
++
++
++
++def validate_safe_intent(rules: SystemRules) -> None:
++    if rules.action in BLOCKED_DESTRUCTIVE_ACTIONS:
++        raise ValueError(
++            "Destructive erasure actions are blocked. Use investigation/reporting and explicit admin remediation instead."
++        )
++
++def load_rules(path: Path) -> SystemRules:
++    data = json.loads(path.read_text())
++    keywords = data.get("keywords", DEFAULT_COMBATIVE_KEYWORDS)
++    action = str(data.get("action", "report")).lower()
++    case_sensitive = bool(data.get("case_sensitive", False))
++
++    if not isinstance(keywords, list) or not all(isinstance(k, str) for k in keywords):
++        raise ValueError("rules.keywords must be a list of strings")
++    if action in BLOCKED_DESTRUCTIVE_ACTIONS:
++        raise ValueError(
++            "Destructive erasure actions are blocked. Allowed actions: "
++            + ", ".join(sorted(SUPPORTED_ACTIONS))
++        )
++    if action not in SUPPORTED_ACTIONS:
++        raise ValueError(f"rules.action must be one of: {', '.join(sorted(SUPPORTED_ACTIONS))}")
++
++    rules = SystemRules(keywords=keywords, action=action, case_sensitive=case_sensitive)
++    validate_safe_intent(rules)
++    return rules
++
++
++def list_processes() -> List[Tuple[int, str]]:
++    os_name = platform.system().lower()
++    processes: List[Tuple[int, str]] = []
++
++    if os_name == "windows":
++        output = subprocess.check_output(["tasklist", "/FO", "CSV", "/NH"], text=True, errors="ignore")
++        for line in output.splitlines():
++            parts = [p.strip().strip('"') for p in line.split('","')]
++            if len(parts) >= 2 and parts[1].isdigit():
++                processes.append((int(parts[1]), parts[0]))
++        return processes
++
++    output = subprocess.check_output(["ps", "-eo", "pid=,comm="], text=True, errors="ignore")
++    for line in output.splitlines():
++        bits = line.strip().split(maxsplit=1)
++        if len(bits) == 2 and bits[0].isdigit():
++            processes.append((int(bits[0]), bits[1]))
++    return processes
++
++
++def find_processes(keywords: Sequence[str], case_sensitive: bool = False) -> List[Tuple[int, str]]:
++    if case_sensitive:
++        rule_words = list(keywords)
++        checker = lambda n: any(word in n for word in rule_words)
++    else:
++        rule_words = [k.lower() for k in keywords]
++        checker = lambda n: any(word in n.lower() for word in rule_words)
++
++    found: List[Tuple[int, str]] = []
++    for pid, name in list_processes():
++        if checker(name):
++            found.append((pid, name))
++    return found
++
++
++def _score_process_for_keywords(name: str, cmdline: str, keywords: Sequence[str], case_sensitive: bool) -> Tuple[float, List[str]]:
++    reasons: List[str] = []
++    score = 0.0
++    if not case_sensitive:
++        name_cmp = name.lower()
++        cmd_cmp = cmdline.lower()
++        keywords_cmp = [k.lower() for k in keywords]
++    else:
++        name_cmp = name
++        cmd_cmp = cmdline
++        keywords_cmp = list(keywords)
++
++    for kw in keywords_cmp:
++        if kw in name_cmp:
++            reasons.append(f"name_contains:{kw}")
++            score += 0.6
++        if kw in cmd_cmp:
++            reasons.append(f"cmdline_contains:{kw}")
++            score += 0.4
++
++    return min(1.0, score), reasons
++
++
++def inspect_processes(keywords: Sequence[str], case_sensitive: bool = False, limit: int = 50) -> List[ProcessInsight]:
++    os_name = platform.system().lower()
++    insights: List[ProcessInsight] = []
++
++    if os_name == "windows":
++        output = subprocess.check_output(["tasklist", "/V", "/FO", "CSV", "/NH"], text=True, errors="ignore")
++        reader = csv.reader(output.splitlines())
++        for row in reader:
++            if len(row) < 2:
++                continue
++            name, pid_str = row[0], row[1]
++            if not pid_str.isdigit():
++                continue
++            pid = int(pid_str)
++            score, reasons = _score_process_for_keywords(name, "", keywords, case_sensitive)
++            if score <= 0:
++                continue
++            insights.append(
++                ProcessInsight(
++                    pid=pid,
++                    name=name,
++                    user=row[6] if len(row) > 6 else "",
++                    mem_percent=row[4] if len(row) > 4 else "",
++                    cmdline="",
++                    risk_score=score,
++                    reasons=reasons,
++                )
++            )
++    else:
++        output = subprocess.check_output(
++            ["ps", "-eo", "pid=,ppid=,user=,pcpu=,pmem=,etime=,comm=,args="],
++            text=True,
++            errors="ignore",
++        )
++        for line in output.splitlines():
++            parts = line.strip().split(maxsplit=7)
++            if len(parts) < 8 or not parts[0].isdigit():
++                continue
++            pid = int(parts[0])
++            ppid, user, pcpu, pmem, etime, comm, args = parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7]
++            score, reasons = _score_process_for_keywords(comm, args, keywords, case_sensitive)
++            if score <= 0:
++                continue
++            insights.append(
++                ProcessInsight(
++                    pid=pid,
++                    name=comm,
++                    ppid=ppid,
++                    user=user,
++                    cpu_percent=pcpu,
++                    mem_percent=pmem,
++                    elapsed=etime,
++                    cmdline=args,
++                    risk_score=score,
++                    reasons=reasons,
++                )
++            )
++
++    insights.sort(key=lambda x: x.risk_score, reverse=True)
++    return insights[: max(1, limit)]
++
++
++def act_on_process(pid: int, action: str) -> None:
++    os_name = platform.system().lower()
++
++    if action == "report":
++        return
++
++    if os_name == "windows":
++        if action == "terminate":
++            subprocess.check_call(["taskkill", "/PID", str(pid), "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++            return
++        raise ValueError("Windows backend currently supports actions: report, terminate")
++
++    if action == "terminate":
++        subprocess.check_call(["kill", "-15", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    elif action == "suspend":
++        subprocess.check_call(["kill", "-STOP", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    elif action == "resume":
++        subprocess.check_call(["kill", "-CONT", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++    else:
++        raise ValueError(f"Unsupported action: {action}")
++
++
++def run_analysis(path: Path, as_json: bool) -> int:
++    sample_rate, signal_values = read_wav_mono(path)
++    metrics = analyze_metrics(sample_rate, signal_values)
++    assessment = build_assessment(metrics)
++
++    payload: Dict[str, object] = {
++        "platform": {
++            "os": platform.system(),
++            "release": platform.release(),
++            "python": platform.python_version(),
++        },
++        "input": {"file": str(path), "samples": len(signal_values)},
++        "metrics": asdict(metrics),
++        "assessment": asdict(assessment),
++        "policy": "Excludes forces-of-evil explanations by design.",
++    }
++
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== Deep Gong Root Analyzer ==")
++    print(f"File: {path}")
++    print(f"Platform: {payload['platform']}")
++    print("\n-- Metrics --")
++    for k, v in payload["metrics"].items():
++        print(f"{k}: {v}")
++    print("\n-- Assessment --")
++    for k, v in payload["assessment"].items():
++        print(f"{k}: {v}")
++    print(f"\nPolicy: {payload['policy']}")
++    return 0
++
++
++def run_system_alteration(
++    rules: SystemRules,
++    execute: bool,
++    as_json: bool,
++    confirm: str | None = None,
++    audit_log: Path | None = None,
++) -> int:
++    if execute and confirm != "I_UNDERSTAND":
++        raise ValueError("Refusing to execute without --confirm I_UNDERSTAND")
++
++    matches = find_processes(rules.keywords, case_sensitive=rules.case_sensitive)
++    actions: List[Dict[str, object]] = []
++
++    for pid, name in matches:
++        item = {
++            "pid": pid,
++            "name": name,
++            "action": rules.action,
++            "performed": False,
++            "error": None,
++        }
++        if execute:
++            try:
++                act_on_process(pid, rules.action)
++                item["performed"] = True
++            except Exception as exc:  # process race/permissions are runtime concerns
++                item["error"] = str(exc)
++        actions.append(item)
++
++    payload = {
++        "mode": "system_program_alteration",
++        "execute": execute,
++        "rules": asdict(rules),
++        "matches": actions,
++        "summary": {
++            "matched": len(actions),
++            "performed": sum(1 for a in actions if a["performed"]),
++            "failed": sum(1 for a in actions if a["error"]),
++        },
++    }
++
++    if audit_log is not None:
++        audit_log.write_text(json.dumps(payload, indent=2))
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== System Alteration Run ==")
++    print(f"Mode: {'EXECUTE' if execute else 'DRY-RUN'}")
++    print(f"Action: {rules.action}")
++    print(f"Keywords: {', '.join(rules.keywords)}")
++    if not actions:
++        print("No matching processes found.")
++        return 0
++
++    for item in actions:
++        state = "performed" if item["performed"] else "matched"
++        if item["error"]:
++            state = f"error: {item['error']}"
++        print(f"PID {item['pid']:<7} {item['name']:<25} -> {state}")
++
++    if not execute:
++        print("\nDry-run only. Add --execute to perform configured action.")
++    return 0
++
++
++def run_investigation(keywords: Sequence[str], case_sensitive: bool, limit: int, as_json: bool, save_report: Path | None) -> int:
++    insights = inspect_processes(keywords, case_sensitive=case_sensitive, limit=limit)
++    payload = {
++        "mode": "programmable_individuals_investigation",
++        "keywords": list(keywords),
++        "case_sensitive": case_sensitive,
++        "count": len(insights),
++        "results": [asdict(item) for item in insights],
++    }
++
++    if save_report is not None:
++        save_report.write_text(json.dumps(payload, indent=2))
++
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== Programmable Individuals Investigation ==")
++    print(f"Keywords: {', '.join(keywords)}")
++    print(f"Matches: {len(insights)}")
++    if save_report is not None:
++        print(f"Report saved to: {save_report}")
++    for item in insights:
++        reasons = ", ".join(item.reasons or [])
++        print(
++            f"PID {item.pid:<7} score={item.risk_score:.2f} name={item.name:<20} "
++            f"cpu={item.cpu_percent or '-':<6} mem={item.mem_percent or '-':<8} reasons=[{reasons}]"
++        )
++    return 0
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(
++        description="Analyze gong-like audio and alter process behavior using code-defined system rules. Destructive erasure behaviors are intentionally blocked."
++    )
++    sub = parser.add_subparsers(dest="command", required=True)
++
++    analyze = sub.add_parser("analyze", help="Analyze a 16-bit PCM WAV file.")
++    analyze.add_argument("wav_file", type=Path, help="Path to a 16-bit PCM WAV file.")
++    analyze.add_argument("--json", action="store_true", help="Output JSON.")
++
++    deactivate = sub.add_parser(
++        "deactivate",
++        help="Backwards-compatible quick mode (equivalent to alter with inline keywords and terminate action).",
++    )
++    deactivate.add_argument("--match", nargs="+", default=DEFAULT_COMBATIVE_KEYWORDS, help="Keywords to match.")
++    deactivate.add_argument("--execute", action="store_true", help="Actually terminate matching processes.")
++    deactivate.add_argument("--confirm", help="Required with --execute: set to I_UNDERSTAND")
++    deactivate.add_argument("--audit-log", type=Path, help="Write run payload to JSON file.")
++    deactivate.add_argument("--json", action="store_true", help="Output JSON.")
++
++    alter = sub.add_parser(
++        "alter",
++        help="Alter programmable system behavior from JSON rules (keywords + action).",
++    )
++    alter.add_argument("--rules", type=Path, required=True, help="Path to JSON rules file.")
++    alter.add_argument("--execute", action="store_true", help="Perform actions; default is dry-run.")
++    alter.add_argument("--confirm", help="Required with --execute: set to I_UNDERSTAND")
++    alter.add_argument("--audit-log", type=Path, help="Write run payload to JSON file.")
++    alter.add_argument("--json", action="store_true", help="Output JSON.")
++
++    rules_template = sub.add_parser("rules-template", help="Print a starter JSON rules template.")
++    rules_template.add_argument("--json", action="store_true", help="Output JSON (same as plain text template).")
++
++    investigate = sub.add_parser(
++        "investigate",
++        help="Deeply inspect programmable individuals (processes) with keyword-based scoring.",
++    )
++    investigate.add_argument("--match", nargs="+", default=DEFAULT_COMBATIVE_KEYWORDS, help="Keywords to investigate.")
++    investigate.add_argument("--case-sensitive", action="store_true", help="Use case-sensitive matching.")
++    investigate.add_argument("--limit", type=int, default=50, help="Max number of results to return.")
++    investigate.add_argument("--save-report", type=Path, help="Write JSON report to file.")
++    investigate.add_argument("--json", action="store_true", help="Output JSON.")
++
++    return parser.parse_args()
++
++
++def run_deactivate_compat(
++    match_words: Sequence[str],
++    execute: bool,
++    as_json: bool,
++    confirm: str | None = None,
++    audit_log: Path | None = None,
++) -> int:
++    rules = SystemRules(keywords=list(match_words), action="terminate", case_sensitive=False)
++    validate_safe_intent(rules)
++    return run_system_alteration(rules, execute=execute, as_json=as_json, confirm=confirm, audit_log=audit_log)
++
++
++def print_rules_template() -> int:
++    template = {
++        "keywords": ["combative", "aggressive", "sonic"],
++        "action": "terminate",
++        "case_sensitive": False,
++        "notes": "action can be: report, terminate, suspend, resume",
++    }
++    print(json.dumps(template, indent=2))
++    return 0
++
++
++def main() -> int:
++    args = parse_args()
++    if args.command == "analyze":
++        return run_analysis(args.wav_file, as_json=args.json)
++    if args.command == "deactivate":
++        return run_deactivate_compat(
++            args.match,
++            execute=args.execute,
++            as_json=args.json,
++            confirm=args.confirm,
++            audit_log=args.audit_log,
++        )
++    if args.command == "alter":
++        rules = load_rules(args.rules)
++        return run_system_alteration(
++            rules,
++            execute=args.execute,
++            as_json=args.json,
++            confirm=args.confirm,
++            audit_log=args.audit_log,
++        )
++    if args.command == "rules-template":
++        return print_rules_template()
++    if args.command == "investigate":
++        return run_investigation(
++            args.match,
++            case_sensitive=args.case_sensitive,
++            limit=args.limit,
++            as_json=args.json,
++            save_report=args.save_report,
++        )
++    return 2
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
