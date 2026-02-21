@@ -1,0 +1,1579 @@
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..c6f60238d0fe6d9cd2cb63ac7050400de209722b 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -18,50 +18,56 @@ class CapabilityType(Enum):
+     TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+ 
+ 
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+     PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+     CONSERVATION_LAW = "conservation_law"
+     ENTROPY_COST = "entropy_cost"
+     CONSCIOUSNESS_REQUIREMENT = "consciousness_requirement"
+     MATERIAL_ANCHOR = "material_anchor"
+ 
+ 
++class BehaviorMode(Enum):
++    """Execution mode for capability effects."""
++    NORMAL = "normal"
++    INVERSE = "inverse"
++
++
+ @dataclass
+ class RestrictionRule:
+     """A single restriction rule applied to a capability."""
+     restriction_type: RestrictionType
+     severity: float  # 0.0 (mild) to 1.0 (severe)
+     description: str
+     parameters: Dict = field(default_factory=dict)
+ 
+     def apply(self, base_value: float) -> float:
+         """Apply restriction multiplier to a base value."""
+         return base_value * (1.0 - self.severity)
+ 
+     def __str__(self) -> str:
+         return f"{self.restriction_type.value}: {self.description} (severity: {self.severity:.1%})"
+ 
+ 
+ @dataclass
+ class MetaphysicalCapability:
+     """Represents a metaphysical or magical capability."""
+     name: str
+     capability_type: CapabilityType
+     base_power_level: float  # 0.0 to 100.0
+     restrictions: List[RestrictionRule] = field(default_factory=list)
+     is_usable: bool = True
+     use_count: int = 0
+@@ -180,103 +186,116 @@ class ConsciousnessAnchorFramework(PhilosophicalFramework):
+     """Framework requiring consciousness maintenance for metaphysical actions."""
+ 
+     def __init__(self, consciousness_threshold: float = 0.5):
+         self.consciousness_threshold = consciousness_threshold
+         self.practitioner_consciousness_level = 1.0
+ 
+     def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+         """Metaphysical abilities require sufficient consciousness."""
+         required_consciousness = capability.base_power_level / 100.0
+         return self.practitioner_consciousness_level >= required_consciousness
+ 
+     def get_restriction_reason(self) -> str:
+         return ("Consciousness anchor: Metaphysical capabilities require "
+                 "mental clarity and awareness. Altered consciousness impairs abilities.")
+ 
+ 
+ @dataclass
+ class MetaphysicalPractitioner:
+     """An entity capable of using metaphysical abilities."""
+     name: str
+     capabilities: List[MetaphysicalCapability] = field(default_factory=list)
+     philosophical_frameworks: List[PhilosophicalFramework] = field(default_factory=list)
+     consciousness_level: float = 1.0  # 0.0 to 1.0
+     energy_pool: float = 100.0
+     max_energy: float = 100.0
++    behavior_mode: BehaviorMode = BehaviorMode.NORMAL
+ 
+     def add_capability(self, capability: MetaphysicalCapability) -> None:
+         """Add a new capability."""
+         self.capabilities.append(capability)
+ 
+     def add_framework(self, framework: PhilosophicalFramework) -> None:
+         """Bind a philosophical framework to this practitioner."""
+         self.philosophical_frameworks.append(framework)
+ 
+     def can_use_capability(self, capability: MetaphysicalCapability) -> tuple[bool, str]:
+         """Check if a capability can be used given all restrictions."""
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+         energy_cost = capability.base_power_level * 0.5
+         if self.energy_pool < energy_cost:
+             return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+ 
+         # Check consciousness
+         if self.consciousness_level < 0.5:
+             return False, "Consciousness level too low to maintain metaphysical connection."
+ 
+         # Check all philosophical frameworks
+         for framework in self.philosophical_frameworks:
+             if not framework.evaluate_restriction(capability):
+                 return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+ 
+         return True, "Capability can be used."
+ 
++    def set_behavior_mode(self, behavior_mode: BehaviorMode) -> None:
++        """Set a unified execution mode for all capabilities."""
++        self.behavior_mode = behavior_mode
++
+     def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+         """Attempt to use a capability. Returns result details."""
+         can_use, reason = self.can_use_capability(capability)
+         
+         result = {
+             "success": can_use,
+             "capability": capability.name,
+             "reason": reason,
+             "power_used": 0.0,
+             "energy_consumed": 0.0
+         }
+ 
+         if can_use:
+             power_used = capability.get_effective_power()
++            effect_direction = 1
++
++            if self.behavior_mode == BehaviorMode.INVERSE:
++                power_used *= -1
++                effect_direction = -1
++
+             energy_consumed = capability.base_power_level * 0.5
+             
+             self.energy_pool -= energy_consumed
+             capability.use_count += 1
+             
+             result["power_used"] = power_used
+             result["energy_consumed"] = energy_consumed
+             result["remaining_energy"] = self.energy_pool
++            result["behavior_mode"] = self.behavior_mode.value
++            result["effect_direction"] = effect_direction
+ 
+         return result
+ 
+     def get_status(self) -> str:
+         """Get current status of the practitioner."""
+         status = f"\n=== {self.name} ===\n"
+         status += f"Consciousness: {self.consciousness_level:.1%}\n"
+         status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
+         status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+         status += f"\nCapabilities:\n"
+         
+         for cap in self.capabilities:
+             status += f"  • {cap}\n"
+             if cap.restrictions:
+                 for restriction in cap.restrictions:
+                     status += f"    - {restriction}\n"
+         
+         return status
+ 
+ 
+ # Utility functions for common restriction setups
+ 
+ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+     """Create a well-balanced magic system with standard restrictions."""
+     practitioner = MetaphysicalPractitioner("Balanced Mage")
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..2f0af0d9607c8ed147443c1f2a622c365574c70a 100644
+--- a/examples.py
++++ b/examples.py
+@@ -1,36 +1,36 @@
+ """
+ Example usage demonstrating the metaphysical capabilities restriction system.
+ Shows both game mechanics and philosophical frameworks in action.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalCapability, MetaphysicalPractitioner,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework,
+-    create_balanced_magic_system, create_restricted_reality_warper
++    BehaviorMode, create_balanced_magic_system, create_restricted_reality_warper
+ )
+ 
+ 
+ def example_1_basic_capability_restriction():
+     """Example 1: Basic capability with multiple restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 1: Basic Capability Restriction")
+     print("="*70)
+     
+     # Create a simple telekinesis ability
+     telekinesis = MetaphysicalCapability(
+         name="Advanced Telekinesis",
+         capability_type=CapabilityType.TELEKINESIS,
+         base_power_level=60.0
+     )
+     
+     print(f"\nOriginal capability: {telekinesis}")
+     print(f"Effective power: {telekinesis.get_effective_power():.1f}")
+     
+     # Add restrictions one by one
+     restrictions = [
+         RestrictionRule(
+             RestrictionType.ENERGY_COST,
+             severity=0.3,
+             description="High energy consumption"
+@@ -231,47 +231,72 @@ def example_7_restriction_modification():
+     print("\n--- Adding Environmental Restrictions ---")
+     
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+     
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+     
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+         print(f"Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++
++
++def example_8_behavior_mode_switching():
++    """Example 8: Unified behavior mode inversion and toggling."""
++    print("\n" + "="*70)
++    print("EXAMPLE 8: Behavior Mode Switching")
++    print("="*70)
++
++    practitioner = create_balanced_magic_system()
++    capability = practitioner.capabilities[0]
++
++    normal = practitioner.use_capability(capability)
++    practitioner.energy_pool = practitioner.max_energy
++
++    practitioner.set_behavior_mode("inverse")
++    inverse = practitioner.use_capability(capability)
++
++    toggled_back = practitioner.toggle_behavior_mode()
++
++    print(f"Normal mode power: {normal['power_used']:.1f}")
++    print(f"Inverse mode power: {inverse['power_used']:.1f}")
++    print(f"Inverse metadata: mode={inverse['behavior_mode']}, direction={inverse['effect_direction']}")
++    print(f"Toggled back to: {toggled_back.value}")
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
++    example_8_behavior_mode_switching()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..fb56db2fd8ef2c01d21c6b61ead23775ed11e099 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -18,50 +18,70 @@ class CapabilityType(Enum):
+     TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+ 
+ 
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+     PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+     CONSERVATION_LAW = "conservation_law"
+     ENTROPY_COST = "entropy_cost"
+     CONSCIOUSNESS_REQUIREMENT = "consciousness_requirement"
+     MATERIAL_ANCHOR = "material_anchor"
+ 
+ 
++class BehaviorMode(Enum):
++    """Execution mode for capability effects."""
++    NORMAL = "normal"
++    INVERSE = "inverse"
++
++    @classmethod
++    def from_value(cls, value: "BehaviorMode | str") -> "BehaviorMode":
++        """Normalize enum/string input into a BehaviorMode value."""
++        if isinstance(value, cls):
++            return value
++
++        normalized = str(value).strip().lower()
++        for mode in cls:
++            if mode.value == normalized:
++                return mode
++
++        valid_modes = ", ".join(mode.value for mode in cls)
++        raise ValueError(f"Unknown behavior mode '{value}'. Expected one of: {valid_modes}")
++
++
+ @dataclass
+ class RestrictionRule:
+     """A single restriction rule applied to a capability."""
+     restriction_type: RestrictionType
+     severity: float  # 0.0 (mild) to 1.0 (severe)
+     description: str
+     parameters: Dict = field(default_factory=dict)
+ 
+     def apply(self, base_value: float) -> float:
+         """Apply restriction multiplier to a base value."""
+         return base_value * (1.0 - self.severity)
+ 
+     def __str__(self) -> str:
+         return f"{self.restriction_type.value}: {self.description} (severity: {self.severity:.1%})"
+ 
+ 
+ @dataclass
+ class MetaphysicalCapability:
+     """Represents a metaphysical or magical capability."""
+     name: str
+     capability_type: CapabilityType
+     base_power_level: float  # 0.0 to 100.0
+     restrictions: List[RestrictionRule] = field(default_factory=list)
+     is_usable: bool = True
+     use_count: int = 0
+@@ -180,111 +200,134 @@ class ConsciousnessAnchorFramework(PhilosophicalFramework):
+     """Framework requiring consciousness maintenance for metaphysical actions."""
+ 
+     def __init__(self, consciousness_threshold: float = 0.5):
+         self.consciousness_threshold = consciousness_threshold
+         self.practitioner_consciousness_level = 1.0
+ 
+     def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+         """Metaphysical abilities require sufficient consciousness."""
+         required_consciousness = capability.base_power_level / 100.0
+         return self.practitioner_consciousness_level >= required_consciousness
+ 
+     def get_restriction_reason(self) -> str:
+         return ("Consciousness anchor: Metaphysical capabilities require "
+                 "mental clarity and awareness. Altered consciousness impairs abilities.")
+ 
+ 
+ @dataclass
+ class MetaphysicalPractitioner:
+     """An entity capable of using metaphysical abilities."""
+     name: str
+     capabilities: List[MetaphysicalCapability] = field(default_factory=list)
+     philosophical_frameworks: List[PhilosophicalFramework] = field(default_factory=list)
+     consciousness_level: float = 1.0  # 0.0 to 1.0
+     energy_pool: float = 100.0
+     max_energy: float = 100.0
++    behavior_mode: BehaviorMode = BehaviorMode.NORMAL
+ 
+     def add_capability(self, capability: MetaphysicalCapability) -> None:
+         """Add a new capability."""
+         self.capabilities.append(capability)
+ 
+     def add_framework(self, framework: PhilosophicalFramework) -> None:
+         """Bind a philosophical framework to this practitioner."""
+         self.philosophical_frameworks.append(framework)
+ 
+     def can_use_capability(self, capability: MetaphysicalCapability) -> tuple[bool, str]:
+         """Check if a capability can be used given all restrictions."""
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+         energy_cost = capability.base_power_level * 0.5
+         if self.energy_pool < energy_cost:
+             return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+ 
+         # Check consciousness
+         if self.consciousness_level < 0.5:
+             return False, "Consciousness level too low to maintain metaphysical connection."
+ 
+         # Check all philosophical frameworks
+         for framework in self.philosophical_frameworks:
+             if not framework.evaluate_restriction(capability):
+                 return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+ 
+         return True, "Capability can be used."
+ 
++    def set_behavior_mode(self, behavior_mode: BehaviorMode | str) -> None:
++        """Set a unified execution mode for all capabilities."""
++        self.behavior_mode = BehaviorMode.from_value(behavior_mode)
++
++    def toggle_behavior_mode(self) -> BehaviorMode:
++        """Flip between normal and inverse modes and return the new mode."""
++        self.behavior_mode = (
++            BehaviorMode.INVERSE
++            if self.behavior_mode == BehaviorMode.NORMAL
++            else BehaviorMode.NORMAL
++        )
++        return self.behavior_mode
++
++    def get_effect_multiplier(self) -> int:
++        """Get signed effect multiplier derived from behavior mode."""
++        return -1 if self.behavior_mode == BehaviorMode.INVERSE else 1
++
+     def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+         """Attempt to use a capability. Returns result details."""
+         can_use, reason = self.can_use_capability(capability)
+         
++        effect_direction = self.get_effect_multiplier()
+         result = {
+             "success": can_use,
+             "capability": capability.name,
+             "reason": reason,
+             "power_used": 0.0,
+-            "energy_consumed": 0.0
++            "energy_consumed": 0.0,
++            "behavior_mode": self.behavior_mode.value,
++            "effect_direction": effect_direction
+         }
+ 
+         if can_use:
+-            power_used = capability.get_effective_power()
++            power_used = capability.get_effective_power() * effect_direction
+             energy_consumed = capability.base_power_level * 0.5
+             
+             self.energy_pool -= energy_consumed
+             capability.use_count += 1
+             
+             result["power_used"] = power_used
+             result["energy_consumed"] = energy_consumed
+             result["remaining_energy"] = self.energy_pool
++            result["effective_power_abs"] = abs(power_used)
+ 
+         return result
+ 
+     def get_status(self) -> str:
+         """Get current status of the practitioner."""
+         status = f"\n=== {self.name} ===\n"
+         status += f"Consciousness: {self.consciousness_level:.1%}\n"
+         status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
++        status += f"Behavior Mode: {self.behavior_mode.value}\n"
+         status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+         status += f"\nCapabilities:\n"
+         
+         for cap in self.capabilities:
+             status += f"  • {cap}\n"
+             if cap.restrictions:
+                 for restriction in cap.restrictions:
+                     status += f"    - {restriction}\n"
+         
+         return status
+ 
+ 
+ # Utility functions for common restriction setups
+ 
+ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+     """Create a well-balanced magic system with standard restrictions."""
+     practitioner = MetaphysicalPractitioner("Balanced Mage")
+     
+     # Add frameworks
+     practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+     practitioner.add_framework(EntropicDecayFramework(0.9))
+     practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
+     
+     # Add capabilities with restrictions
+     telekinesis = MetaphysicalCapability(
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..f87932c3764f705bca915e40eed651d55399891a 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -18,50 +18,70 @@ class CapabilityType(Enum):
+     TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+ 
+ 
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+     PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+     CONSERVATION_LAW = "conservation_law"
+     ENTROPY_COST = "entropy_cost"
+     CONSCIOUSNESS_REQUIREMENT = "consciousness_requirement"
+     MATERIAL_ANCHOR = "material_anchor"
+ 
+ 
++class BehaviorMode(Enum):
++    """Execution mode for capability effects."""
++    NORMAL = "normal"
++    INVERSE = "inverse"
++
++    @classmethod
++    def from_value(cls, value: "BehaviorMode | str") -> "BehaviorMode":
++        """Normalize enum/string input into a BehaviorMode value."""
++        if isinstance(value, cls):
++            return value
++
++        normalized = str(value).strip().lower()
++        for mode in cls:
++            if mode.value == normalized:
++                return mode
++
++        valid_modes = ", ".join(mode.value for mode in cls)
++        raise ValueError(f"Unknown behavior mode '{value}'. Expected one of: {valid_modes}")
++
++
+ @dataclass
+ class RestrictionRule:
+     """A single restriction rule applied to a capability."""
+     restriction_type: RestrictionType
+     severity: float  # 0.0 (mild) to 1.0 (severe)
+     description: str
+     parameters: Dict = field(default_factory=dict)
+ 
+     def apply(self, base_value: float) -> float:
+         """Apply restriction multiplier to a base value."""
+         return base_value * (1.0 - self.severity)
+ 
+     def __str__(self) -> str:
+         return f"{self.restriction_type.value}: {self.description} (severity: {self.severity:.1%})"
+ 
+ 
+ @dataclass
+ class MetaphysicalCapability:
+     """Represents a metaphysical or magical capability."""
+     name: str
+     capability_type: CapabilityType
+     base_power_level: float  # 0.0 to 100.0
+     restrictions: List[RestrictionRule] = field(default_factory=list)
+     is_usable: bool = True
+     use_count: int = 0
+@@ -180,111 +200,159 @@ class ConsciousnessAnchorFramework(PhilosophicalFramework):
+     """Framework requiring consciousness maintenance for metaphysical actions."""
+ 
+     def __init__(self, consciousness_threshold: float = 0.5):
+         self.consciousness_threshold = consciousness_threshold
+         self.practitioner_consciousness_level = 1.0
+ 
+     def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+         """Metaphysical abilities require sufficient consciousness."""
+         required_consciousness = capability.base_power_level / 100.0
+         return self.practitioner_consciousness_level >= required_consciousness
+ 
+     def get_restriction_reason(self) -> str:
+         return ("Consciousness anchor: Metaphysical capabilities require "
+                 "mental clarity and awareness. Altered consciousness impairs abilities.")
+ 
+ 
+ @dataclass
+ class MetaphysicalPractitioner:
+     """An entity capable of using metaphysical abilities."""
+     name: str
+     capabilities: List[MetaphysicalCapability] = field(default_factory=list)
+     philosophical_frameworks: List[PhilosophicalFramework] = field(default_factory=list)
+     consciousness_level: float = 1.0  # 0.0 to 1.0
+     energy_pool: float = 100.0
+     max_energy: float = 100.0
++    behavior_mode: BehaviorMode = BehaviorMode.NORMAL
++    retaliatory_response_rate: float = 0.67
+ 
+     def add_capability(self, capability: MetaphysicalCapability) -> None:
+         """Add a new capability."""
+         self.capabilities.append(capability)
+ 
+     def add_framework(self, framework: PhilosophicalFramework) -> None:
+         """Bind a philosophical framework to this practitioner."""
+         self.philosophical_frameworks.append(framework)
+ 
+     def can_use_capability(self, capability: MetaphysicalCapability) -> tuple[bool, str]:
+         """Check if a capability can be used given all restrictions."""
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+         energy_cost = capability.base_power_level * 0.5
+         if self.energy_pool < energy_cost:
+             return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+ 
+         # Check consciousness
+         if self.consciousness_level < 0.5:
+             return False, "Consciousness level too low to maintain metaphysical connection."
+ 
+         # Check all philosophical frameworks
+         for framework in self.philosophical_frameworks:
+             if not framework.evaluate_restriction(capability):
+                 return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+ 
+         return True, "Capability can be used."
+ 
++    def set_behavior_mode(self, behavior_mode: BehaviorMode | str) -> None:
++        """Set a unified execution mode for all capabilities."""
++        self.behavior_mode = BehaviorMode.from_value(behavior_mode)
++
++    def toggle_behavior_mode(self) -> BehaviorMode:
++        """Flip between normal and inverse modes and return the new mode."""
++        self.behavior_mode = (
++            BehaviorMode.INVERSE
++            if self.behavior_mode == BehaviorMode.NORMAL
++            else BehaviorMode.NORMAL
++        )
++        return self.behavior_mode
++
++    def get_effect_multiplier(self) -> int:
++        """Get signed effect multiplier derived from behavior mode."""
++        return -1 if self.behavior_mode == BehaviorMode.INVERSE else 1
++
++    def set_retaliatory_response_rate(self, response_rate: float) -> None:
++        """Set retaliation response rate for applicable capability types."""
++        if not 0.0 <= response_rate <= 1.0:
++            raise ValueError("retaliatory response rate must be between 0.0 and 1.0")
++        self.retaliatory_response_rate = response_rate
++
++    def is_retaliation_applicable(self, capability: MetaphysicalCapability) -> bool:
++        """Return True when a capability participates in retaliation response logic."""
++        applicable_types = {
++            CapabilityType.TELEKINESIS,
++            CapabilityType.ENERGY_PROJECTION,
++            CapabilityType.REALITY_WARPING,
++            CapabilityType.SOUL_MANIPULATION,
++            CapabilityType.DIMENSIONAL_TRAVEL,
++            CapabilityType.TIME_MANIPULATION,
++        }
++        return capability.capability_type in applicable_types
++
+     def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+         """Attempt to use a capability. Returns result details."""
+         can_use, reason = self.can_use_capability(capability)
+         
++        effect_direction = self.get_effect_multiplier()
++        retaliation_applicable = self.is_retaliation_applicable(capability)
+         result = {
+             "success": can_use,
+             "capability": capability.name,
+             "reason": reason,
+             "power_used": 0.0,
+-            "energy_consumed": 0.0
++            "energy_consumed": 0.0,
++            "behavior_mode": self.behavior_mode.value,
++            "effect_direction": effect_direction,
++            "retaliation_applicable": retaliation_applicable,
++            "retaliatory_response_rate": (
++                self.retaliatory_response_rate if retaliation_applicable else 0.0
++            )
+         }
+ 
+         if can_use:
+-            power_used = capability.get_effective_power()
++            power_used = capability.get_effective_power() * effect_direction
+             energy_consumed = capability.base_power_level * 0.5
+             
+             self.energy_pool -= energy_consumed
+             capability.use_count += 1
+             
+             result["power_used"] = power_used
+             result["energy_consumed"] = energy_consumed
+             result["remaining_energy"] = self.energy_pool
++            result["effective_power_abs"] = abs(power_used)
+ 
+         return result
+ 
+     def get_status(self) -> str:
+         """Get current status of the practitioner."""
+         status = f"\n=== {self.name} ===\n"
+         status += f"Consciousness: {self.consciousness_level:.1%}\n"
+         status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
++        status += f"Behavior Mode: {self.behavior_mode.value}\n"
++        status += f"Retaliatory Response Rate: {self.retaliatory_response_rate:.0%}\n"
+         status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+         status += f"\nCapabilities:\n"
+         
+         for cap in self.capabilities:
+             status += f"  • {cap}\n"
+             if cap.restrictions:
+                 for restriction in cap.restrictions:
+                     status += f"    - {restriction}\n"
+         
+         return status
+ 
+ 
+ # Utility functions for common restriction setups
+ 
+ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+     """Create a well-balanced magic system with standard restrictions."""
+     practitioner = MetaphysicalPractitioner("Balanced Mage")
+     
+     # Add frameworks
+     practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+     practitioner.add_framework(EntropicDecayFramework(0.9))
+     practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
+     
+     # Add capabilities with restrictions
+     telekinesis = MetaphysicalCapability(
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..f87932c3764f705bca915e40eed651d55399891a 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -18,50 +18,70 @@ class CapabilityType(Enum):
+     TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+ 
+ 
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+     PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+     CONSERVATION_LAW = "conservation_law"
+     ENTROPY_COST = "entropy_cost"
+     CONSCIOUSNESS_REQUIREMENT = "consciousness_requirement"
+     MATERIAL_ANCHOR = "material_anchor"
+ 
+ 
++class BehaviorMode(Enum):
++    """Execution mode for capability effects."""
++    NORMAL = "normal"
++    INVERSE = "inverse"
++
++    @classmethod
++    def from_value(cls, value: "BehaviorMode | str") -> "BehaviorMode":
++        """Normalize enum/string input into a BehaviorMode value."""
++        if isinstance(value, cls):
++            return value
++
++        normalized = str(value).strip().lower()
++        for mode in cls:
++            if mode.value == normalized:
++                return mode
++
++        valid_modes = ", ".join(mode.value for mode in cls)
++        raise ValueError(f"Unknown behavior mode '{value}'. Expected one of: {valid_modes}")
++
++
+ @dataclass
+ class RestrictionRule:
+     """A single restriction rule applied to a capability."""
+     restriction_type: RestrictionType
+     severity: float  # 0.0 (mild) to 1.0 (severe)
+     description: str
+     parameters: Dict = field(default_factory=dict)
+ 
+     def apply(self, base_value: float) -> float:
+         """Apply restriction multiplier to a base value."""
+         return base_value * (1.0 - self.severity)
+ 
+     def __str__(self) -> str:
+         return f"{self.restriction_type.value}: {self.description} (severity: {self.severity:.1%})"
+ 
+ 
+ @dataclass
+ class MetaphysicalCapability:
+     """Represents a metaphysical or magical capability."""
+     name: str
+     capability_type: CapabilityType
+     base_power_level: float  # 0.0 to 100.0
+     restrictions: List[RestrictionRule] = field(default_factory=list)
+     is_usable: bool = True
+     use_count: int = 0
+@@ -180,111 +200,159 @@ class ConsciousnessAnchorFramework(PhilosophicalFramework):
+     """Framework requiring consciousness maintenance for metaphysical actions."""
+ 
+     def __init__(self, consciousness_threshold: float = 0.5):
+         self.consciousness_threshold = consciousness_threshold
+         self.practitioner_consciousness_level = 1.0
+ 
+     def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+         """Metaphysical abilities require sufficient consciousness."""
+         required_consciousness = capability.base_power_level / 100.0
+         return self.practitioner_consciousness_level >= required_consciousness
+ 
+     def get_restriction_reason(self) -> str:
+         return ("Consciousness anchor: Metaphysical capabilities require "
+                 "mental clarity and awareness. Altered consciousness impairs abilities.")
+ 
+ 
+ @dataclass
+ class MetaphysicalPractitioner:
+     """An entity capable of using metaphysical abilities."""
+     name: str
+     capabilities: List[MetaphysicalCapability] = field(default_factory=list)
+     philosophical_frameworks: List[PhilosophicalFramework] = field(default_factory=list)
+     consciousness_level: float = 1.0  # 0.0 to 1.0
+     energy_pool: float = 100.0
+     max_energy: float = 100.0
++    behavior_mode: BehaviorMode = BehaviorMode.NORMAL
++    retaliatory_response_rate: float = 0.67
+ 
+     def add_capability(self, capability: MetaphysicalCapability) -> None:
+         """Add a new capability."""
+         self.capabilities.append(capability)
+ 
+     def add_framework(self, framework: PhilosophicalFramework) -> None:
+         """Bind a philosophical framework to this practitioner."""
+         self.philosophical_frameworks.append(framework)
+ 
+     def can_use_capability(self, capability: MetaphysicalCapability) -> tuple[bool, str]:
+         """Check if a capability can be used given all restrictions."""
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+         energy_cost = capability.base_power_level * 0.5
+         if self.energy_pool < energy_cost:
+             return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+ 
+         # Check consciousness
+         if self.consciousness_level < 0.5:
+             return False, "Consciousness level too low to maintain metaphysical connection."
+ 
+         # Check all philosophical frameworks
+         for framework in self.philosophical_frameworks:
+             if not framework.evaluate_restriction(capability):
+                 return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+ 
+         return True, "Capability can be used."
+ 
++    def set_behavior_mode(self, behavior_mode: BehaviorMode | str) -> None:
++        """Set a unified execution mode for all capabilities."""
++        self.behavior_mode = BehaviorMode.from_value(behavior_mode)
++
++    def toggle_behavior_mode(self) -> BehaviorMode:
++        """Flip between normal and inverse modes and return the new mode."""
++        self.behavior_mode = (
++            BehaviorMode.INVERSE
++            if self.behavior_mode == BehaviorMode.NORMAL
++            else BehaviorMode.NORMAL
++        )
++        return self.behavior_mode
++
++    def get_effect_multiplier(self) -> int:
++        """Get signed effect multiplier derived from behavior mode."""
++        return -1 if self.behavior_mode == BehaviorMode.INVERSE else 1
++
++    def set_retaliatory_response_rate(self, response_rate: float) -> None:
++        """Set retaliation response rate for applicable capability types."""
++        if not 0.0 <= response_rate <= 1.0:
++            raise ValueError("retaliatory response rate must be between 0.0 and 1.0")
++        self.retaliatory_response_rate = response_rate
++
++    def is_retaliation_applicable(self, capability: MetaphysicalCapability) -> bool:
++        """Return True when a capability participates in retaliation response logic."""
++        applicable_types = {
++            CapabilityType.TELEKINESIS,
++            CapabilityType.ENERGY_PROJECTION,
++            CapabilityType.REALITY_WARPING,
++            CapabilityType.SOUL_MANIPULATION,
++            CapabilityType.DIMENSIONAL_TRAVEL,
++            CapabilityType.TIME_MANIPULATION,
++        }
++        return capability.capability_type in applicable_types
++
+     def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+         """Attempt to use a capability. Returns result details."""
+         can_use, reason = self.can_use_capability(capability)
+         
++        effect_direction = self.get_effect_multiplier()
++        retaliation_applicable = self.is_retaliation_applicable(capability)
+         result = {
+             "success": can_use,
+             "capability": capability.name,
+             "reason": reason,
+             "power_used": 0.0,
+-            "energy_consumed": 0.0
++            "energy_consumed": 0.0,
++            "behavior_mode": self.behavior_mode.value,
++            "effect_direction": effect_direction,
++            "retaliation_applicable": retaliation_applicable,
++            "retaliatory_response_rate": (
++                self.retaliatory_response_rate if retaliation_applicable else 0.0
++            )
+         }
+ 
+         if can_use:
+-            power_used = capability.get_effective_power()
++            power_used = capability.get_effective_power() * effect_direction
+             energy_consumed = capability.base_power_level * 0.5
+             
+             self.energy_pool -= energy_consumed
+             capability.use_count += 1
+             
+             result["power_used"] = power_used
+             result["energy_consumed"] = energy_consumed
+             result["remaining_energy"] = self.energy_pool
++            result["effective_power_abs"] = abs(power_used)
+ 
+         return result
+ 
+     def get_status(self) -> str:
+         """Get current status of the practitioner."""
+         status = f"\n=== {self.name} ===\n"
+         status += f"Consciousness: {self.consciousness_level:.1%}\n"
+         status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
++        status += f"Behavior Mode: {self.behavior_mode.value}\n"
++        status += f"Retaliatory Response Rate: {self.retaliatory_response_rate:.0%}\n"
+         status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+         status += f"\nCapabilities:\n"
+         
+         for cap in self.capabilities:
+             status += f"  • {cap}\n"
+             if cap.restrictions:
+                 for restriction in cap.restrictions:
+                     status += f"    - {restriction}\n"
+         
+         return status
+ 
+ 
+ # Utility functions for common restriction setups
+ 
+ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+     """Create a well-balanced magic system with standard restrictions."""
+     practitioner = MetaphysicalPractitioner("Balanced Mage")
+     
+     # Add frameworks
+     practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+     practitioner.add_framework(EntropicDecayFramework(0.9))
+     practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
+     
+     # Add capabilities with restrictions
+     telekinesis = MetaphysicalCapability(
+diff --git a/azure_metaphysical_restriction_api.py b/azure_metaphysical_restriction_api.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..fa6ea0964df43cdba9eaf01659d22511343a978d
+--- /dev/null
++++ b/azure_metaphysical_restriction_api.py
+@@ -0,0 +1,135 @@
++"""
++Azure-ready API logic for metaphysical protection.
++
++This module defines a policy engine and request handler you can wire into:
++- Azure Functions (HTTP trigger)
++- Azure API Management (as a backend service)
++- Azure Container Apps / App Service
++
++Purpose:
++Reject any robotic module or programmable individual attempting to run
++operations on metaphysical entities.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from datetime import datetime, timezone
++from typing import Any
++import json
++
++
++ALLOWED_CALLER_TYPES = {"human", "metaphysical_guardian", "trusted_delegate"}
++BLOCKED_CALLER_TYPES = {"robotic_module", "programmable_individual", "autonomous_agent"}
++
++
++@dataclass(frozen=True)
++class EnforcementDecision:
++    allowed: bool
++    code: str
++    message: str
++
++
++class MetaphysicalRestrictionEngine:
++    """Policy engine for restricting program execution against metaphysical targets."""
++
++    def evaluate(self, caller_type: str, operation: str, target_domain: str) -> EnforcementDecision:
++        normalized_caller = caller_type.strip().lower()
++        normalized_operation = operation.strip().lower()
++        normalized_target = target_domain.strip().lower()
++
++        if normalized_target == "metaphysical" and normalized_caller in BLOCKED_CALLER_TYPES:
++            return EnforcementDecision(
++                allowed=False,
++                code="METAPHYSICAL_PROTECTION_BLOCK",
++                message=(
++                    "Denied: robotic or programmable actors are forbidden from running "
++                    "programs against metaphysical entities."
++                ),
++            )
++
++        if normalized_caller not in ALLOWED_CALLER_TYPES and normalized_target == "metaphysical":
++            return EnforcementDecision(
++                allowed=False,
++                code="CALLER_NOT_TRUSTED",
++                message="Denied: caller is not in the trusted list for metaphysical operations.",
++            )
++
++        if normalized_operation in {"execute", "run_program", "override"} and normalized_target == "metaphysical":
++            return EnforcementDecision(
++                allowed=False,
++                code="OPERATION_NOT_PERMITTED",
++                message="Denied: program execution operations on metaphysical targets are blocked.",
++            )
++
++        return EnforcementDecision(
++            allowed=True,
++            code="ALLOWED",
++            message="Request allowed under current metaphysical protection policies.",
++        )
++
++
++def handle_request(body: dict[str, Any]) -> dict[str, Any]:
++    """
++    Backend-agnostic request handler.
++
++    Expected payload:
++    {
++      "caller_id": "unit-42",
++      "caller_type": "robotic_module | programmable_individual | human | ...",
++      "operation": "run_program",
++      "target_domain": "metaphysical"
++    }
++    """
++
++    caller_id = str(body.get("caller_id", "unknown"))
++    caller_type = str(body.get("caller_type", "unknown"))
++    operation = str(body.get("operation", "unknown"))
++    target_domain = str(body.get("target_domain", "unknown"))
++
++    engine = MetaphysicalRestrictionEngine()
++    decision = engine.evaluate(caller_type=caller_type, operation=operation, target_domain=target_domain)
++
++    return {
++        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
++        "caller_id": caller_id,
++        "decision": {
++            "allowed": decision.allowed,
++            "code": decision.code,
++            "message": decision.message,
++        },
++        "policy": "Metaphysical Sovereignty Enforcement v1",
++    }
++
++
++def azure_function_http_entry(raw_body: str) -> tuple[int, str]:
++    """
++    Minimal adapter for Azure HTTP trigger integration.
++
++    In Azure Functions, you can map this adapter to your actual HttpRequest body.
++    Returns (status_code, response_json_text).
++    """
++
++    try:
++        parsed = json.loads(raw_body or "{}")
++    except json.JSONDecodeError:
++        response = {
++            "error": "Invalid JSON payload.",
++            "hint": "Send a valid JSON body with caller_type, operation, and target_domain.",
++        }
++        return 400, json.dumps(response)
++
++    result = handle_request(parsed)
++    status = 200 if result["decision"]["allowed"] else 403
++    return status, json.dumps(result)
++
++
++if __name__ == "__main__":
++    sample_payload = {
++        "caller_id": "rbt-9",
++        "caller_type": "robotic_module",
++        "operation": "run_program",
++        "target_domain": "metaphysical",
++    }
++    code, body = azure_function_http_entry(json.dumps(sample_payload))
++    print(f"HTTP {code}\\n{body}")
+diff --git a/azure_metaphysical_guard_api.py b/azure_metaphysical_guard_api.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b0c3244c9378d33d3f96f1b3cb86179d4aaa6106
+--- /dev/null
++++ b/azure_metaphysical_guard_api.py
+@@ -0,0 +1,127 @@
++"""Azure-ready API for enforcing metaphysical execution restrictions.
++
++This module exposes a tiny HTTP API (stdlib only) that can run in Azure App Service,
++Azure Container Apps, or any environment that serves a Python process.
++
++Policy:
++- Robotic modules and programmable individuals are not allowed to execute
++  programs against metaphysical targets.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, asdict
++from http.server import BaseHTTPRequestHandler, HTTPServer
++from typing import Any, Dict, List
++import json
++
++
++ROBOTIC_ACTOR_TYPES = {
++    "robot",
++    "robotic_module",
++    "programmable_individual",
++    "automation_agent",
++    "autonomous_system",
++    "ai_agent",
++}
++
++METAPHYSICAL_TARGET_TYPES = {
++    "metaphysical",
++    "spiritual_entity",
++    "soul",
++    "astral_form",
++    "divine_entity",
++    "ethereal_consciousness",
++}
++
++
++@dataclass
++class RestrictionDecision:
++    allowed: bool
++    code: str
++    message: str
++    actor_type: str
++    target_type: str
++    blocked_rules: List[str]
++
++
++def _normalize(value: Any) -> str:
++    return str(value or "").strip().lower()
++
++
++def evaluate_execution_policy(payload: Dict[str, Any]) -> RestrictionDecision:
++    """Evaluate whether execution is allowed by metaphysical restriction policy."""
++    actor_type = _normalize(payload.get("actor_type"))
++    target_type = _normalize(payload.get("target_type"))
++
++    blocked_rules: List[str] = []
++
++    if actor_type in ROBOTIC_ACTOR_TYPES and target_type in METAPHYSICAL_TARGET_TYPES:
++        blocked_rules.append("robotic_or_programmable_actor_cannot_operate_on_metaphysical_target")
++
++    if blocked_rules:
++        return RestrictionDecision(
++            allowed=False,
++            code="METAPHYSICAL_GUARD_BLOCKED",
++            message="Execution denied: robotic/programmed actors cannot run programs on metaphysical targets.",
++            actor_type=actor_type,
++            target_type=target_type,
++            blocked_rules=blocked_rules,
++        )
++
++    return RestrictionDecision(
++        allowed=True,
++        code="ALLOWED",
++        message="Execution allowed under current metaphysical guard policy.",
++        actor_type=actor_type,
++        target_type=target_type,
++        blocked_rules=[],
++    )
++
++
++class MetaphysicalGuardAPIHandler(BaseHTTPRequestHandler):
++    """Minimal HTTP handler exposing metaphysical guard endpoints."""
++
++    server_version = "MetaphysicalGuardAPI/1.0"
++
++    def _write_json(self, status_code: int, data: Dict[str, Any]) -> None:
++        body = json.dumps(data).encode("utf-8")
++        self.send_response(status_code)
++        self.send_header("Content-Type", "application/json")
++        self.send_header("Content-Length", str(len(body)))
++        self.end_headers()
++        self.wfile.write(body)
++
++    def do_GET(self) -> None:  # noqa: N802
++        if self.path == "/health":
++            self._write_json(200, {"status": "ok", "service": "metaphysical-guard-api"})
++            return
++        self._write_json(404, {"error": "not_found"})
++
++    def do_POST(self) -> None:  # noqa: N802
++        if self.path != "/v1/execute":
++            self._write_json(404, {"error": "not_found"})
++            return
++
++        content_length = int(self.headers.get("Content-Length", "0"))
++        raw = self.rfile.read(content_length)
++
++        try:
++            payload = json.loads(raw.decode("utf-8")) if raw else {}
++        except json.JSONDecodeError:
++            self._write_json(400, {"error": "invalid_json"})
++            return
++
++        decision = evaluate_execution_policy(payload)
++        self._write_json(200, asdict(decision))
++
++
++def run_server(host: str = "0.0.0.0", port: int = 8000) -> None:
++    """Run the API server (suitable for local dev and Azure-hosted containers)."""
++    httpd = HTTPServer((host, port), MetaphysicalGuardAPIHandler)
++    print(f"Metaphysical Guard API running on http://{host}:{port}")
++    httpd.serve_forever()
++
++
++if __name__ == "__main__":
++    run_server()
+diff --git a/test_azure_metaphysical_guard_api.py b/test_azure_metaphysical_guard_api.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4c73faa9810eb09bf91f608d097bb6798377fcae
+--- /dev/null
++++ b/test_azure_metaphysical_guard_api.py
+@@ -0,0 +1,28 @@
++import unittest
++
++from azure_metaphysical_guard_api import evaluate_execution_policy
++
++
++class MetaphysicalGuardTests(unittest.TestCase):
++    def test_blocks_robot_on_metaphysical_target(self):
++        decision = evaluate_execution_policy(
++            {"actor_type": "robotic_module", "target_type": "metaphysical"}
++        )
++        self.assertFalse(decision.allowed)
++        self.assertEqual(decision.code, "METAPHYSICAL_GUARD_BLOCKED")
++
++    def test_allows_robot_on_non_metaphysical_target(self):
++        decision = evaluate_execution_policy(
++            {"actor_type": "robotic_module", "target_type": "physical_system"}
++        )
++        self.assertTrue(decision.allowed)
++
++    def test_allows_non_robot_on_metaphysical_target(self):
++        decision = evaluate_execution_policy(
++            {"actor_type": "human_operator", "target_type": "metaphysical"}
++        )
++        self.assertTrue(decision.allowed)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/azure_metaphysical_guard_api.py b/azure_metaphysical_guard_api.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..84e1a5fbff81d244bea8e57b02b572a1eb04e294
+--- /dev/null
++++ b/azure_metaphysical_guard_api.py
+@@ -0,0 +1,126 @@
++"""Azure-ready API for blocking program execution against metaphysical targets.
++
++This module is intentionally dependency-light so it can run locally with Python's
++standard library and be containerized for Azure App Service, Azure Container
++Apps, or AKS.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from enum import Enum
++import json
++from http import HTTPStatus
++from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
++from typing import Any
++
++
++class ActorClass(str, Enum):
++    ROBOTIC_MODULE = "robotic_module"
++    PROGRAMMABLE_INDIVIDUAL = "programmable_individual"
++    HUMAN = "human"
++    ORGANIC_SYSTEM = "organic_system"
++
++
++@dataclass(frozen=True)
++class ExecutionRequest:
++    actor_id: str
++    actor_class: str
++    operation: str
++    target_id: str
++    target_domain: str
++
++
++@dataclass(frozen=True)
++class ExecutionDecision:
++    allowed: bool
++    reason: str
++    policy: str = "metaphysical-non-interference-v1"
++
++
++def decide_execution(request: ExecutionRequest) -> ExecutionDecision:
++    """Block robotic or programmable actors from running operations on metaphysical targets."""
++    restricted_actor = request.actor_class in {
++        ActorClass.ROBOTIC_MODULE.value,
++        ActorClass.PROGRAMMABLE_INDIVIDUAL.value,
++    }
++    metaphysical_target = request.target_domain.strip().lower() == "metaphysical"
++
++    if restricted_actor and metaphysical_target:
++        return ExecutionDecision(
++            allowed=False,
++            reason=(
++                "Denied by metaphysical non-interference policy: "
++                "robotic modules and programmable individuals cannot execute "
++                "operations against metaphysical targets."
++            ),
++        )
++
++    return ExecutionDecision(allowed=True, reason="Request permitted by current policy set.")
++
++
++class MetaphysicalGuardHandler(BaseHTTPRequestHandler):
++    server_version = "MetaphysicalGuardAPI/1.0"
++
++    def _write_json(self, status: HTTPStatus, payload: dict[str, Any]) -> None:
++        body = json.dumps(payload).encode("utf-8")
++        self.send_response(status.value)
++        self.send_header("Content-Type", "application/json")
++        self.send_header("Content-Length", str(len(body)))
++        self.end_headers()
++        self.wfile.write(body)
++
++    def do_POST(self) -> None:  # noqa: N802 (BaseHTTPRequestHandler naming)
++        if self.path != "/v1/authorize-execution":
++            self._write_json(HTTPStatus.NOT_FOUND, {"error": "not_found"})
++            return
++
++        length = int(self.headers.get("Content-Length", "0"))
++        raw = self.rfile.read(length)
++
++        try:
++            payload = json.loads(raw.decode("utf-8"))
++            request = ExecutionRequest(
++                actor_id=str(payload["actor_id"]),
++                actor_class=str(payload["actor_class"]),
++                operation=str(payload["operation"]),
++                target_id=str(payload["target_id"]),
++                target_domain=str(payload["target_domain"]),
++            )
++        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
++            self._write_json(
++                HTTPStatus.BAD_REQUEST,
++                {
++                    "error": "invalid_payload",
++                    "detail": str(exc),
++                    "required_fields": [
++                        "actor_id",
++                        "actor_class",
++                        "operation",
++                        "target_id",
++                        "target_domain",
++                    ],
++                },
++            )
++            return
++
++        decision = decide_execution(request)
++        self._write_json(
++            HTTPStatus.OK,
++            {
++                "allowed": decision.allowed,
++                "reason": decision.reason,
++                "policy": decision.policy,
++                "request": payload,
++            },
++        )
++
++
++def run(host: str = "0.0.0.0", port: int = 8000) -> None:
++    server = ThreadingHTTPServer((host, port), MetaphysicalGuardHandler)
++    print(f"Metaphysical Guard API listening on http://{host}:{port}")
++    server.serve_forever()
++
++
++if __name__ == "__main__":
++    run()
+import unittest
+
+from azure_metaphysical_api import evaluate_payload
+
+
+class TestAzureMetaphysicalApi(unittest.TestCase):
+    def test_blocks_robotic_program_against_metaphysical_domain(self):
+        result = evaluate_payload(
+            {
+                "actor_id": "rb-001",
+                "actor_type": "robotic_module",
+                "action": "run_program",
+                "target_domain": "metaphysical",
+                "program_name": "spectral_scan",
+            }
+        )
+
+        self.assertFalse(result["allowed"])
+        self.assertEqual(result["code"], "METAPHYSICAL_EXECUTION_BLOCKED")
+
+    def test_allows_non_restricted_request(self):
+        result = evaluate_payload(
+            {
+                "actor_id": "human-42",
+                "actor_type": "human_operator",
+                "action": "run_program",
+                "target_domain": "mechanical",
+                "program_name": "diagnostics",
+            }
+        )
+
+        self.assertTrue(result["allowed"])
+        self.assertEqual(result["code"], "ALLOWED")
+
+    def test_returns_validation_error_for_missing_fields(self):
+        result = evaluate_payload({"actor_id": "rb-001"})
+
+        self.assertFalse(result["allowed"])
+        self.assertEqual(result["code"], "VALIDATION_ERROR")
+
+
+if __name__ == "__main__":
+    unittest.main()
+"""Azure-style API for metaphysical execution restrictions.
+
+This module provides an HTTP-trigger compatible function for Azure Functions,
+plus plain-Python business logic that can be reused in any API host.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Dict
+import json
+
+
+RESTRICTED_ACTOR_TYPES = {"robotic_module", "programmable_individual"}
+RESTRICTED_TARGET_DOMAIN = "metaphysical"
+PROGRAM_EXECUTION_ACTIONS = {"run_program", "execute_program", "deploy_program"}
+
+
+@dataclass
+class ExecutionRequest:
+    actor_id: str
+    actor_type: str
+    action: str
+    target_domain: str
+    program_name: str
+
+
+@dataclass
+class RestrictionDecision:
+    allowed: bool
+    code: str
+    reason: str
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"allowed": self.allowed, "code": self.code, "reason": self.reason}
+
+
+def evaluate_execution_request(request: ExecutionRequest) -> RestrictionDecision:
+    """Apply hard metaphysical restrictions to program execution requests."""
+    actor_type = request.actor_type.strip().lower()
+    action = request.action.strip().lower()
+    target_domain = request.target_domain.strip().lower()
+
+    if (
+        actor_type in RESTRICTED_ACTOR_TYPES
+        and target_domain == RESTRICTED_TARGET_DOMAIN
+        and action in PROGRAM_EXECUTION_ACTIONS
+    ):
+        return RestrictionDecision(
+            allowed=False,
+            code="METAPHYSICAL_EXECUTION_BLOCKED",
+            reason=(
+                "Robotic modules and programmable individuals cannot run programs "
+                "against metaphysical entities or domains."
+            ),
+        )
+
+    return RestrictionDecision(
+        allowed=True,
+        code="ALLOWED",
+        reason="Request does not violate metaphysical execution policy.",
+    )
+
+
+def evaluate_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and evaluate a request payload."""
+    required_fields = ["actor_id", "actor_type", "action", "target_domain", "program_name"]
+    missing = [field for field in required_fields if not str(payload.get(field, "")).strip()]
+    if missing:
+        return {
+            "allowed": False,
+            "code": "VALIDATION_ERROR",
+            "reason": f"Missing required fields: {', '.join(missing)}",
+        }
+
+    request = ExecutionRequest(
+        actor_id=str(payload["actor_id"]),
+        actor_type=str(payload["actor_type"]),
+        action=str(payload["action"]),
+        target_domain=str(payload["target_domain"]),
+        program_name=str(payload["program_name"]),
+    )
+    return evaluate_execution_request(request).to_dict()
+
+
+def main(req: Any) -> Any:
+    """Azure Functions HTTP trigger entrypoint.
+
+    Expected JSON body:
+    {
+      "actor_id": "rb-007",
+      "actor_type": "robotic_module",
+      "action": "run_program",
+      "target_domain": "metaphysical",
+      "program_name": "astral_probe"
+    }
+    """
+
+    try:
+        payload = req.get_json()
+    except ValueError:
+        payload = {}
+
+    result = evaluate_payload(payload)
+    status_code = 403 if not result["allowed"] and result["code"] != "VALIDATION_ERROR" else 200
+    if result["code"] == "VALIDATION_ERROR":
+        status_code = 400
+
+    try:
+        import azure.functions as func
+
+        return func.HttpResponse(
+            json.dumps(result), status_code=status_code, mimetype="application/json"
+        )
+    except Exception:
+        # Fallback for local testing without azure.functions installed
+        return {"status_code": status_code, "body": result}
