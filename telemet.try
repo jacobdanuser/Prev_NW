@@ -11084,3 +11084,162 @@ index 0000000000000000000000000000000000000000..b996a62f1c373d1391eab02ae4466f6e
 +end
 +
 +TelemetryDefenseGuard.run_cli! if $PROGRAM_NAME == __FILE__
+# hardened_windows.rb
+# Windows high-assurance hardening via Ruby calling native Windows tooling.
+# Run:  ruby hardened_windows.rb
+# NOTE: Must be run as Administrator.
+
+require "open3"
+require "json"
+require "time"
+
+LOG_PATH = File.expand_path("hardening_#{Time.now.utc.iso8601.gsub(':','-')}.log", Dir.pwd)
+
+def log(line)
+  File.open(LOG_PATH, "a:utf-8") { |f| f.puts(line) }
+  puts line
+end
+
+def run(cmd, allow_fail: false)
+  log("\n> #{cmd}")
+  stdout, stderr, status = Open3.capture3(cmd)
+  log(stdout.strip) unless stdout.strip.empty?
+  log(stderr.strip) unless stderr.strip.empty?
+
+  unless status.success?
+    msg = "Command failed (exit #{status.exitstatus}): #{cmd}"
+    if allow_fail
+      log("WARN: #{msg}")
+    else
+      raise msg
+    end
+  end
+
+  stdout
+end
+
+def powershell(script)
+  # -NoProfile reduces surprises; Bypass is only for running this local script content.
+  cmd = %(powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "#{script.gsub('"','\\"')}")
+  run(cmd)
+end
+
+def admin?
+  out = powershell("[Security.Principal.WindowsPrincipal]::new([Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)")
+  out.to_s.downcase.include?("true")
+end
+
+begin
+  log("=== WINDOWS HIGH ASSURANCE HARDENING (Ruby) ===")
+  log("Log: #{LOG_PATH}")
+
+  unless admin?
+    log("ERROR: Not running as Administrator. Right-click Terminal/PowerShell -> Run as administrator.")
+    exit 1
+  end
+
+  # -----------------------------
+  # 1) Firewall: Default deny outbound + allow DNS/HTTPS
+  # -----------------------------
+  log("\n[1] Firewall default-deny outbound + allowlist essentials")
+  powershell("Set-NetFirewallProfile -Profile Domain,Public,Private -DefaultOutboundAction Block")
+
+  # Rules may already exist; ignore duplicates safely.
+  powershell(%q{
+    $rules = @(
+      @{Name="Allow DNS UDP"; Proto="UDP"; Port=53},
+      @{Name="Allow DNS TCP"; Proto="TCP"; Port=53},
+      @{Name="Allow HTTPS";   Proto="TCP"; Port=443}
+    )
+    foreach ($r in $rules) {
+      if (-not (Get-NetFirewallRule -DisplayName $r.Name -ErrorAction SilentlyContinue)) {
+        New-NetFirewallRule -DisplayName $r.Name -Direction Outbound -Action Allow -Protocol $r.Proto -RemotePort $r.Port | Out-Null
+      }
+    }
+  })
+
+  # Allow Windows Update service (svchost/wuauserv) - optional but useful.
+  log("\n[1b] Allow Windows Update service outbound (wuauserv)")
+  powershell(%q{
+    if (-not (Get-NetFirewallRule -DisplayName "Allow Windows Update (wuauserv)" -ErrorAction SilentlyContinue)) {
+      New-NetFirewallRule -DisplayName "Allow Windows Update (wuauserv)" `
+        -Direction Outbound -Action Allow `
+        -Program "%SystemRoot%\System32\svchost.exe" `
+        -Service wuauserv | Out-Null
+    }
+  })
+
+  # -----------------------------
+  # 2) Disable legacy features: SMB1, PowerShell v2
+  # -----------------------------
+  log("\n[2] Disable legacy features (SMB1, PowerShell v2)")
+  powershell("Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart")
+  powershell("Disable-WindowsOptionalFeature -Online -FeatureName MicrosoftWindowsPowerShellV2 -NoRestart")
+
+  # -----------------------------
+  # 3) PowerShell lockdown + logging
+  # -----------------------------
+  log("\n[3] PowerShell lockdown: AllSigned + ScriptBlockLogging")
+  powershell("Set-ExecutionPolicy AllSigned -Scope LocalMachine -Force")
+  powershell(%q{
+    New-Item -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" -Force | Out-Null
+    Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" -Name EnableScriptBlockLogging -Value 1
+  })
+
+  # -----------------------------
+  # 4) Defender protections (Controlled Folder Access, PUA, ASR)
+  # -----------------------------
+  log("\n[4] Microsoft Defender: CFA + PUA + ASR rules")
+  powershell("Set-MpPreference -EnableControlledFolderAccess Enabled")
+  powershell("Set-MpPreference -PUAProtection Enabled")
+
+  # A practical ASR starter set:
+  # - Block Office child processes
+  # - Block Office from creating executables
+  # - Block credential stealing from LSASS
+  log("\n[4b] Enable selected ASR rules")
+  powershell(%q{
+    $asrIds = @(
+      "D4F940AB-401B-4EFC-AADC-AD5F3C50688A", # Block Office from creating child processes
+      "3B576869-A4EC-4529-8536-B80A7769E899", # Block Office from creating executable content
+      "9E6C4E1F-7D60-472F-BA1A-A39EF669E4B2"  # Block credential stealing from LSASS
+    )
+    Set-MpPreference -AttackSurfaceReductionRules_Ids $asrIds -AttackSurfaceReductionRules_Actions Enabled
+  })
+
+  # -----------------------------
+  # 5) LSASS protection (RunAsPPL)
+  # -----------------------------
+  log("\n[5] Enable LSASS protection (RunAsPPL) - reboot required")
+  run(%q{reg.exe add "HKLM\SYSTEM\CurrentControlSet\Control\Lsa" /v RunAsPPL /t REG_DWORD /d 1 /f})
+
+  # -----------------------------
+  # 6) Reduce telemetry (policy key)
+  # -----------------------------
+  log("\n[6] Reduce Windows telemetry (AllowTelemetry=0 policy)")
+  powershell(%q{
+    New-Item -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Force | Out-Null
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name AllowTelemetry -Type DWord -Value 0
+  })
+
+  # -----------------------------
+  # 7) Exploit protection defaults (system-wide mitigations)
+  # -----------------------------
+  log("\n[7] Enable system mitigations (DEP/ASLR variants where supported)")
+  powershell("Set-ProcessMitigation -System -Enable DEP,ASLR,BottomUp,HighEntropy")
+
+  # -----------------------------
+  # 8) Audit policy: enable success+failure (noisy but useful)
+  # -----------------------------
+  log("\n[8] Enable audit policies (success+failure for all categories)")
+  run("auditpol.exe /set /category:* /success:enable /failure:enable", allow_fail: true)
+
+  log("\n=== COMPLETE ===")
+  log("Next steps: REBOOT to fully apply LSASS protection and some feature changes.")
+  log("Reminder: Outbound is now DEFAULT-DENY. If an app can’t reach the internet, add an allow rule for it.")
+
+rescue => e
+  log("\nFATAL: #{e}")
+  log("No further changes applied after the failure point.")
+  exit 1
+end
