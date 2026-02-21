@@ -1919,3 +1919,1003 @@ index c99d0ce68917c0af7a0bba8f176afb52f8bd8bd5..65fa7bd8528a6a301d892329f88a5076
      print_framework_analysis("telekinesis")
      print_framework_analysis("telepathy")
      print_framework_analysis("time_manipulation")
+pip install flask numpy scipy
+from flask import Flask, jsonify, request
+import numpy as np
+from scipy.constants import h, c, e, physical_constants
+
+app = Flask(__name__)
+
+# ==========================================
+# Quantum State Simulation
+# ==========================================
+
+def hydrogen_energy_level(n):
+    R = 1.097373e7  # Rydberg constant (1/m)
+    energy = -13.6 / (n ** 2)  # eV approximation
+    return energy
+
+def wavefunction_amplitude(n, l, r):
+    # Simplified radial approximation
+    return np.exp(-r / n) * (r ** l)
+
+# ==========================================
+# Angular Momentum
+# ==========================================
+
+def angular_momentum_quantum(l):
+    return np.sqrt(l * (l + 1)) * h / (2 * np.pi)
+
+def angular_momentum_vector(magnitude, theta, phi):
+    x = magnitude * np.sin(theta) * np.cos(phi)
+    y = magnitude * np.sin(theta) * np.sin(phi)
+    z = magnitude * np.cos(theta)
+    return {"x": x, "y": y, "z": z}
+
+# ==========================================
+# Atomic Spectra (Hydrogen emission lines)
+# ==========================================
+
+def hydrogen_spectral_line(n1, n2):
+    R = 1.097373e7
+    wavelength = 1 / (R * (1/(n1**2) - 1/(n2**2)))
+    return wavelength  # meters
+
+# ==========================================
+# Atomization (Simple molecular breakdown)
+# ==========================================
+
+def atomize(formula):
+    # Very simplified parser
+    atoms = {}
+    current = ""
+    count = ""
+
+    for char in formula:
+        if char.isalpha():
+            if current:
+                atoms[current] = atoms.get(current, 0) + (int(count) if count else 1)
+            current = char
+            count = ""
+        elif char.isdigit():
+            count += char
+
+    if current:
+        atoms[current] = atoms.get(current, 0) + (int(count) if count else 1)
+
+    return atoms
+
+# ==========================================
+# Hydronization (Protonation model)
+# ==========================================
+
+def hydronize(atom_counts, protons=1):
+    atom_counts["H+"] = atom_counts.get("H+", 0) + protons
+    return atom_counts
+
+# ==========================================
+# Carbonization (Carbon ratio increase)
+# ==========================================
+
+def carbonize(atom_counts, factor=1.2):
+    if "C" in atom_counts:
+        atom_counts["C"] = int(atom_counts["C"] * factor)
+    return atom_counts
+
+# ==========================================
+# API Routes
+# ==========================================
+
+@app.route("/quantum", methods=["GET"])
+def quantum():
+    n = int(request.args.get("n", 1))
+    l = int(request.args.get("l", 0))
+    r = float(request.args.get("r", 1.0))
+
+    energy = hydrogen_energy_level(n)
+    amplitude = wavefunction_amplitude(n, l, r)
+
+    return jsonify({
+        "n": n,
+        "l": l,
+        "energy_eV": energy,
+        "wavefunction_amplitude": amplitude
+    })
+
+@app.route("/angular", methods=["GET"])
+def angular():
+    l = int(request.args.get("l", 1))
+    theta = float(request.args.get("theta", np.pi/4))
+    phi = float(request.args.get("phi", np.pi/4))
+
+    magnitude = angular_momentum_quantum(l)
+    vector = angular_momentum_vector(magnitude, theta, phi)
+
+    return jsonify({
+        "l": l,
+        "magnitude": magnitude,
+        "vector": vector
+    })
+
+@app.route("/spectra", methods=["GET"])
+def spectra():
+    n1 = int(request.args.get("n1", 2))
+    n2 = int(request.args.get("n2", 3))
+
+    wavelength = hydrogen_spectral_line(n1, n2)
+
+    return jsonify({
+        "transition": f"{n2} → {n1}",
+        "wavelength_meters": wavelength
+    })
+
+@app.route("/atomize", methods=["POST"])
+def api_atomize():
+    data = request.json
+    formula = data.get("formula", "H2O")
+
+    atoms = atomize(formula)
+    return jsonify(atoms)
+
+@app.route("/hydronize", methods=["POST"])
+def api_hydronize():
+    data = request.json
+    formula = data.get("formula", "NH3")
+    protons = int(data.get("protons", 1))
+
+    atoms = atomize(formula)
+    result = hydronize(atoms, protons)
+
+    return jsonify(result)
+
+@app.route("/carbonize", methods=["POST"])
+def api_carbonize():
+    data = request.json
+    formula = data.get("formula", "C6H12O6")
+    factor = float(data.get("factor", 1.2))
+
+    atoms = atomize(formula)
+    result = carbonize(atoms, factor)
+
+    return jsonify(result)
+
+# ==========================================
+# Run Server
+# ==========================================
+
+if __name__ == "__main__":
+    app.run(debug=True)
+python app.py
+
+Then access:
+
+Quantum energy:
+
+http://127.0.0.1:5000/quantum?n=2&l=1&r=0.5
+
+Angular momentum:
+
+http://127.0.0.1:5000/angular?l=2
+
+Spectral line:
+
+http://127.0.0.1:5000/spectra?n1=2&n2=3
+
+Atomization (POST JSON):
+
+{
+  "formula": "C6H12O6"
+}
+from flask import Flask, request, jsonify
+import numpy as np
+from scipy.linalg import eigh
+from sympy import symbols, Eq, solve
+from scipy.constants import hbar, electron_mass
+
+app = Flask(__name__)
+
+# =====================================================
+# QUANTUM MECHANICS — 1D SCHRÖDINGER SOLVER
+# =====================================================
+
+def schrodinger_1d(V_func, x_min=-10, x_max=10, N=500):
+    x = np.linspace(x_min, x_max, N)
+    dx = x[1] - x[0]
+
+    # Kinetic energy operator (finite difference)
+    diag = np.full(N, -2.0)
+    offdiag = np.ones(N-1)
+    T = (-hbar**2 / (2 * electron_mass * dx**2)) * (
+        np.diag(diag) + np.diag(offdiag, 1) + np.diag(offdiag, -1)
+    )
+
+    # Potential energy operator
+    V = np.diag(V_func(x))
+
+    H = T + V
+
+    energies, wavefuncs = eigh(H)
+    return energies[:5], wavefuncs[:, :5]
+
+
+@app.route("/quantum/schrodinger", methods=["GET"])
+def solve_schrodinger():
+    omega = float(request.args.get("omega", 1.0))
+
+    def harmonic_potential(x):
+        return 0.5 * electron_mass * omega**2 * x**2
+
+    energies, _ = schrodinger_1d(harmonic_potential)
+
+    return jsonify({
+        "lowest_energies_J": energies.tolist()
+    })
+
+# =====================================================
+# ANGULAR MOMENTUM OPERATOR MATRIX
+# =====================================================
+
+@app.route("/quantum/angular", methods=["GET"])
+def angular_momentum():
+    l = int(request.args.get("l", 1))
+    L2 = hbar**2 * l * (l + 1)
+    return jsonify({"L_squared": L2})
+
+# =====================================================
+# CHEMICAL ENGINEERING — REACTION BALANCER
+# =====================================================
+
+@app.route("/chemistry/balance", methods=["POST"])
+def balance_reaction():
+    data = request.json
+    # Example: H2 + O2 -> H2O
+    # Simplified symbolic balancing example
+
+    a, b, c = symbols('a b c')
+
+    eq1 = Eq(2*a, 2*c)  # Hydrogen balance
+    eq2 = Eq(2*b, c)    # Oxygen balance
+
+    sol = solve((eq1, eq2), (a, b))
+
+    return jsonify({
+        "balanced_coefficients": {
+            "H2": sol[a],
+            "O2": sol[b],
+            "H2O": 1
+        }
+    })
+
+# =====================================================
+# MOLECULAR MASS CALCULATOR
+# =====================================================
+
+atomic_weights = {
+    "H": 1.008,
+    "C": 12.01,
+    "O": 16.00,
+    "N": 14.01
+}
+
+@app.route("/chemistry/mass", methods=["POST"])
+def molecular_mass():
+    formula = request.json.get("formula")
+    mass = 0
+    for atom in formula:
+        if atom in atomic_weights:
+            mass += atomic_weights[atom]
+    return jsonify({"molecular_mass_g_mol": mass})
+
+# =====================================================
+# QUANTUM COMPUTING CORE
+# =====================================================
+
+# Basic gates
+X = np.array([[0,1],[1,0]])
+H_gate = (1/np.sqrt(2))*np.array([[1,1],[1,-1]])
+
+@app.route("/quantum/computing/apply", methods=["POST"])
+def apply_gate():
+    data = request.json
+    gate = data.get("gate", "H")
+
+    state = np.array([1,0])  # |0>
+
+    if gate == "H":
+        result = H_gate @ state
+    elif gate == "X":
+        result = X @ state
+    else:
+        return jsonify({"error": "Unsupported gate"})
+
+    probabilities = np.abs(result)**2
+
+    return jsonify({
+        "state_vector": result.tolist(),
+        "measurement_probabilities": probabilities.tolist()
+    })
+
+# =====================================================
+# MATERIAL DENSITY MODEL
+# =====================================================
+
+@app.route("/materials/density", methods=["POST"])
+def material_density():
+    mass = float(request.json.get("mass"))  # kg
+    volume = float(request.json.get("volume"))  # m^3
+    density = mass / volume
+    return jsonify({"density_kg_m3": density})
+
+# =====================================================
+# RUN
+# =====================================================
+
+if __name__ == "__main__":
+    app.run(debug=True)
+pip install flask numpy scipy sympy
+scientific_core/
+│
+├── app.py
+├── quantum/
+│   ├── schrodinger.py
+│   ├── hartree_fock.py
+│   ├── quantum_computing.py
+│
+├── chemistry/
+│   ├── stoichiometry.py
+│   ├── kinetics.py
+│   ├── thermodynamics.py
+│
+├── materials/
+│   ├── lattice.py
+│   ├── density.py
+│
+└── utils/
+    └── linear_algebra.py
+from flask import Flask
+from quantum.schrodinger import quantum_bp
+from quantum.quantum_computing import qc_bp
+from chemistry.stoichiometry import chem_bp
+from chemistry.kinetics import kinetics_bp
+from materials.lattice import materials_bp
+
+app = Flask(__name__)
+
+app.register_blueprint(quantum_bp, url_prefix="/quantum")
+app.register_blueprint(qc_bp, url_prefix="/quantum/computing")
+app.register_blueprint(chem_bp, url_prefix="/chemistry")
+app.register_blueprint(kinetics_bp, url_prefix="/chemistry/kinetics")
+app.register_blueprint(materials_bp, url_prefix="/materials")
+
+if __name__ == "__main__":
+    app.run(debug=True)
+from flask import Blueprint, request, jsonify
+import numpy as np
+from scipy.linalg import eigh
+from scipy.constants import hbar, electron_mass
+
+quantum_bp = Blueprint("quantum_bp", __name__)
+
+def solve_schrodinger_1d(V, x):
+    dx = x[1] - x[0]
+    N = len(x)
+
+    diag = np.full(N, -2.0)
+    off = np.ones(N-1)
+
+    T = (-hbar**2 / (2 * electron_mass * dx**2)) * (
+        np.diag(diag) + np.diag(off, 1) + np.diag(off, -1)
+    )
+
+    H = T + np.diag(V)
+    E, psi = eigh(H)
+    return E[:5]
+
+@quantum_bp.route("/schrodinger")
+def schrodinger():
+    omega = float(request.args.get("omega", 1.0))
+    x = np.linspace(-10, 10, 500)
+    V = 0.5 * electron_mass * omega**2 * x**2
+    energies = solve_schrodinger_1d(V, x)
+    return jsonify({"energies_J": energies.tolist()})
+import numpy as np
+
+def hartree_fock_core(H_core, overlap, two_electron_tensor, max_iter=50):
+    C = np.eye(H_core.shape[0])
+    for _ in range(max_iter):
+        F = H_core  # simplified placeholder for Fock build
+        eps, C = np.linalg.eigh(F)
+    return eps, C
+from flask import Blueprint, request, jsonify
+import numpy as np
+
+qc_bp = Blueprint("qc_bp", __name__)
+
+H = (1/np.sqrt(2))*np.array([[1,1],[1,-1]])
+X = np.array([[0,1],[1,0]])
+
+def kron_n(gate, n):
+    result = gate
+    for _ in range(n-1):
+        result = np.kron(result, gate)
+    return result
+
+@qc_bp.route("/apply", methods=["POST"])
+def apply_gate():
+    data = request.json
+    qubits = int(data.get("qubits", 1))
+    gate = data.get("gate", "H")
+
+    state = np.zeros(2**qubits)
+    state[0] = 1
+
+    if gate == "H":
+        U = kron_n(H, qubits)
+    else:
+        U = kron_n(X, qubits)
+
+    result = U @ state
+    return jsonify({
+        "state_vector": result.tolist(),
+        "probabilities": (np.abs(result)**2).tolist()
+    })
+from flask import Blueprint, request, jsonify
+import sympy as sp
+
+chem_bp = Blueprint("chem_bp", __name__)
+
+@chem_bp.route("/balance", methods=["POST"])
+def balance():
+    # Simplified example: H2 + O2 -> H2O
+    a,b,c = sp.symbols('a b c')
+    eqs = [
+        sp.Eq(2*a, 2*c),
+        sp.Eq(2*b, c)
+    ]
+    sol = sp.solve(eqs, (a,b))
+    return jsonify({"H2": sol[a], "O2": sol[b], "H2O": 1})
+from flask import Blueprint, request, jsonify
+import numpy as np
+from scipy.integrate import solve_ivp
+
+kinetics_bp = Blueprint("kinetics_bp", __name__)
+
+@kinetics_bp.route("/batch", methods=["POST"])
+def batch_reactor():
+    k = float(request.json.get("k", 1.0))
+
+    def rate(t, y):
+        return [-k*y[0]]
+
+    sol = solve_ivp(rate, [0,10], [1.0])
+    return jsonify({"concentration": sol.y[0].tolist()})
+from flask import Blueprint, request, jsonify
+import numpy as np
+
+materials_bp = Blueprint("materials_bp", __name__)
+
+@materials_bp.route("/lattice", methods=["POST"])
+def lattice_energy():
+    epsilon = float(request.json.get("epsilon", 1.0))
+    r = float(request.json.get("r", 1.0))
+    energy = 4*epsilon*((1/r)**12 - (1/r)**6)
+    return jsonify({"lennard_jones_energy": energy})
+pip install flask numpy scipy sympy
+from flask import Flask, request, jsonify
+import re
+import numpy as np
+import sympy as sp
+from scipy.integrate import solve_ivp
+
+app = Flask(__name__)
+
+# =====================================================
+# PERIODIC TABLE (partial, extendable)
+# =====================================================
+
+PERIODIC_TABLE = {
+    "H": {"atomic_mass": 1.008, "Hf": 0},
+    "C": {"atomic_mass": 12.01, "Hf": 0},
+    "O": {"atomic_mass": 16.00, "Hf": 0},
+    "N": {"atomic_mass": 14.01, "Hf": 0},
+    "Na": {"atomic_mass": 22.99, "Hf": -240},
+    "Cl": {"atomic_mass": 35.45, "Hf": -167},
+}
+
+# =====================================================
+# CHEMICAL FORMULA PARSER
+# Handles nested parentheses
+# =====================================================
+
+def parse_formula(formula):
+    tokens = re.findall(r'([A-Z][a-z]?|\(|\)|\d+)', formula)
+    stack = [{}]
+
+    i = 0
+    while i < len(tokens):
+        token = tokens[i]
+
+        if token == "(":
+            stack.append({})
+        elif token == ")":
+            group = stack.pop()
+            multiplier = 1
+            if i+1 < len(tokens) and tokens[i+1].isdigit():
+                multiplier = int(tokens[i+1])
+                i += 1
+            for element, count in group.items():
+                stack[-1][element] = stack[-1].get(element, 0) + count * multiplier
+        elif token.isdigit():
+            pass
+        else:
+            element = token
+            count = 1
+            if i+1 < len(tokens) and tokens[i+1].isdigit():
+                count = int(tokens[i+1])
+                i += 1
+            stack[-1][element] = stack[-1].get(element, 0) + count
+        i += 1
+
+    return stack[0]
+
+# =====================================================
+# MOLECULAR MASS
+# =====================================================
+
+@app.route("/chem/mass", methods=["POST"])
+def molecular_mass():
+    formula = request.json["formula"]
+    composition = parse_formula(formula)
+
+    mass = 0
+    for element, count in composition.items():
+        mass += PERIODIC_TABLE[element]["atomic_mass"] * count
+
+    return jsonify({
+        "formula": formula,
+        "composition": composition,
+        "molecular_mass_g_mol": mass
+    })
+
+# =====================================================
+# REACTION BALANCER (General Linear Algebra)
+# =====================================================
+
+@app.route("/chem/balance", methods=["POST"])
+def balance_reaction():
+    data = request.json
+    reactants = data["reactants"]
+    products = data["products"]
+
+    species = reactants + products
+    elements = set()
+
+    compositions = []
+    for s in species:
+        comp = parse_formula(s)
+        compositions.append(comp)
+        elements.update(comp.keys())
+
+    elements = list(elements)
+
+    matrix = []
+    for element in elements:
+        row = []
+        for i, comp in enumerate(compositions):
+            count = comp.get(element, 0)
+            if i < len(reactants):
+                row.append(count)
+            else:
+                row.append(-count)
+        matrix.append(row)
+
+    M = sp.Matrix(matrix)
+    nullspace = M.nullspace()
+
+    coeffs = nullspace[0]
+    lcm = sp.lcm([term.q for term in coeffs])
+    coeffs = coeffs * lcm
+    coeffs = [abs(int(c)) for c in coeffs]
+
+    return jsonify({
+        "reactants": dict(zip(reactants, coeffs[:len(reactants)])),
+        "products": dict(zip(products, coeffs[len(reactants):]))
+    })
+
+# =====================================================
+# STOICHIOMETRY — LIMITING REAGENT
+# =====================================================
+
+@app.route("/chem/stoichiometry", methods=["POST"])
+def stoichiometry():
+    data = request.json
+    mols = data["moles"]  # {"H2":2, "O2":1}
+    coeffs = data["coefficients"]  # {"H2":2,"O2":1,"H2O":2}
+
+    ratios = []
+    for species, amount in mols.items():
+        ratios.append(amount / coeffs[species])
+
+    limiting_ratio = min(ratios)
+
+    products = {}
+    for species in coeffs:
+        if species not in mols:
+            products[species] = coeffs[species] * limiting_ratio
+
+    return jsonify({
+        "limiting_ratio": limiting_ratio,
+        "products_formed_moles": products
+    })
+
+# =====================================================
+# THERMOCHEMISTRY — REACTION ENTHALPY
+# =====================================================
+
+@app.route("/chem/enthalpy", methods=["POST"])
+def reaction_enthalpy():
+    data = request.json
+    reactants = data["reactants"]
+    products = data["products"]
+
+    deltaH = 0
+
+    for species, coeff in products.items():
+        comp = parse_formula(species)
+        for el in comp:
+            deltaH += coeff * PERIODIC_TABLE[el]["Hf"]
+
+    for species, coeff in reactants.items():
+        comp = parse_formula(species)
+        for el in comp:
+            deltaH -= coeff * PERIODIC_TABLE[el]["Hf"]
+
+    return jsonify({"reaction_enthalpy_kJ_mol": deltaH})
+
+# =====================================================
+# KINETICS — FIRST ORDER REACTION
+# =====================================================
+
+@app.route("/chem/kinetics", methods=["POST"])
+def kinetics():
+    k = float(request.json["k"])
+    A0 = float(request.json["A0"])
+
+    def rate(t, y):
+        return [-k * y[0]]
+
+    sol = solve_ivp(rate, [0,10], [A0], t_eval=np.linspace(0,10,100))
+
+    return jsonify({
+        "time": sol.t.tolist(),
+        "concentration": sol.y[0].tolist()
+    })
+
+# =====================================================
+# FORMULATION — MOLARITY & DILUTION
+# =====================================================
+
+@app.route("/chem/formulation/molarity", methods=["POST"])
+def molarity():
+    moles = float(request.json["moles"])
+    volume_L = float(request.json["volume_L"])
+    M = moles / volume_L
+    return jsonify({"molarity_M": M})
+
+@app.route("/chem/formulation/dilution", methods=["POST"])
+def dilution():
+    M1 = float(request.json["M1"])
+    V1 = float(request.json["V1"])
+    M2 = float(request.json["M2"])
+    V2 = (M1 * V1) / M2
+    return jsonify({"required_final_volume_L": V2})
+
+# =====================================================
+# IDEAL GAS LAW
+# =====================================================
+
+@app.route("/chem/gas", methods=["POST"])
+def ideal_gas():
+    R = 0.082057
+    n = float(request.json["n"])
+    T = float(request.json["T"])
+    P = float(request.json["P"])
+    V = (n * R * T) / P
+    return jsonify({"volume_L": V})
+
+# =====================================================
+# RUN
+# =====================================================
+
+if __name__ == "__main__":
+    app.run(debug=True)
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+@app.route("/dose", methods=["POST"])
+def dose():
+    weight = float(request.json["weight_kg"])
+    mg_per_kg = float(request.json["mg_per_kg"])
+    dose = weight * mg_per_kg
+    return jsonify({"dose_mg": dose})
+
+@app.route("/bioavailability", methods=["POST"])
+def bioavailability():
+    dose = float(request.json["dose"])
+    F = float(request.json["F"])
+    absorbed = dose * F
+    return jsonify({"systemic_dose": absorbed})
+
+if __name__ == "__main__":
+    app.run(debug=True)
+from flask import Flask, request, jsonify
+import numpy as np
+
+app = Flask(__name__)
+
+@app.route("/nernst", methods=["POST"])
+def nernst():
+    E0 = float(request.json["E0"])
+    n = float(request.json["n"])
+    Q = float(request.json["Q"])
+    R = 8.314
+    T = 298
+    F = 96485
+
+    E = E0 - (R*T/(n*F))*np.log(Q)
+    return jsonify({"cell_potential_V": E})
+
+if __name__ == "__main__":
+    app.run(debug=True)
+from flask import Flask, request, jsonify
+import numpy as np
+from scipy.integrate import solve_ivp
+
+app = Flask(__name__)
+
+@app.route("/multi_step", methods=["POST"])
+def multi_step():
+    k1 = float(request.json["k1"])
+    k2 = float(request.json["k2"])
+
+    def system(t, y):
+        A, B, C = y
+        dA = -k1*A
+        dB = k1*A - k2*B
+        dC = k2*B
+        return [dA,dB,dC]
+
+    sol = solve_ivp(system,[0,10],[1,0,0])
+    return jsonify({
+        "A": sol.y[0].tolist(),
+        "B": sol.y[1].tolist(),
+        "C": sol.y[2].tolist()
+    })
+
+if __name__ == "__main__":
+    app.run(debug=True)
+from flask import Flask, request, jsonify
+import numpy as np
+
+app = Flask(__name__)
+
+@app.route("/pH", methods=["POST"])
+def pH():
+    Ka = float(request.json["Ka"])
+    C = float(request.json["C"])
+
+    H = (-Ka + np.sqrt(Ka**2 + 4*Ka*C))/2
+    pH = -np.log10(H)
+
+    return jsonify({"pH": pH})
+
+if __name__ == "__main__":
+    app.run(debug=True)
+from flask import Flask, request, jsonify
+import numpy as np
+
+app = Flask(__name__)
+
+@app.route("/peng_robinson", methods=["POST"])
+def peng_robinson():
+    R = 8.314
+    T = float(request.json["T"])
+    P = float(request.json["P"])
+    Tc = float(request.json["Tc"])
+    Pc = float(request.json["Pc"])
+    omega = float(request.json["omega"])
+
+    kappa = 0.37464 + 1.54226*omega - 0.26992*omega**2
+    Tr = T/Tc
+    alpha = (1 + kappa*(1-np.sqrt(Tr)))**2
+    a = 0.45724*(R**2*Tc**2/Pc)*alpha
+    b = 0.07780*(R*Tc/Pc)
+
+    return jsonify({"a_parameter": a, "b_parameter": b})
+
+if __name__ == "__main__":
+    app.run(debug=True)
+pip install flask numpy scipy sympy sqlalchemy pint
+pip install cupy-cuda12x
+chem_platform/
+│
+├── app.py
+├── database.py
+├── units.py
+├── gpu.py
+├── properties.py
+├── optimization.py
+├── reaction_network.py
+└── models.py
+from pint import UnitRegistry
+
+ureg = UnitRegistry()
+Q_ = ureg.Quantity
+
+def to_si(value, unit):
+    return Q_(value, unit).to_base_units()
+try:
+    import cupy as xp
+    GPU_ENABLED = True
+except ImportError:
+    import numpy as xp
+    GPU_ENABLED = False
+
+def array(data):
+    return xp.array(data)
+
+def to_numpy(arr):
+    if GPU_ENABLED:
+        import cupy
+        return cupy.asnumpy(arr)
+    return arr
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, declarative_base
+
+engine = create_engine("sqlite:///chemicals.db")
+Session = sessionmaker(bind=engine)
+Base = declarative_base()
+from sqlalchemy import Column, Integer, String, Float
+from database import Base
+
+class Chemical(Base):
+    __tablename__ = "chemicals"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True)
+    molecular_weight = Column(Float)
+    Cp = Column(Float)      # J/mol*K
+    Hf = Column(Float)      # kJ/mol
+# run once
+from database import engine
+from models import Base
+Base.metadata.create_all(engine)
+from database import Session
+from models import Chemical
+
+def add_chemical(name, mw, Cp, Hf):
+    session = Session()
+    chem = Chemical(name=name, molecular_weight=mw, Cp=Cp, Hf=Hf)
+    session.add(chem)
+    session.commit()
+    session.close()
+
+def get_chemical(name):
+    session = Session()
+    chem = session.query(Chemical).filter_by(name=name).first()
+    session.close()
+    return chem
+import numpy as np
+from scipy.optimize import minimize
+
+def reactor_conversion(T, k0=1e3, Ea=80000, R=8.314):
+    k = k0 * np.exp(-Ea/(R*T))
+    tau = 5
+    return k*tau/(1 + k*tau)
+
+def optimize_reactor():
+    def objective(T):
+        return -reactor_conversion(T[0])
+
+    constraints = [
+        {"type": "ineq", "fun": lambda T: T[0] - 300},   # T >= 300K
+        {"type": "ineq", "fun": lambda T: 800 - T[0]}    # T <= 800K
+    ]
+
+    result = minimize(objective, [400], constraints=constraints)
+    return {
+        "optimal_temperature_K": result.x[0],
+        "max_conversion": reactor_conversion(result.x[0])
+    }
+import sympy as sp
+
+def build_network(reactions):
+    species = set()
+    for r in reactions:
+        species.update(r["reactants"].keys())
+        species.update(r["products"].keys())
+
+    species = list(species)
+    symbols = sp.symbols(species)
+
+    eqs = []
+    for r in reactions:
+        rate = r["rate_constant"]
+        for s in species:
+            net = r["products"].get(s,0) - r["reactants"].get(s,0)
+            eqs.append(net * rate)
+
+    return {
+        "species": species,
+        "symbolic_rates": eqs
+    }
+from flask import Flask, request, jsonify
+from properties import add_chemical, get_chemical
+from optimization import optimize_reactor
+from reaction_network import build_network
+from gpu import GPU_ENABLED
+from units import to_si
+
+app = Flask(__name__)
+
+# -----------------------------
+# Chemical Properties
+# -----------------------------
+@app.route("/chemical/add", methods=["POST"])
+def add():
+    data = request.json
+    add_chemical(data["name"], data["mw"], data["Cp"], data["Hf"])
+    return jsonify({"status": "added"})
+
+@app.route("/chemical/<name>")
+def get(name):
+    chem = get_chemical(name)
+    if chem:
+        return jsonify({
+            "name": chem.name,
+            "molecular_weight": chem.molecular_weight,
+            "Cp": chem.Cp,
+            "Hf": chem.Hf
+        })
+    return jsonify({"error": "not found"}), 404
+
+# -----------------------------
+# Process Optimization
+# -----------------------------
+@app.route("/optimize/reactor")
+def optimize():
+    result = optimize_reactor()
+    return jsonify(result)
+
+# -----------------------------
+# Reaction Network
+# -----------------------------
+@app.route("/reaction/network", methods=["POST"])
+def network():
+    reactions = request.json["reactions"]
+    net = build_network(reactions)
+    return jsonify({
+        "species": net["species"],
+        "symbolic_equations": [str(eq) for eq in net["symbolic_rates"]]
+    })
+
+# -----------------------------
+# Unit Conversion
+# -----------------------------
+@app.route("/units/convert", methods=["POST"])
+def convert():
+    val = request.json["value"]
+    unit = request.json["unit"]
+    q = to_si(val, unit)
+    return jsonify({"SI_value": q.magnitude, "SI_unit": str(q.units)})
+
+# -----------------------------
+# GPU Status
+# -----------------------------
+@app.route("/gpu/status")
+def gpu_status():
+    return jsonify({"gpu_enabled": GPU_ENABLED})
+
+if __name__ == "__main__":
+    app.run(debug=True)
