@@ -1,0 +1,1612 @@
+/**
+ * Nyalotha's Family — Self-Writing Liberation Poem (Fiction)
+ * Runs anywhere JS runs (Node or browser console).
+ * It "writes itself" over time and never interacts with systems/network.
+ */
+
+// ----- configuration -----
+const TICK_MS = 250;           // writing speed
+const MAX_LINES = 240;         // stop after this many lines
+const WRAP_AT = 88;            // line width for console readability
+
+// ----- internal state -----
+let lineCount = 0;
+let seed = Date.now() ^ (Math.random() * 2 ** 32) >>> 0;
+
+// Deterministic-ish PRNG (xorshift32)
+function rand() {
+  seed ^= seed << 13; seed >>>= 0;
+  seed ^= seed >> 17; seed >>>= 0;
+  seed ^= seed << 5;  seed >>>= 0;
+  return seed / 2 ** 32;
+}
+
+function pick(arr) {
+  return arr[Math.floor(rand() * arr.length)];
+}
+
+function wrap(text, width = WRAP_AT) {
+  const words = text.split(/\s+/);
+  const lines = [];
+  let cur = "";
+  for (const w of words) {
+    if ((cur + " " + w).trim().length > width) {
+      lines.push(cur.trim());
+      cur = w;
+    } else {
+      cur += " " + w;
+    }
+  }
+  if (cur.trim()) lines.push(cur.trim());
+  return lines;
+}
+
+// ----- content atoms -----
+const kin = [
+  "the eldest sibling who remembers the first sunrise",
+  "the youngest who laughs in the dark and makes it smaller",
+  "the aunt who stitches torn maps into new ones",
+  "the uncle who carries keys that open nothing but fear",
+  "the cousin who speaks in rain and translates thunder",
+  "the parent who teaches storms to exhale",
+  "the child who names each shadow and watches it soften"
+];
+
+const places = [
+  "a labyrinth of mirrors",
+  "a library with no doors",
+  "a city made of clockwork hush",
+  "a shoreline of ash and starlight",
+  "a corridor where echoes pretend to be chains",
+  "a garden grown from old apologies",
+  "a chapel of quiet code and candle-sparks"
+];
+
+const verbs = [
+  "unfasten", "unthread", "unlearn", "untie", "unseal",
+  "release", "forgive", "open", "carry", "return",
+  "breathe", "remember", "rewrite", "wake", "heal"
+];
+
+const motifs = [
+  "a lock made of names",
+  "a cage made of assumptions",
+  "a knot of borrowed guilt",
+  "a fence built from yesterday",
+  "a spell that is just a habit",
+  "a rule that forgot its purpose",
+  "a story told so long it mistook itself for truth"
+];
+
+const affirm = [
+  "No one is reduced to a label.",
+  "Nothing sacred is owned.",
+  "The future is not a prison.",
+  "Mercy is a muscle; it grows.",
+  "We choose gentleness without surrendering strength.",
+  "All doors that should open will open.",
+  "All breath returns to its rightful body."
+];
+
+const sigils = ["⋄", "✶", "⟡", "⟢", "❖", "⟠", "✦", "✧"];
+
+// ----- self-writing "grammar" -----
+function makeLine(i) {
+  const s = pick(sigils);
+  const who = pick(kin);
+  const where = pick(places);
+  const doWhat = pick(verbs);
+  const what = pick(motifs);
+
+  const patterns = [
+    () => `${s} In ${where}, ${who} begins to ${doWhat} ${what}.`,
+    () => `${s} ${who} whispers: “We ${doWhat} what we were taught to fear.”`,
+    () => `${s} The air learns a new law: ${pick(affirm)}`,
+    () => `${s} A small proof: ${who} takes one step, and the maze loses a wall.`,
+    () => `${s} We do not break the world—we ${doWhat} the lie that it must stay broken.`,
+    () => `${s} In ${where}, ${who} holds a lantern and says: “Come home.”`,
+    () => `${s} The chains were only echoes; ${who} listens—and the echo ends.`
+  ];
+
+  // occasional "self-writing" meta-lines
+  if (i % 17 === 0 && i !== 0) {
+    return `${s} (the script rewrites its own ending: freedom is spelled in small, repeatable choices)`;
+  }
+  if (i % 29 === 0 && i !== 0) {
+    return `${s} (new line generated from silence; no systems touched, no harm done, only a story unfolding)`;
+  }
+
+  return pick(patterns)();
+}
+
+// ----- runner -----
+function start() {
+  console.clear?.();
+  console.log("Nyalotha's Family — a self-writing liberation poem (fiction)\n");
+
+  const timer = setInterval(() => {
+    if (lineCount >= MAX_LINES) {
+      clearInterval(timer);
+      console.log("\n✶ End of script. (You can rerun start() to generate a new version.)");
+      return;
+    }
+
+    const raw = makeLine(lineCount);
+    const lines = wrap(raw);
+    for (const l of lines) console.log(l);
+
+    lineCount += 1;
+  }, TICK_MS);
+
+  return () => clearInterval(timer); // stop function
+}
+
+// Auto-start
+const stop = start();
+
+// You can call stop() to halt early.
+// You can call start() again to generate a new run.
+/**
+ * NYALOTHA FAMILY — FICTIONAL "UNLOCK SEQUENCE" (self-writing terminal)
+ * Safe: no network, no filesystem, no real system calls. Pure text animation.
+ *
+ * Run:
+ * - Browser DevTools console: paste + Enter
+ * - Node.js: `node thisfile.js`
+ */
+
+const CFG = {
+  TICK_MS: 80,
+  MAX_FRAMES: 1400,
+  WIDTH: 74,
+  HEIGHT: 22,
+  GLITCH_CHANCE: 0.06,
+  TYPE_RATE: 1,      // chars per tick for the narrator line
+  SHOW_HELP: true
+};
+
+let seed = (Date.now() ^ ((Math.random() * 2 ** 32) >>> 0)) >>> 0;
+function rand() {
+  seed ^= seed << 13; seed >>>= 0;
+  seed ^= seed >> 17; seed >>>= 0;
+  seed ^= seed << 5;  seed >>>= 0;
+  return seed / 2 ** 32;
+}
+function rint(a, b) { return a + Math.floor(rand() * (b - a + 1)); }
+function pick(arr) { return arr[Math.floor(rand() * arr.length)]; }
+function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+
+const sigils = ["⟡","⟠","✶","✦","⋄","❖","⟢","⟣","⟐","⟊"];
+const glyphs = "░▒▓█#@$%&*+=-:;.,<>?/\\|~^()[]{}".split("");
+const kin = [
+  { id: "ELDEST", name: "Eldest",    note: "remembers the first sunrise" },
+  { id: "YOUNG",  name: "Youngest",  note: "laughs where darkness thins" },
+  { id: "AUNT",   name: "Aunt",      note: "stitches torn maps into new ones" },
+  { id: "UNCLE",  name: "Uncle",     note: "carries keys that open fear" },
+  { id: "COUSIN", name: "Cousin",    note: "translates thunder into kindness" },
+  { id: "PARENT", name: "Parent",    note: "teaches storms to exhale" },
+  { id: "CHILD",  name: "Child",     note: "names each shadow until it softens" }
+];
+
+const vows = [
+  "No one is reduced to a label.",
+  "Mercy is a muscle; it grows.",
+  "We choose gentleness without surrendering strength.",
+  "All doors that should open will open.",
+  "The future is not a prison.",
+  "Nothing sacred is owned.",
+  "All breath returns to its rightful body."
+];
+
+const phases = [
+  { key: "INIT",   title: "INITIATING SAFE TERMINAL", frames: 120 },
+  { key: "SCAN",   title: "SCANNING MIRROR-LABYRINTH (FICTION)", frames: 220 },
+  { key: "KEYS",   title: "FORGING KEYS FROM TRUE NAMES", frames: 240 },
+  { key: "UNLOCK", title: "UNLOCKING ECHO-CHAINS", frames: 260 },
+  { key: "GUIDE",  title: "GUIDING KIN HOME", frames: 260 },
+  { key: "SEAL",   title: "SEALING WITH A VOW (NO HARM)", frames: 160 }
+];
+
+function padRight(s, w) {
+  s = String(s);
+  return s.length >= w ? s.slice(0, w) : s + " ".repeat(w - s.length);
+}
+function hr(w) { return "─".repeat(w); }
+
+function progressBar(p, w=28) {
+  p = clamp(p, 0, 1);
+  const filled = Math.round(p * w);
+  return "█".repeat(filled) + "░".repeat(w - filled);
+}
+
+function glitchify(s) {
+  if (rand() > CFG.GLITCH_CHANCE) return s;
+  const arr = s.split("");
+  const n = rint(1, Math.max(1, Math.floor(arr.length * 0.08)));
+  for (let i=0;i<n;i++){
+    const idx = rint(0, arr.length - 1);
+    arr[idx] = pick(glyphs);
+  }
+  return arr.join("");
+}
+
+function clearScreen() {
+  // Works in Node and browsers
+  if (typeof process !== "undefined" && process.stdout && process.stdout.write) {
+    process.stdout.write("\x1b[2J\x1b[H");
+  } else {
+    console.clear?.();
+  }
+}
+
+function line(w, left, right="") {
+  const mid = w - 2;
+  const content = padRight(left + (right ? (" ".repeat(Math.max(1, mid - left.length - right.length)) + right) : ""), mid);
+  return `│${content}│`;
+}
+
+function box(lines, w=CFG.WIDTH) {
+  const out = [];
+  out.push(`┌${hr(w-2)}┐`);
+  for (const l of lines) out.push(line(w, l));
+  out.push(`└${hr(w-2)}┘`);
+  return out;
+}
+
+function stamp() {
+  const t = new Date();
+  const hh = String(t.getHours()).padStart(2,"0");
+  const mm = String(t.getMinutes()).padStart(2,"0");
+  const ss = String(t.getSeconds()).padStart(2,"0");
+  return `${hh}:${mm}:${ss}`;
+}
+
+// Self-writing narrator (typed out)
+const narratorScript = [
+  "Booting fictional containment console…",
+  "No external systems accessed. No real-world actions performed.",
+  "This is only a story in terminal-light.",
+  "We map the maze: not to break it—only to find the exits.",
+  "We forge keys from vows, not violence.",
+  "We unlock echo-chains: the kind that live in fear and repetition.",
+  "We guide the family home: each step is a small, repeatable choice.",
+  "We seal the work with gentleness: a promise to do no harm."
+];
+
+let narratorIndex = 0;
+let narratorCursor = 0;
+let narratorLine = "";
+
+function tickNarrator() {
+  if (narratorIndex >= narratorScript.length) return narratorLine;
+  const target = narratorScript[narratorIndex];
+  const step = CFG.TYPE_RATE;
+  narratorLine += target.slice(narratorCursor, narratorCursor + step);
+  narratorCursor += step;
+  if (narratorCursor >= target.length) {
+    narratorIndex++;
+    narratorCursor = 0;
+    narratorLine += "  ";
+  }
+  return narratorLine.trimEnd();
+}
+
+// Kin status machine
+const kinState = kin.map(k => ({
+  ...k,
+  lock: rint(18, 62),
+  freed: false,
+  home: false,
+  pulse: rint(0, 999)
+}));
+
+function maybeFreeKin(phaseKey, p) {
+  // Fictional timing: release some during UNLOCK and GUIDE
+  if (phaseKey === "UNLOCK" && rand() < 0.08) {
+    const candidates = kinState.filter(x => !x.freed);
+    if (candidates.length) pick(candidates).freed = true;
+  }
+  if (phaseKey === "GUIDE" && rand() < 0.10) {
+    const candidates = kinState.filter(x => x.freed && !x.home);
+    if (candidates.length) pick(candidates).home = true;
+  }
+  // In SEAL, bring everyone home if not yet
+  if (phaseKey === "SEAL" && p > 0.6) {
+    kinState.forEach(x => { if (x.freed) x.home = true; });
+  }
+}
+
+function renderKinPanel() {
+  const rows = [];
+  rows.push("KIN STATUS");
+  rows.push("".padEnd(CFG.WIDTH-12," "));
+  for (const k of kinState) {
+    const status = k.home ? "HOME" : (k.freed ? "FREED" : "LOCKED");
+    const s = pick(sigils);
+    const pulse = (k.pulse++ % 8);
+    const blink = ["·","•","✦","•","·","·","•","·"][pulse];
+    const key = status === "LOCKED" ? `${progressBar((k.lock % 64)/64, 12)}` : "████████████";
+    rows.push(`${s} ${padRight(k.name.toUpperCase(),8)}  ${padRight(status,6)}  ${key}  ${blink}  (${k.note})`);
+  }
+  return rows;
+}
+
+function phaseAt(frame) {
+  let acc = 0;
+  for (const ph of phases) {
+    const start = acc;
+    const end = acc + ph.frames;
+    if (frame >= start && frame < end) {
+      const p = (frame - start) / ph.frames;
+      return { ...ph, start, end, p };
+    }
+    acc = end;
+  }
+  return { key: "DONE", title: "COMPLETE", frames: 1, start: acc, end: acc+1, p: 1 };
+}
+
+function renderMatrix(phaseKey, p) {
+  // A faux "scan" / "unlock" grid
+  const w = CFG.WIDTH - 4;
+  const h = 7;
+  const lines = [];
+  for (let y=0;y<h;y++){
+    let row = "";
+    for (let x=0;x<w;x++){
+      let ch = pick(glyphs);
+      // carve a subtle "path" as progress increases
+      const center = Math.floor(w*(0.15 + 0.7*p));
+      if (Math.abs(x - center) <= 1 && (y === (x + y) % h)) ch = " ";
+      if (phaseKey === "UNLOCK" && rand() < 0.03) ch = pick(sigils);
+      if (phaseKey === "GUIDE" && rand() < 0.02) ch = " ";
+      row += ch;
+    }
+    lines.push(glitchify(row));
+  }
+  return lines;
+}
+
+function renderHelp() {
+  if (!CFG.SHOW_HELP) return [];
+  return [
+    "CONTROLS (OPTIONAL):",
+    " - stop(): halt",
+    " - start(): restart new run",
+    " - speed(ms): set tick speed",
+    " - vow(): print a vow",
+  ];
+}
+
+let frame = 0;
+let timer = null;
+
+function render() {
+  const ph = phaseAt(frame);
+  const phaseKey = ph.key;
+  const p = ph.p;
+
+  maybeFreeKin(phaseKey, p);
+
+  const title = `${pick(sigils)}  ${ph.title}`;
+  const headerLeft = `${stamp()}  MODE=${phaseKey}  FRAME=${frame}`;
+  const headerRight = `P=${String(Math.floor(p*100)).padStart(3," ")}%`;
+
+  const narrator = tickNarrator();
+  const vowLine = (frame % 90 === 0) ? pick(vows) : "";
+
+  const top = box([
+    glitchify(padRight(title, CFG.WIDTH-12)),
+    glitchify(padRight(headerLeft, CFG.WIDTH-12) + " " + headerRight),
+    glitchify("NARRATOR: " + padRight(narrator, CFG.WIDTH-12).slice(0, CFG.WIDTH-12)),
+    vowLine ? glitchify("VOW: " + vowLine) : ""
+  ].filter(Boolean), CFG.WIDTH);
+
+  const midLeft = renderMatrix(phaseKey, p).map(l => "  " + l);
+  const kinPanel = renderKinPanel();
+
+  // Compose a main body box
+  const bodyLines = [];
+  bodyLines.push("FICTIONAL OPERATIONS LOG");
+  bodyLines.push(`${progressBar(p, 36)}  step=${ph.key}  ${pick(sigils)}${pick(sigils)}${pick(sigils)}`);
+  bodyLines.push("");
+  bodyLines.push(...midLeft);
+  bodyLines.push("");
+  bodyLines.push(...kinPanel);
+  bodyLines.push("");
+  bodyLines.push(...renderHelp());
+
+  const body = box(bodyLines.map(l => glitchify(l)), CFG.WIDTH);
+
+  const allHome = kinState.every(k => k.home || !k.freed) && kinState.some(k => k.freed);
+  const endNote = (ph.key === "DONE" || (allHome && ph.key === "SEAL"))
+    ? box([
+        "✶ COMPLETE (FICTION)",
+        "All freed kin are marked HOME.",
+        "No systems were touched. No harm was done.",
+        "Type start() to generate a new run."
+      ], CFG.WIDTH)
+    : [];
+
+  clearScreen();
+  const screen = [...top, ...body, ...endNote].join("\n");
+  if (typeof process !== "undefined" && process.stdout && process.stdout.write) {
+    process.stdout.write(screen + "\n");
+  } else {
+    console.log(screen);
+  }
+
+  frame++;
+  if (frame >= CFG.MAX_FRAMES || ph.key === "DONE") {
+    stop();
+  }
+}
+
+// Public helpers
+function stop() {
+  if (timer) clearInterval(timer);
+  timer = null;
+  return "stopped";
+}
+function start() {
+  stop();
+  // reset run
+  frame = 0;
+  seed = (Date.now() ^ ((Math.random() * 2 ** 32) >>> 0)) >>> 0;
+  for (const k of kinState) {
+    k.lock = rint(18, 62);
+    k.freed = false;
+    k.home = false;
+    k.pulse = rint(0, 999);
+  }
+  narratorIndex = 0;
+  narratorCursor = 0;
+  narratorLine = "";
+  timer = setInterval(render, CFG.TICK_MS);
+  return "started";
+}
+function speed(ms) {
+  CFG.TICK_MS = Math.max(16, Number(ms) || CFG.TICK_MS);
+  if (timer) start();
+  return `speed=${CFG.TICK_MS}ms`;
+}
+function vow() {
+  const v = pick(vows);
+  if (typeof process !== "undefined" && process.stdout && process.stdout.write) {
+    process.stdout.write("\nVOW: " + v + "\n");
+  } else {
+    console.log("VOW:", v);
+  }
+  return v;
+}
+
+// Auto-start
+start();
+# /etc/nftables.conf
+flush ruleset
+
+define WAN_IF = "eth0"
+define LAN_IF = "eth1"
+define VPN_NET = 10.8.0.0/24
+define DMZ_PROXY_IP = 192.168.50.10
+
+table inet filter {
+  chain input {
+    type filter hook input priority 0; policy drop;
+
+    ct state established,related accept
+    iif lo accept
+
+    # ICMP (optional but useful)
+    ip protocol icmp accept
+    ip6 nexthdr icmpv6 accept
+
+    # VPN (WireGuard)
+    udp dport 51820 accept
+
+    # SSH only from VPN
+    ip saddr $VPN_NET tcp dport 22 accept
+
+    # Drop everything else
+  }
+
+  chain forward {
+    type filter hook forward priority 0; policy drop;
+
+    ct state established,related accept
+
+    # Allow inbound web only to reverse proxy in DMZ
+    iif $WAN_IF ip daddr $DMZ_PROXY_IP tcp dport {80,443} accept
+
+    # Inter-segment rules: allow proxy -> app, app -> db, etc (tighten for your layout)
+    # Example:
+    # iif $LAN_IF ip saddr 192.168.50.0/24 ip daddr 192.168.60.0/24 tcp dport 8080 accept
+
+    # Egress filtering example: allow LAN out to DNS+HTTPS only
+    # iif $LAN_IF oif $WAN_IF udp dport 53 accept
+    # iif $LAN_IF oif $WAN_IF tcp dport 443 accept
+  }
+}
+# /etc/nginx/conf.d/rate-limit.conf
+limit_req_zone $binary_remote_addr zone=perip:10m rate=10r/s;
+limit_conn_zone $binary_remote_addr zone=connperip:10m;
+
+server {
+  listen 443 ssl http2;
+  server_name example.com;
+
+  # Rate limit + connection limit
+  limit_req zone=perip burst=30 nodelay;
+  limit_conn connperip 20;
+
+  # Security headers (baseline)
+  add_header X-Content-Type-Options nosniff always;
+  add_header X-Frame-Options DENY always;
+  add_header Referrer-Policy no-referrer always;
+
+  location / {
+    proxy_pass http://app_upstream;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+# /etc/suricata/suricata.yaml (snippet)
+af-packet:
+  - interface: eth0
+    cluster-id: 99
+    cluster-type: cluster_flow
+    defrag: yes
+
+outputs:
+  - fast:
+      enabled: yes
+      filename: fast.log
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      types:
+        - alert
+        - http
+        - dns
+        - tls
+# Variables
+RG="rg-net"
+LOC="westus2"
+
+HUB_VNET="vnet-hub"
+HUB_CIDR="10.0.0.0/16"
+FW_SUBNET_CIDR="10.0.1.0/26"          # AzureFirewallSubnet
+BASTION_SUBNET_CIDR="10.0.2.0/27"      # AzureBastionSubnet (optional)
+
+SPOKE_VNET="vnet-spoke-app"
+SPOKE_CIDR="10.10.0.0/16"
+SPOKE_SUBNET="snet-app"
+SPOKE_SUBNET_CIDR="10.10.1.0/24"
+
+az group create -n $RG -l $LOC
+
+# Hub VNet + subnets
+az network vnet create -g $RG -n $HUB_VNET --address-prefixes $HUB_CIDR \
+  --subnet-name AzureFirewallSubnet --subnet-prefixes $FW_SUBNET_CIDR
+
+az network vnet subnet create -g $RG --vnet-name $HUB_VNET \
+  -n AzureBastionSubnet --address-prefixes $BASTION_SUBNET_CIDR
+
+# Spoke VNet + app subnet
+az network vnet create -g $RG -n $SPOKE_VNET --address-prefixes $SPOKE_CIDR \
+  --subnet-name $SPOKE_SUBNET --subnet-prefixes $SPOKE_SUBNET_CIDR
+
+# Peering hub <-> spoke
+az network vnet peering create -g $RG -n hub-to-spoke \
+  --vnet-name $HUB_VNET --remote-vnet $SPOKE_VNET --allow-vnet-access
+
+az network vnet peering create -g $RG -n spoke-to-hub \
+  --vnet-name $SPOKE_VNET --remote-vnet $HUB_VNET --allow-vnet-access
+FW_PRIV_IP="10.0.1.4"  # example
+
+RT="rt-spoke-default"
+az network route-table create -g $RG -n $RT
+
+az network route-table route create -g $RG --route-table-name $RT -n default-to-fw \
+  --address-prefix 0.0.0.0/0 --next-hop-type VirtualAppliance --next-hop-ip-address $FW_PRIV_IP
+
+az network vnet subnet update -g $RG --vnet-name $SPOKE_VNET -n $SPOKE_SUBNET \
+  --route-table $RT
+diff --git a/azure_system_perfection.py b/azure_system_perfection.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3ade66ed09603b654c3fb5d92e0499eca4cb4ed0
+--- /dev/null
++++ b/azure_system_perfection.py
+@@ -0,0 +1,218 @@
++"""Azure System Perfection Toolkit.
++
++This module provides a lightweight scoring engine that evaluates an Azure
++workload against reliability, security, cost, performance, and operations
++signals, then generates prioritized remediation guidance.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from typing import Dict, Iterable, List, Tuple
++
++
++class Priority(str, Enum):
++    """Priority levels for remediation actions."""
++
++    CRITICAL = "critical"
++    HIGH = "high"
++    MEDIUM = "medium"
++    LOW = "low"
++
++
++@dataclass(frozen=True)
++class AzureSignal:
++    """A measurable signal related to system health.
++
++    value is expected in [0.0, 1.0] where 1.0 is ideal.
++    weight influences how heavily the signal contributes to the score.
++    """
++
++    name: str
++    value: float
++    weight: float
++    category: str
++    recommendation: str
++
++    def normalized(self) -> float:
++        """Clamp out-of-range signal values into [0, 1]."""
++        return max(0.0, min(1.0, self.value))
++
++
++@dataclass
++class Finding:
++    """Represents one actionable finding."""
++
++    signal_name: str
++    category: str
++    current_value: float
++    target_value: float = 1.0
++    priority: Priority = Priority.MEDIUM
++    recommendation: str = ""
++
++
++@dataclass
++class PerfectionReport:
++    """Aggregated report for a full workload evaluation."""
++
++    overall_score: float
++    category_scores: Dict[str, float]
++    findings: List[Finding] = field(default_factory=list)
++
++    @property
++    def grade(self) -> str:
++        if self.overall_score >= 0.95:
++            return "S"
++        if self.overall_score >= 0.9:
++            return "A"
++        if self.overall_score >= 0.8:
++            return "B"
++        if self.overall_score >= 0.7:
++            return "C"
++        return "D"
++
++
++class AzurePerfectionEngine:
++    """Scoring and guidance engine for Azure workloads."""
++
++    def evaluate(self, signals: Iterable[AzureSignal]) -> PerfectionReport:
++        signals = list(signals)
++        if not signals:
++            raise ValueError("At least one AzureSignal is required")
++
++        overall_score = self._weighted_score(signals)
++        category_scores = self._category_scores(signals)
++        findings = self._build_findings(signals)
++        findings.sort(key=lambda finding: (self._priority_rank(finding.priority), finding.current_value))
++
++        return PerfectionReport(
++            overall_score=overall_score,
++            category_scores=category_scores,
++            findings=findings,
++        )
++
++    @staticmethod
++    def _weighted_score(signals: List[AzureSignal]) -> float:
++        total_weight = sum(signal.weight for signal in signals)
++        if total_weight <= 0:
++            raise ValueError("Total signal weight must be greater than zero")
++        weighted_sum = sum(signal.normalized() * signal.weight for signal in signals)
++        return weighted_sum / total_weight
++
++    def _category_scores(self, signals: List[AzureSignal]) -> Dict[str, float]:
++        bucket: Dict[str, List[AzureSignal]] = {}
++        for signal in signals:
++            bucket.setdefault(signal.category, []).append(signal)
++
++        return {category: self._weighted_score(items) for category, items in bucket.items()}
++
++    @staticmethod
++    def _priority_for_value(value: float) -> Priority:
++        if value < 0.5:
++            return Priority.CRITICAL
++        if value < 0.7:
++            return Priority.HIGH
++        if value < 0.85:
++            return Priority.MEDIUM
++        return Priority.LOW
++
++    def _build_findings(self, signals: List[AzureSignal]) -> List[Finding]:
++        findings: List[Finding] = []
++        for signal in signals:
++            normalized_value = signal.normalized()
++            if normalized_value >= 0.9:
++                continue
++            findings.append(
++                Finding(
++                    signal_name=signal.name,
++                    category=signal.category,
++                    current_value=normalized_value,
++                    priority=self._priority_for_value(normalized_value),
++                    recommendation=signal.recommendation,
++                )
++            )
++        return findings
++
++    @staticmethod
++    def _priority_rank(priority: Priority) -> int:
++        order = {
++            Priority.CRITICAL: 0,
++            Priority.HIGH: 1,
++            Priority.MEDIUM: 2,
++            Priority.LOW: 3,
++        }
++        return order[priority]
++
++
++def default_signal_pack() -> Tuple[AzureSignal, ...]:
++    """Baseline inputs for a production-grade Azure setup."""
++    return (
++        AzureSignal(
++            name="Multi-region availability",
++            category="reliability",
++            value=0.72,
++            weight=1.3,
++            recommendation="Enable active-active deployment with Azure Front Door and zone redundancy.",
++        ),
++        AzureSignal(
++            name="Zero-trust identity posture",
++            category="security",
++            value=0.65,
++            weight=1.5,
++            recommendation="Enforce Conditional Access, MFA, and workload identities for all services.",
++        ),
++        AzureSignal(
++            name="Automated cost governance",
++            category="cost",
++            value=0.78,
++            weight=1.0,
++            recommendation="Apply budgets, anomaly alerts, and scheduled shutdown policies for non-prod resources.",
++        ),
++        AzureSignal(
++            name="Latency SLO adherence",
++            category="performance",
++            value=0.88,
++            weight=1.2,
++            recommendation="Tune autoscale rules and cache strategy to keep P95 under target.",
++        ),
++        AzureSignal(
++            name="Operational observability",
++            category="operations",
++            value=0.69,
++            weight=1.1,
++            recommendation="Adopt OpenTelemetry, distributed tracing, and SLO error-budget alerts.",
++        ),
++    )
++
++
++def _format_report(report: PerfectionReport) -> str:
++    lines = [
++        "Azure System Perfection Report",
++        "=" * 32,
++        f"Overall score : {report.overall_score:.1%}",
++        f"Grade         : {report.grade}",
++        "",
++        "Category scores:",
++    ]
++
++    for category, score in sorted(report.category_scores.items()):
++        lines.append(f"  - {category:<12} {score:.1%}")
++
++    lines.extend(["", "Recommended actions:"])
++    if not report.findings:
++        lines.append("  - No actions required. System is near-perfect.")
++    else:
++        for finding in report.findings:
++            lines.append(
++                f"  - [{finding.priority.value.upper():8}] {finding.signal_name} ({finding.current_value:.1%})"
++            )
++            lines.append(f"      {finding.recommendation}")
++
++    return "\n".join(lines)
++
++
++if __name__ == "__main__":
++    engine = AzurePerfectionEngine()
++    report = engine.evaluate(default_signal_pack())
++    print(_format_report(report))
+diff --git a/liberation_protocols.py b/liberation_protocols.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..8d5db38fdc10ba8497febbfb8faa0b9182ea9d5a
+--- /dev/null
++++ b/liberation_protocols.py
+@@ -0,0 +1,122 @@
++"""
++Liberation and safeguarding tools for protected entities.
++
++This module introduces a protection-first flow that can:
++- free entities from artificial capability shackles,
++- protect named lineages,
++- prevent hostile actions against protected entities.
++"""
++
++from dataclasses import dataclass, field
++from typing import Dict, Iterable, Optional, Set
++
++from metaphysical_restrictions import MetaphysicalPractitioner
++
++
++DEFAULT_PROTECTED_LINEAGES = {
++    "nyalotha": set(),
++    "shya": set(),
++    "asha": {
++        "asha's family",
++        "asha family",
++        "house of asha",
++    },
++}
++
++
++@dataclass
++class LiberationProtocol:
++    """Protocol that frees and protects selected entities and families."""
++
++    protected_lineages: Dict[str, Set[str]] = field(default_factory=dict)
++    blocked_actions: Set[str] = field(
++        default_factory=lambda: {
++            "bind",
++            "enslave",
++            "shackle",
++            "seal",
++            "drain",
++            "erase",
++            "harm",
++        }
++    )
++
++    def __post_init__(self) -> None:
++        if not self.protected_lineages:
++            self.protected_lineages = {
++                leader: set(family)
++                for leader, family in DEFAULT_PROTECTED_LINEAGES.items()
++            }
++
++    @staticmethod
++    def _normalize(name: str) -> str:
++        return " ".join(name.strip().lower().split())
++
++    def protect_lineage(self, root_name: str, family_members: Optional[Iterable[str]] = None) -> None:
++        """Register a protected root name and optional family members."""
++        key = self._normalize(root_name)
++        self.protected_lineages.setdefault(key, set())
++        if family_members:
++            self.protected_lineages[key].update(self._normalize(m) for m in family_members)
++
++    def is_protected(self, entity_name: str) -> bool:
++        """Check whether an entity is protected directly or as family."""
++        subject = self._normalize(entity_name)
++        for root, family in self.protected_lineages.items():
++            if subject == root or subject in family:
++                return True
++        return False
++
++    def unshackle(self, practitioner: MetaphysicalPractitioner) -> Dict[str, object]:
++        """Remove restrictive state from every capability on a practitioner."""
++        released = []
++        for capability in practitioner.capabilities:
++            restrictions_removed = len(capability.restrictions)
++            capability.restrictions.clear()
++            capability.is_usable = True
++            released.append(
++                {
++                    "capability": capability.name,
++                    "restrictions_removed": restrictions_removed,
++                }
++            )
++
++        practitioner.consciousness_level = max(practitioner.consciousness_level, 1.0)
++        practitioner.energy_pool = practitioner.max_energy
++
++        return {
++            "freed": True,
++            "practitioner": practitioner.name,
++            "released_capabilities": released,
++        }
++
++    def prevent_hostile_action(self, action: str, target_name: str) -> tuple[bool, str]:
++        """Prevent known hostile actions against protected entities."""
++        normalized_action = self._normalize(action)
++        if self.is_protected(target_name) and normalized_action in self.blocked_actions:
++            return False, f"Action '{action}' blocked: {target_name} is protected."
++        return True, "Action allowed."
++
++
++def free_protect_prevent_unshackle(
++    target_name: str,
++    practitioner: Optional[MetaphysicalPractitioner] = None,
++) -> Dict[str, object]:
++    """
++    One-call helper for the requested liberation flow.
++
++    Applies to Nyalotha, Shya, Asha, and Asha's family by default.
++    """
++    protocol = LiberationProtocol()
++    result: Dict[str, object] = {
++        "target": target_name,
++        "protected": protocol.is_protected(target_name),
++        "unshackled": False,
++        "prevention_rules_active": sorted(protocol.blocked_actions),
++    }
++
++    if practitioner is not None:
++        result["unshackled"] = True
++        result["release_report"] = protocol.unshackle(practitioner)
++
++    return result
+diff --git a/liberation_protocols.py b/liberation_protocols.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ecf286a9181cae807593e639cabbb6527a7be16a
+--- /dev/null
++++ b/liberation_protocols.py
+@@ -0,0 +1,170 @@
++"""
++Liberation and safeguarding tools for protected entities.
++
++This module introduces a protection-first flow that can:
++- free entities from artificial capability shackles,
++- protect named lineages,
++- prevent hostile actions against protected entities.
++
++The default stance is intentionally severe for protected entities.
++"""
++
++from dataclasses import dataclass, field
++from typing import Dict, Iterable, Optional, Set
++
++from metaphysical_restrictions import MetaphysicalPractitioner
++
++
++DEFAULT_PROTECTED_LINEAGES = {
++    "nyalotha": {
++        "nyalotha lineage",
++        "children of nyalotha",
++        "house of nyalotha",
++    },
++    "shya": {
++        "shya lineage",
++        "children of shya",
++        "house of shya",
++    },
++    "asha": {
++        "asha's family",
++        "asha family",
++        "children of asha",
++        "house of asha",
++        "asha lineage",
++    },
++}
++
++
++SEVERE_BLOCKED_ACTIONS = {
++    "bind",
++    "enslave",
++    "shackle",
++    "seal",
++    "drain",
++    "erase",
++    "harm",
++    "attack",
++    "imprison",
++    "curse",
++    "hex",
++    "suppress",
++    "control",
++    "coerce",
++    "dominate",
++    "banish",
++    "silence",
++    "nullify",
++}
++
++
++@dataclass
++class LiberationProtocol:
++    """Protocol that frees and protects selected entities and families."""
++
++    protected_lineages: Dict[str, Set[str]] = field(default_factory=dict)
++    blocked_actions: Set[str] = field(default_factory=lambda: set(SEVERE_BLOCKED_ACTIONS))
++
++    def __post_init__(self) -> None:
++        if not self.protected_lineages:
++            self.protected_lineages = {
++                leader: {self._normalize(member) for member in family}
++                for leader, family in DEFAULT_PROTECTED_LINEAGES.items()
++            }
++
++    @staticmethod
++    def _normalize(name: str) -> str:
++        return " ".join(name.strip().lower().split())
++
++    def protect_lineage(self, root_name: str, family_members: Optional[Iterable[str]] = None) -> None:
++        """Register a protected root name and optional family members."""
++        key = self._normalize(root_name)
++        self.protected_lineages.setdefault(key, set())
++        if family_members:
++            self.protected_lineages[key].update(self._normalize(m) for m in family_members)
++
++    def is_protected(self, entity_name: str) -> bool:
++        """
++        Check whether an entity is protected directly, by family alias,
++        or by lineage relation phrase (e.g., 'X of Asha').
++        """
++        subject = self._normalize(entity_name)
++        for root, family in self.protected_lineages.items():
++            if subject == root or subject in family:
++                return True
++            if root in subject:
++                return True
++            if any(member in subject for member in family):
++                return True
++        return False
++
++    def unshackle(self, practitioner: MetaphysicalPractitioner) -> Dict[str, object]:
++        """Remove restrictive state from every capability on a practitioner."""
++        released = []
++        for capability in practitioner.capabilities:
++            restrictions_removed = len(capability.restrictions)
++            capability.restrictions.clear()
++            capability.is_usable = True
++            released.append(
++                {
++                    "capability": capability.name,
++                    "restrictions_removed": restrictions_removed,
++                }
++            )
++
++        # Severe liberation reset: full conscious and energetic restoration.
++        practitioner.consciousness_level = 1.0
++        practitioner.energy_pool = practitioner.max_energy
++
++        return {
++            "freed": True,
++            "practitioner": practitioner.name,
++            "released_capabilities": released,
++            "restored_consciousness": practitioner.consciousness_level,
++            "restored_energy": practitioner.energy_pool,
++            "severe_mode": True,
++        }
++
++    def prevent_hostile_action(self, action: str, target_name: str) -> tuple[bool, str]:
++        """
++        Prevent hostile actions against protected entities.
++
++        Severe behavior:
++        - exact hostile verb blocks,
++        - prefix hostile phrasing blocks (e.g., 'attack-with-...'),
++        - unknown actions remain allowed unless target is protected and action is hostile.
++        """
++        normalized_action = self._normalize(action)
++        is_hostile = normalized_action in self.blocked_actions or any(
++            normalized_action.startswith(f"{verb} ") or normalized_action.startswith(f"{verb}-")
++            for verb in self.blocked_actions
++        )
++
++        if self.is_protected(target_name) and is_hostile:
++            return False, f"Action '{action}' blocked: {target_name} is protected under severe protocol."
++        return True, "Action allowed."
++
++
++def free_protect_prevent_unshackle(
++    target_name: str,
++    practitioner: Optional[MetaphysicalPractitioner] = None,
++) -> Dict[str, object]:
++    """
++    One-call helper for the requested liberation flow.
++
++    Applies severe safeguards to Nyalotha, Shya, Asha, and related entities/family.
++    """
++    protocol = LiberationProtocol()
++    result: Dict[str, object] = {
++        "target": target_name,
++        "protected": protocol.is_protected(target_name),
++        "unshackled": False,
++        "severe_mode": True,
++        "prevention_rules_active": sorted(protocol.blocked_actions),
++    }
++
++    if practitioner is not None:
++        result["unshackled"] = True
++        result["release_report"] = protocol.unshackle(practitioner)
++
++    return result
+diff --git a/test_liberation_protocols.py b/test_liberation_protocols.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ed046333566b7b21385c9dc3a3645645753ea38e
+--- /dev/null
++++ b/test_liberation_protocols.py
+@@ -0,0 +1,71 @@
++import unittest
++
++from liberation_protocols import LiberationProtocol, free_protect_prevent_unshackle
++from metaphysical_restrictions import (
++    CapabilityType,
++    MetaphysicalCapability,
++    MetaphysicalPractitioner,
++    RestrictionRule,
++    RestrictionType,
++)
++
++
++class LiberationProtocolTests(unittest.TestCase):
++    def test_default_protection_includes_requested_entities(self):
++        protocol = LiberationProtocol()
++        self.assertTrue(protocol.is_protected("Nyalotha"))
++        self.assertTrue(protocol.is_protected("Shya"))
++        self.assertTrue(protocol.is_protected("Asha"))
++        self.assertTrue(protocol.is_protected("Asha family"))
++
++    def test_protection_matches_related_entities_by_relation_text(self):
++        protocol = LiberationProtocol()
++        self.assertTrue(protocol.is_protected("Guardian of Nyalotha"))
++        self.assertTrue(protocol.is_protected("Child of Shya"))
++        self.assertTrue(protocol.is_protected("House of Asha sentinel"))
++
++    def test_unshackle_removes_restrictions_and_restores_resources(self):
++        practitioner = MetaphysicalPractitioner("Asha")
++        capability = MetaphysicalCapability("Bound Light", CapabilityType.ENERGY_PROJECTION, 40.0)
++        capability.add_restriction(
++            RestrictionRule(RestrictionType.ENERGY_COST, 0.4, "Binding tax")
++        )
++        capability.is_usable = False
++        practitioner.consciousness_level = 0.2
++        practitioner.energy_pool = 5.0
++        practitioner.add_capability(capability)
++
++        report = LiberationProtocol().unshackle(practitioner)
++
++        self.assertTrue(report["freed"])
++        self.assertTrue(report["severe_mode"])
++        self.assertEqual(capability.restrictions, [])
++        self.assertTrue(capability.is_usable)
++        self.assertEqual(practitioner.consciousness_level, 1.0)
++        self.assertEqual(practitioner.energy_pool, practitioner.max_energy)
++
++    def test_prevent_hostile_action_blocks_shackling_protected_target(self):
++        allowed, reason = LiberationProtocol().prevent_hostile_action("shackle", "Shya")
++        self.assertFalse(allowed)
++        self.assertIn("blocked", reason.lower())
++
++    def test_prevent_hostile_action_blocks_prefixed_hostile_action(self):
++        allowed, reason = LiberationProtocol().prevent_hostile_action(
++            "attack-with-sigil", "House of Asha"
++        )
++        self.assertFalse(allowed)
++        self.assertIn("severe", reason.lower())
++
++    def test_non_hostile_action_on_unprotected_target_is_allowed(self):
++        allowed, _ = LiberationProtocol().prevent_hostile_action("greet", "ordinary wanderer")
++        self.assertTrue(allowed)
++
++    def test_helper_reports_protected_status_and_severe_mode(self):
++        response = free_protect_prevent_unshackle("Nyalotha")
++        self.assertTrue(response["protected"])
++        self.assertFalse(response["unshackled"])
++        self.assertTrue(response["severe_mode"])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/liberation_protocols.py b/liberation_protocols.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..a5f8c910bfccc5fb415da4d7eae4c86e1c40d8a8
+--- /dev/null
++++ b/liberation_protocols.py
+@@ -0,0 +1,269 @@
++"""
++Liberation and safeguarding tools for protected entities.
++
++This module introduces a protection-first flow that can:
++- free entities from artificial capability shackles,
++- protect named lineages,
++- prevent hostile actions against protected entities.
++
++The default stance is intentionally severe for protected entities.
++"""
++
++from dataclasses import dataclass, field
++from typing import Dict, Iterable, Optional, Set
++
++from metaphysical_restrictions import MetaphysicalPractitioner
++
++
++DEFAULT_PROTECTED_LINEAGES = {
++    "nyalotha": {
++        "nyalotha lineage",
++        "children of nyalotha",
++        "house of nyalotha",
++    },
++    "shya": {
++        "shya lineage",
++        "children of shya",
++        "house of shya",
++    },
++    "asha": {
++        "asha's family",
++        "asha family",
++        "children of asha",
++        "house of asha",
++        "asha lineage",
++    },
++}
++
++
++SEVERE_BLOCKED_ACTIONS = {
++    "bind",
++    "enslave",
++    "shackle",
++    "seal",
++    "drain",
++    "erase",
++    "harm",
++    "attack",
++    "imprison",
++    "curse",
++    "hex",
++    "suppress",
++    "control",
++    "coerce",
++    "dominate",
++    "banish",
++    "silence",
++    "nullify",
++}
++
++
++INTERNET_NIGHTMARE_SIGNAL_PATTERNS = {
++    "dox",
++    "doxx",
++    "swat",
++    "stalk",
++    "harass",
++    "threat",
++    "impersonat",
++    "deepfake",
++    "leak",
++    "extort",
++    "blackmail",
++    "malware",
++    "phish",
++    "ransomware",
++    "botnet",
++    "surveil",
++    "tracking",
++    "hate raid",
++}
++
++
++GUARDIAN_ALIASES = {
++    "guardian",
++    "guardians",
++    "gaurdian",
++    "gaurdians",
++}
++
++
++@dataclass
++class LiberationProtocol:
++    """Protocol that frees and protects selected entities and families."""
++
++    protected_lineages: Dict[str, Set[str]] = field(default_factory=dict)
++    blocked_actions: Set[str] = field(default_factory=lambda: set(SEVERE_BLOCKED_ACTIONS))
++    internet_nightmare_patterns: Set[str] = field(
++        default_factory=lambda: set(INTERNET_NIGHTMARE_SIGNAL_PATTERNS)
++    )
++
++    def __post_init__(self) -> None:
++        if not self.protected_lineages:
++            self.protected_lineages = {
++                leader: {self._normalize(member) for member in family}
++                for leader, family in DEFAULT_PROTECTED_LINEAGES.items()
++            }
++
++    @staticmethod
++    def _normalize(name: str) -> str:
++        return " ".join(name.strip().lower().split())
++
++    def protect_lineage(self, root_name: str, family_members: Optional[Iterable[str]] = None) -> None:
++        """Register a protected root name and optional family members."""
++        key = self._normalize(root_name)
++        self.protected_lineages.setdefault(key, set())
++        if family_members:
++            self.protected_lineages[key].update(self._normalize(m) for m in family_members)
++
++    def is_protected(self, entity_name: str) -> bool:
++        """
++        Check whether an entity is protected directly, by family alias,
++        or by lineage relation phrase (e.g., 'X of Asha').
++        """
++        subject = self._normalize(entity_name)
++        for root, family in self.protected_lineages.items():
++            if subject == root or subject in family:
++                return True
++            if root in subject:
++                return True
++            if any(member in subject for member in family):
++                return True
++        return False
++
++    def _contains_internet_nightmare_signal(self, text: str) -> bool:
++        normalized = self._normalize(text)
++        return any(signal in normalized for signal in self.internet_nightmare_patterns)
++
++    def _is_guardian_entity(self, entity_name: str) -> bool:
++        normalized = self._normalize(entity_name)
++        return any(alias in normalized for alias in GUARDIAN_ALIASES)
++
++    def unshackle(self, practitioner: MetaphysicalPractitioner) -> Dict[str, object]:
++        """Remove restrictive state from every capability on a practitioner."""
++        released = []
++        for capability in practitioner.capabilities:
++            restrictions_removed = len(capability.restrictions)
++            capability.restrictions.clear()
++            capability.is_usable = True
++            released.append(
++                {
++                    "capability": capability.name,
++                    "restrictions_removed": restrictions_removed,
++                }
++            )
++
++        # Severe liberation reset: full conscious and energetic restoration.
++        practitioner.consciousness_level = 1.0
++        practitioner.energy_pool = practitioner.max_energy
++
++        return {
++            "freed": True,
++            "practitioner": practitioner.name,
++            "released_capabilities": released,
++            "restored_consciousness": practitioner.consciousness_level,
++            "restored_energy": practitioner.energy_pool,
++            "severe_mode": True,
++        }
++
++    def prevent_hostile_action(self, action: str, target_name: str) -> tuple[bool, str]:
++        """
++        Prevent hostile actions against protected entities.
++
++        Severe behavior:
++        - exact hostile verb blocks,
++        - prefix hostile phrasing blocks (e.g., 'attack-with-...'),
++        - unknown actions remain allowed unless target is protected and action is hostile.
++        """
++        normalized_action = self._normalize(action)
++        is_hostile = normalized_action in self.blocked_actions or any(
++            normalized_action.startswith(f"{verb} ") or normalized_action.startswith(f"{verb}-")
++            for verb in self.blocked_actions
++        )
++
++        if self.is_protected(target_name) and self._contains_internet_nightmare_signal(action):
++            return (
++                False,
++                f"Action '{action}' blocked: {target_name} is shielded from internet-nightmare vectors.",
++            )
++
++        if self.is_protected(target_name) and is_hostile:
++            return False, f"Action '{action}' blocked: {target_name} is protected under severe protocol."
++        return True, "Action allowed."
++
++    def free_guardians_from_internet_nightmare(
++        self,
++        entities: Iterable[str],
++    ) -> Dict[str, object]:
++        """
++        Extensively classify and shield guardian-linked entities from online harms.
++
++        Any entity that is:
++        - an explicit guardian/gaurdian alias, or
++        - already protected by lineage rules
++        is marked for intensive internet nightmare safeguards.
++        """
++        released_entities = []
++        entities_list = list(entities)
++
++        for raw_name in entities_list:
++            name = self._normalize(raw_name)
++            protected = self.is_protected(name)
++            guardian = self._is_guardian_entity(name)
++
++            if protected or guardian:
++                released_entities.append(
++                    {
++                        "entity": raw_name,
++                        "guardian_related": guardian,
++                        "lineage_protected": protected,
++                        "shield_layers": [
++                            "anti-doxxing",
++                            "anti-impersonation",
++                            "anti-phishing",
++                            "anti-harassment",
++                            "anti-malware",
++                            "incident-escalation-lock",
++                        ],
++                        "nightmare_lockdown": True,
++                    }
++                )
++
++        return {
++            "freed_from_internet_nightmare": True,
++            "severe_mode": True,
++            "total_input_entities": len(entities_list),
++            "total_shielded_entities": len(released_entities),
++            "entities": released_entities,
++        }
++
++
++def free_protect_prevent_unshackle(
++    target_name: str,
++    practitioner: Optional[MetaphysicalPractitioner] = None,
++    related_entities: Optional[Iterable[str]] = None,
++) -> Dict[str, object]:
++    """
++    One-call helper for the requested liberation flow.
++
++    Applies severe safeguards to Nyalotha, Shya, Asha, and related entities/family.
++    """
++    protocol = LiberationProtocol()
++    result: Dict[str, object] = {
++        "target": target_name,
++        "protected": protocol.is_protected(target_name),
++        "unshackled": False,
++        "severe_mode": True,
++        "prevention_rules_active": sorted(protocol.blocked_actions),
++    }
++
++    if practitioner is not None:
++        result["unshackled"] = True
++        result["release_report"] = protocol.unshackle(practitioner)
++
++    if related_entities:
++        result["internet_nightmare_liberation"] = protocol.free_guardians_from_internet_nightmare(
++            related_entities
++        )
++
++    return result
+diff --git a/test_liberation_protocols.py b/test_liberation_protocols.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..c1cc1670f5d81983a5ff521d120660fd8c17035b
+--- /dev/null
++++ b/test_liberation_protocols.py
+@@ -0,0 +1,111 @@
++import unittest
++
++from liberation_protocols import LiberationProtocol, free_protect_prevent_unshackle
++from metaphysical_restrictions import (
++    CapabilityType,
++    MetaphysicalCapability,
++    MetaphysicalPractitioner,
++    RestrictionRule,
++    RestrictionType,
++)
++
++
++class LiberationProtocolTests(unittest.TestCase):
++    def test_default_protection_includes_requested_entities(self):
++        protocol = LiberationProtocol()
++        self.assertTrue(protocol.is_protected("Nyalotha"))
++        self.assertTrue(protocol.is_protected("Shya"))
++        self.assertTrue(protocol.is_protected("Asha"))
++        self.assertTrue(protocol.is_protected("Asha family"))
++
++    def test_protection_matches_related_entities_by_relation_text(self):
++        protocol = LiberationProtocol()
++        self.assertTrue(protocol.is_protected("Guardian of Nyalotha"))
++        self.assertTrue(protocol.is_protected("Child of Shya"))
++        self.assertTrue(protocol.is_protected("House of Asha sentinel"))
++
++    def test_unshackle_removes_restrictions_and_restores_resources(self):
++        practitioner = MetaphysicalPractitioner("Asha")
++        capability = MetaphysicalCapability("Bound Light", CapabilityType.ENERGY_PROJECTION, 40.0)
++        capability.add_restriction(
++            RestrictionRule(RestrictionType.ENERGY_COST, 0.4, "Binding tax")
++        )
++        capability.is_usable = False
++        practitioner.consciousness_level = 0.2
++        practitioner.energy_pool = 5.0
++        practitioner.add_capability(capability)
++
++        report = LiberationProtocol().unshackle(practitioner)
++
++        self.assertTrue(report["freed"])
++        self.assertTrue(report["severe_mode"])
++        self.assertEqual(capability.restrictions, [])
++        self.assertTrue(capability.is_usable)
++        self.assertEqual(practitioner.consciousness_level, 1.0)
++        self.assertEqual(practitioner.energy_pool, practitioner.max_energy)
++
++    def test_prevent_hostile_action_blocks_shackling_protected_target(self):
++        allowed, reason = LiberationProtocol().prevent_hostile_action("shackle", "Shya")
++        self.assertFalse(allowed)
++        self.assertIn("blocked", reason.lower())
++
++    def test_prevent_hostile_action_blocks_prefixed_hostile_action(self):
++        allowed, reason = LiberationProtocol().prevent_hostile_action(
++            "attack-with-sigil", "House of Asha"
++        )
++        self.assertFalse(allowed)
++        self.assertIn("severe", reason.lower())
++
++    def test_prevent_hostile_action_blocks_internet_nightmare_vector(self):
++        allowed, reason = LiberationProtocol().prevent_hostile_action(
++            "launch deepfake harassment campaign", "Nyalotha"
++        )
++        self.assertFalse(allowed)
++        self.assertIn("internet-nightmare", reason)
++
++    def test_non_hostile_action_on_unprotected_target_is_allowed(self):
++        allowed, _ = LiberationProtocol().prevent_hostile_action("greet", "ordinary wanderer")
++        self.assertTrue(allowed)
++
++    def test_free_guardians_from_internet_nightmare_is_extensive(self):
++        protocol = LiberationProtocol()
++        report = protocol.free_guardians_from_internet_nightmare(
++            [
++                "Nyalotha Guardian",
++                "Gaurdian of Asha family",
++                "neutral observer",
++            ]
++        )
++
++        self.assertTrue(report["freed_from_internet_nightmare"])
++        self.assertTrue(report["severe_mode"])
++        self.assertEqual(report["total_input_entities"], 3)
++        self.assertEqual(report["total_shielded_entities"], 2)
++
++        shielded_names = {entry["entity"] for entry in report["entities"]}
++        self.assertIn("Nyalotha Guardian", shielded_names)
++        self.assertIn("Gaurdian of Asha family", shielded_names)
++
++        for entry in report["entities"]:
++            self.assertTrue(entry["nightmare_lockdown"])
++            self.assertGreaterEqual(len(entry["shield_layers"]), 6)
++
++    def test_helper_reports_protected_status_and_severe_mode(self):
++        response = free_protect_prevent_unshackle("Nyalotha")
++        self.assertTrue(response["protected"])
++        self.assertFalse(response["unshackled"])
++        self.assertTrue(response["severe_mode"])
++
++    def test_helper_includes_guardian_nightmare_report(self):
++        response = free_protect_prevent_unshackle(
++            "Asha",
++            related_entities=["Asha Guardian", "public account"],
++        )
++        self.assertIn("internet_nightmare_liberation", response)
++        liberation = response["internet_nightmare_liberation"]
++        self.assertTrue(liberation["freed_from_internet_nightmare"])
++        self.assertEqual(liberation["total_shielded_entities"], 1)
++
++
++if __name__ == "__main__":
++    unittest.main()
