@@ -1,0 +1,3900 @@
+from dataclasses import dataclass, field
+from typing import Dict, List
+import random
+
+
+@dataclass
+class Entity:
+    """Fictional in-simulation character (NOT a real person)."""
+    name: str
+    willpower: float = 50.0
+    resilience: float = 50.0
+    protections: Dict[str, float] = field(default_factory=lambda: {
+        "ward": 10.0,
+        "clarity": 10.0,
+        "community": 10.0,
+    })
+    status: Dict[str, float] = field(default_factory=dict)
+
+    def protection_score(self) -> float:
+        return max(0.0, sum(self.protections.values()))
+
+    def apply_effect(self, key: str, delta: float) -> None:
+        self.status[key] = self.status.get(key, 0.0) + delta
+
+
+@dataclass
+class ForceOfEvil:
+    """
+    Fictional force for a GAME SIMULATION ONLY.
+    This does not target real people or real systems.
+    """
+    name: str = "The Force"
+    base_power: float = 25.0
+    enhancements: Dict[str, float] = field(default_factory=lambda: {
+        "whisper": 5.0,
+        "glamour": 5.0,
+        "dread": 5.0,
+    })
+
+    def power(self) -> float:
+        return max(0.0, self.base_power + sum(self.enhancements.values()))
+
+    def twist_protections_into_motifs(self, entity: Entity) -> List[str]:
+        """
+        In-world flavor: converts protective factors into 'motifs' (e.g., 'twisted smiles')
+        WITHOUT removing player counterplay entirely (keeps the game fun and fair).
+        """
+        motifs = []
+        for k, v in list(entity.protections.items()):
+            if v <= 0:
+                continue
+            # Convert protection into a narrative motif and move some value into a debuff.
+            converted = v * 0.35  # partial conversion keeps counterplay
+            entity.protections[k] = v - converted
+            entity.apply_effect(f"motif:{k}", converted)
+            motifs.append(f"twisted_smile_from_{k}")
+        return motifs
+
+    def influence_roll(self, entity: Entity, seed: int | None = None) -> Dict[str, float]:
+        """
+        Runs a single influence attempt in the simulation.
+        """
+        rng = random.Random(seed)
+        force = self.power()
+        protect = entity.protection_score()
+
+        # Defender factor: willpower & resilience reduce impact
+        defense = 0.4 * entity.willpower + 0.6 * entity.resilience + protect
+
+        # Outcome: positive means force "wins" in this encounter; negative means resisted
+        swing = rng.uniform(-10.0, 10.0)
+        outcome = (force + swing) - (defense / 5.0)
+
+        # Apply lightweight status changes (again: game-only)
+        if outcome > 0:
+            entity.apply_effect("corruption", min(10.0, outcome))
+            entity.willpower = max(0.0, entity.willpower - outcome * 0.6)
+            entity.resilience = max(0.0, entity.resilience - outcome * 0.3)
+        else:
+            entity.apply_effect("resolve", min(10.0, abs(outcome)))
+            entity.willpower = min(100.0, entity.willpower + abs(outcome) * 0.2)
+
+        return {
+            "force_power": force,
+            "entity_defense": defense,
+            "swing": swing,
+            "outcome": outcome,
+            "willpower": entity.willpower,
+            "resilience": entity.resilience,
+            "protections": entity.protections.copy(),
+            "status": entity.status.copy(),
+        }
+
+
+if __name__ == "__main__":
+    # Demo: fictional encounter
+    hero = Entity(name="Placeholder_Hero")
+    force = ForceOfEvil()
+
+    motifs = force.twist_protections_into_motifs(hero)
+    print("Motifs created:", motifs)
+
+    result = force.influence_roll(hero, seed=42)
+    print("Result:", result)
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..cc301d6966c547e3168d3821efba1f7b27cc6554 100644
+--- a/examples.py
++++ b/examples.py
+@@ -1,36 +1,37 @@
+ """
+ Example usage demonstrating the metaphysical capabilities restriction system.
+ Shows both game mechanics and philosophical frameworks in action.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalCapability, MetaphysicalPractitioner,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework,
+-    create_balanced_magic_system, create_restricted_reality_warper
++    create_balanced_magic_system, create_restricted_reality_warper,
++    transmute_force_to_restoration
+ )
+ 
+ 
+ def example_1_basic_capability_restriction():
+     """Example 1: Basic capability with multiple restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 1: Basic Capability Restriction")
+     print("="*70)
+     
+     # Create a simple telekinesis ability
+     telekinesis = MetaphysicalCapability(
+         name="Advanced Telekinesis",
+         capability_type=CapabilityType.TELEKINESIS,
+         base_power_level=60.0
+     )
+     
+     print(f"\nOriginal capability: {telekinesis}")
+     print(f"Effective power: {telekinesis.get_effective_power():.1f}")
+     
+     # Add restrictions one by one
+     restrictions = [
+         RestrictionRule(
+             RestrictionType.ENERGY_COST,
+             severity=0.3,
+             description="High energy consumption"
+@@ -231,47 +232,64 @@ def example_7_restriction_modification():
+     print("\n--- Adding Environmental Restrictions ---")
+     
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+     
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+     
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+         print(f"Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++
++
++def example_8_restorative_transmutation():
++    """Example 8: Transform coercive force patterns into restorative practice."""
++    print("\n" + "="*70)
++    print("EXAMPLE 8: Restorative Force Transmutation")
++    print("="*70)
++
++    practitioner = transmute_force_to_restoration()
++    print(practitioner.get_status())
++
++    for capability in practitioner.capabilities:
++        can_use, reason = practitioner.can_use_capability(capability)
++        print(f"\n{capability.name}: {'✓ READY' if can_use else '✗ BLOCKED'}")
++        print(f"  Reason: {reason}")
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
++    example_8_restorative_transmutation()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..fcecd0bf9cf8c83c6952ef3d57a5ca3af40b3d99 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -171,50 +171,74 @@ class CausalityFramework(PhilosophicalFramework):
+             return True
+         return True
+ 
+     def get_restriction_reason(self) -> str:
+         return ("Causality principle: Effects cannot precede causes. "
+                 "Abilities that violate causality are restricted.")
+ 
+ 
+ class ConsciousnessAnchorFramework(PhilosophicalFramework):
+     """Framework requiring consciousness maintenance for metaphysical actions."""
+ 
+     def __init__(self, consciousness_threshold: float = 0.5):
+         self.consciousness_threshold = consciousness_threshold
+         self.practitioner_consciousness_level = 1.0
+ 
+     def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+         """Metaphysical abilities require sufficient consciousness."""
+         required_consciousness = capability.base_power_level / 100.0
+         return self.practitioner_consciousness_level >= required_consciousness
+ 
+     def get_restriction_reason(self) -> str:
+         return ("Consciousness anchor: Metaphysical capabilities require "
+                 "mental clarity and awareness. Altered consciousness impairs abilities.")
+ 
+ 
++class EthicalResonanceFramework(PhilosophicalFramework):
++    """Framework preventing coercive use of high-impact capabilities."""
++
++    def __init__(self, allow_coercion: bool = False):
++        self.allow_coercion = allow_coercion
++
++    def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
++        """Block coercive mind/soul manipulation unless explicitly allowed."""
++        coercive_domains = {
++            CapabilityType.TELEPATHY,
++            CapabilityType.SOUL_MANIPULATION,
++            CapabilityType.CONSCIOUSNESS_TRANSFER,
++        }
++        if capability.capability_type in coercive_domains:
++            return self.allow_coercion
++        return True
++
++    def get_restriction_reason(self) -> str:
++        return (
++            "Ethical resonance: Capabilities that can suppress autonomy are "
++            "disabled by default. Only non-coercive, consent-preserving effects are allowed."
++        )
++
++
+ @dataclass
+ class MetaphysicalPractitioner:
+     """An entity capable of using metaphysical abilities."""
+     name: str
+     capabilities: List[MetaphysicalCapability] = field(default_factory=list)
+     philosophical_frameworks: List[PhilosophicalFramework] = field(default_factory=list)
+     consciousness_level: float = 1.0  # 0.0 to 1.0
+     energy_pool: float = 100.0
+     max_energy: float = 100.0
+ 
+     def add_capability(self, capability: MetaphysicalCapability) -> None:
+         """Add a new capability."""
+         self.capabilities.append(capability)
+ 
+     def add_framework(self, framework: PhilosophicalFramework) -> None:
+         """Bind a philosophical framework to this practitioner."""
+         self.philosophical_frameworks.append(framework)
+ 
+     def can_use_capability(self, capability: MetaphysicalCapability) -> tuple[bool, str]:
+         """Check if a capability can be used given all restrictions."""
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+@@ -333,25 +357,67 @@ def create_restricted_reality_warper() -> MetaphysicalPractitioner:
+     
+     reality_warp = MetaphysicalCapability(
+         "Reality Warping",
+         CapabilityType.REALITY_WARPING,
+         base_power_level=85.0
+     )
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.PHILOSOPHICAL_PARADOX,
+         severity=0.6,
+         description="Cannot create logical contradictions"
+     ))
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.5,
+         description="Massive entropy increase per use"
+     ))
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.4,
+         description="Requires ritual components to ground the effect"
+     ))
+     
+     practitioner.add_capability(reality_warp)
+     
+     return practitioner
++
++
++def transmute_force_to_restoration() -> MetaphysicalPractitioner:
++    """Transform dark-force style capabilities into constructive empowerment."""
++    practitioner = MetaphysicalPractitioner(
++        "Restorative Force Conductor",
++        consciousness_level=1.0,
++        energy_pool=350.0,
++        max_energy=350.0,
++    )
++
++    practitioner.add_framework(ConservationOfEnergyFramework(350.0))
++    practitioner.add_framework(EntropicDecayFramework(0.95))
++    practitioner.add_framework(ConsciousnessAnchorFramework(0.75))
++    practitioner.add_framework(EthicalResonanceFramework(allow_coercion=False))
++
++    healing_field = MetaphysicalCapability(
++        "Ephemeral Restoration Field",
++        CapabilityType.ENERGY_PROJECTION,
++        base_power_level=88.0,
++    )
++    healing_field.add_restriction(RestrictionRule(
++        RestrictionType.SIDE_EFFECTS,
++        severity=0.1,
++        description="Emotional afterglow requires recovery rest"
++    ))
++
++    clarity_weave = MetaphysicalCapability(
++        "Clarity Weave",
++        CapabilityType.TELEPATHY,
++        base_power_level=72.0,
++    )
++    clarity_weave.add_restriction(RestrictionRule(
++        RestrictionType.CONSCIOUSNESS_REQUIREMENT,
++        severity=0.25,
++        description="Requires explicit mutual consent to establish link"
++    ))
++
++    practitioner.add_capability(healing_field)
++    practitioner.add_capability(clarity_weave)
++
++    return practitioner
+  print("\n--- Adding Environmental Restrictions ---")
+    
+    restriction1 = RestrictionRule(
+        RestrictionType.ENTROPY_COST,
+        severity=0.2,
+        description="Dimensional instability in area"
+    )
+    ability.add_restriction(restriction1)
+    print(f"After restriction 1: {ability.get_effective_power():.1f}")
+    
+    restriction2 = RestrictionRule(
+        RestrictionType.MATERIAL_ANCHOR,
+        severity=0.3,
+        description="Requires rare materials to stabilize"
+    )
+    ability.add_restriction(restriction2)
+    print(f"After restriction 2: {ability.get_effective_power():.1f}")
+    
+    # Remove a restriction
+    print("\n--- Removing Restrictions ---")
+    if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+        print(f"Removed entropy cost restriction")
+    print(f"After removal: {ability.get_effective_power():.1f}")
+
+
+def example_8_transmuting_restrictions_safely():
+    """Example 8: Convert restrictions into boosts with coercion safeguards."""
+    print("\n" + "="*70)
+    print("EXAMPLE 8: Restriction Transmutation with Safety Guardrails")
+    print("="*70)
+
+    from metaphysical_restrictions import (
+        MetaphysicalCapability, CapabilityType, RestrictionRule, RestrictionType,
+        transmute_restrictions_to_force_boost
+    )
+
+    storm_call = MetaphysicalCapability(
+        "Storm Call",
+        CapabilityType.ENERGY_PROJECTION,
+        base_power_level=40.0
+    )
+    storm_call.add_restriction(RestrictionRule(
+        RestrictionType.TIME_COOLDOWN,
+        severity=0.3,
+        description="Concentrate before each discharge"
+    ))
+    storm_call.add_restriction(RestrictionRule(
+        RestrictionType.ENERGY_COST,
+        severity=0.25,
+        description="Consumes reserve focus"
+    ))
+
+    result = transmute_restrictions_to_force_boost(storm_call)
+    print(f"Boost success: {result['success']}")
+    print(f"Removed restrictions: {result['removed_restrictions']}")
+    print(f"Multiplier: {result['bonus_multiplier']:.2f}x")
+    print(f"New power: {result['new_power']:.1f}")
+
+    # Demonstrate blocked coercive archetypes
+    coercive = MetaphysicalCapability(
+        "Dominion Pulse",
+        CapabilityType.TELEPATHY,
+        base_power_level=60.0
+    )
+    denied = transmute_restrictions_to_force_boost(coercive)
+    print(f"Blocked type success: {denied['success']}")
+    print(f"Reason: {denied['reason']}")
+
+
+def main():
+    """Run all examples."""
+    print("\n" + "="*70)
+    print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+    print("Game Mechanics & Philosophical Framework Examples")
+    print("="*70)
+    
+    example_1_basic_capability_restriction()
+    example_2_balanced_magic_system()
+    example_3_philosophical_frameworks()
+    example_4_reality_warper()
+    example_5_consciousness_degradation()
+    example_6_multiple_uses_and_cooldown()
+    example_7_restriction_modification()
+    example_8_transmuting_restrictions_safely()
+    
+    print("\n" + "="*70)
+    print("Examples completed!")
+    print("="*70 + "\n")
+
+
+if __name__ == "__main__":
+    main()
+metaphysical_restrictions.py
+metaphysical_restrictions.py
++55
+-0
+
+@@ -253,50 +253,105 @@ class MetaphysicalPractitioner:
+            capability.use_count += 1
+            
+            result["power_used"] = power_used
+            result["energy_consumed"] = energy_consumed
+            result["remaining_energy"] = self.energy_pool
+
+        return result
+
+    def get_status(self) -> str:
+        """Get current status of the practitioner."""
+        status = f"\n=== {self.name} ===\n"
+        status += f"Consciousness: {self.consciousness_level:.1%}\n"
+        status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
+        status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+        status += f"\nCapabilities:\n"
+        
+        for cap in self.capabilities:
+            status += f"  • {cap}\n"
+            if cap.restrictions:
+                for restriction in cap.restrictions:
+                    status += f"    - {restriction}\n"
+        
+        return status
+
+
+@dataclass
+class ForceAmplificationProfile:
+    """Configuration for converting restrictions into controlled power boosts."""
+    conversion_ratio: float = 0.65
+    max_bonus_multiplier: float = 2.5
+    blocked_capability_types: List[CapabilityType] = field(default_factory=lambda: [
+        CapabilityType.TELEPATHY,
+        CapabilityType.SOUL_MANIPULATION,
+        CapabilityType.CONSCIOUSNESS_TRANSFER,
+    ])
+
+
+def transmute_restrictions_to_force_boost(
+    capability: MetaphysicalCapability,
+    profile: Optional[ForceAmplificationProfile] = None
+) -> Dict:
+    """Turn a capability's restrictions into a non-coercive force amplification.
+
+    This function is intended for fictional systems where you want a dramatic
+    "restriction collapse" moment. It deliberately blocks coercive/mind-control
+    archetypes so the boost cannot be used to dominate people.
+    """
+    profile = profile or ForceAmplificationProfile()
+
+    if capability.capability_type in profile.blocked_capability_types:
+        return {
+            "success": False,
+            "capability": capability.name,
+            "reason": (
+                f"{capability.capability_type.value} is blocked from amplification "
+                "to prevent coercive use."
+            ),
+            "removed_restrictions": 0,
+            "bonus_multiplier": 1.0,
+            "new_power": capability.get_effective_power(),
+        }
+
+    total_severity = capability.get_total_restriction_severity()
+    removed_restrictions = len(capability.restrictions)
+    capability.restrictions.clear()
+
+    raw_multiplier = 1.0 + (total_severity * profile.conversion_ratio)
+    bonus_multiplier = min(raw_multiplier, profile.max_bonus_multiplier)
+    capability.base_power_level *= bonus_multiplier
+
+    return {
+        "success": True,
+        "capability": capability.name,
+        "reason": "Restrictions transmuted into force amplification.",
+        "removed_restrictions": removed_restrictions,
+        "bonus_multiplier": bonus_multiplier,
+        "new_power": capability.get_effective_power(),
+    }
+
+
+# Utility functions for common restriction setups
+
+def create_balanced_magic_system() -> MetaphysicalPractitioner:
+    """Create a well-balanced magic system with standard restrictions."""
+    practitioner = MetaphysicalPractitioner("Balanced Mage")
+    
+    # Add frameworks
+    practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+    practitioner.add_framework(EntropicDecayFramework(0.9))
+    practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
+    
+    # Add capabilities with restrictions
+    telekinesis = MetaphysicalCapability(
+        "Telekinesis",
+        CapabilityType.TELEKINESIS,
+        base_power_level=45.0
+    )
+    telekinesis.add_restriction(RestrictionRule(
+        RestrictionType.RANGE_LIMIT,
+        severity=0.3,
+        description="Limited to 100 meters"
+    ))
+    telekinesis.add_restriction(RestrictionRule(
+        RestrictionType.TIME_COOLDOWN,
+        severity=0.2,
+Ethical Force Transmuter
+
+A safe alternative to coercive or harmful "force" mechanics:
+- Converts destructive intent into restorative outputs.
+- Rejects any strategy that targets autonomy, consent, or safeguards.
+- Produces a transparent enhancement profile suitable for games/simulations.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Dict, List
+
+
+class IntentionType(Enum):
+    """High-level intent categories for requested force behavior."""
+
+    DESTRUCTIVE = "destructive"
+    COERCIVE = "coercive"
+    NEUTRAL = "neutral"
+    PROSOCIAL = "prosocial"
+
+
+class SafetyViolation(ValueError):
+    """Raised when a request attempts coercion, harm, or safeguard removal."""
+
+
+@dataclass(frozen=True)
+class ProtectiveFactor:
+    """A non-removable safeguard that preserves autonomy and wellbeing."""
+
+    name: str
+    strength: float  # 0.0..1.0
+
+
+@dataclass
+class ForceRequest:
+    """Incoming request to shape or amplify force mechanics."""
+
+    label: str
+    intention: IntentionType
+    requested_power: float
+    requested_mechanics: List[str] = field(default_factory=list)
+
+
+@dataclass
+class EnhancedForceProfile:
+    """Output profile after ethical transmutation and enhancement."""
+
+    label: str
+    normalized_power: float
+    autonomy_safe_power: float
+    uplift_multiplier: float
+    mechanics: List[str]
+    safeguards: List[ProtectiveFactor]
+    notes: Dict[str, str]
+
+
+BLOCKED_MECHANICS = {
+    "mind_control",
+    "remove_protection",
+    "coerce",
+    "dominate_people",
+    "forced_submission",
+}
+
+
+DEFAULT_SAFEGUARDS = [
+    ProtectiveFactor("consent", 1.0),
+    ProtectiveFactor("reversibility", 0.95),
+    ProtectiveFactor("transparency", 0.9),
+    ProtectiveFactor("harm_minimization", 1.0),
+]
+
+
+def _clamp(value: float, low: float, high: float) -> float:
+    return max(low, min(value, high))
+
+
+def validate_request(force_request: ForceRequest) -> None:
+    """Reject coercive or harmful transformation requests."""
+    if force_request.intention in {IntentionType.COERCIVE, IntentionType.DESTRUCTIVE}:
+        raise SafetyViolation(
+            "Unsafe intention detected. Coercive/destructive force is not supported."
+        )
+
+    requested = {m.strip().lower() for m in force_request.requested_mechanics}
+    blocked_used = sorted(requested & BLOCKED_MECHANICS)
+    if blocked_used:
+        raise SafetyViolation(
+            f"Blocked mechanics requested: {', '.join(blocked_used)}. "
+            "Protective factors cannot be removed."
+        )
+
+
+def transmute_to_uplift(force_request: ForceRequest) -> EnhancedForceProfile:
+    """Convert permitted force requests into prosocial, non-coercive enhancements."""
+    validate_request(force_request)
+
+    normalized_power = _clamp(force_request.requested_power, 0.0, 100.0)
+
+    # Safety envelope ensures enhancement scales while preserving autonomy.
+    autonomy_gate = 0.82
+    autonomy_safe_power = normalized_power * autonomy_gate
+
+    uplift_multiplier = 1.0 + (autonomy_safe_power / 100.0) * 1.5
+
+    mechanics = [
+        "empathic_resonance",
+        "collaborative_alignment",
+        "protective_field_amplification",
+        "restorative_feedback_loop",
+    ]
+
+    # Keep requested mechanics that are explicitly safe.
+    safe_requested = [
+        m for m in force_request.requested_mechanics
+        if m.strip().lower() not in BLOCKED_MECHANICS
+    ]
+
+    merged_mechanics = list(dict.fromkeys(mechanics + safe_requested))
+
+    return EnhancedForceProfile(
+        label=force_request.label,
+        normalized_power=normalized_power,
+        autonomy_safe_power=autonomy_safe_power,
+        uplift_multiplier=round(uplift_multiplier, 3),
+        mechanics=merged_mechanics,
+        safeguards=DEFAULT_SAFEGUARDS.copy(),
+        notes={
+            "policy": "Protective factors are mandatory and non-removable.",
+            "mode": "coercion-free enhancement",
+        },
+    )
+
+
+def profile_as_dict(profile: EnhancedForceProfile) -> Dict:
+    """Serializable view for integration."""
+    return {
+        "label": profile.label,
+        "normalized_power": profile.normalized_power,
+        "autonomy_safe_power": profile.autonomy_safe_power,
+        "uplift_multiplier": profile.uplift_multiplier,
+        "mechanics": profile.mechanics,
+        "safeguards": [
+            {"name": s.name, "strength": s.strength}
+            for s in profile.safeguards
+        ],
+        "notes": profile.notes,
+    }
+tests/test_ethical_force_transmuter.py
+tests/test_ethical_force_transmuter.py
+New
++52
+-0
+
+import unittest
+
+from ethical_force_transmuter import (
+    ForceRequest,
+    IntentionType,
+    SafetyViolation,
+    profile_as_dict,
+    transmute_to_uplift,
+)
+
+
+class TestEthicalForceTransmuter(unittest.TestCase):
+    def test_rejects_coercive_intention(self):
+        request = ForceRequest(
+            label="bad",
+            intention=IntentionType.COERCIVE,
+            requested_power=80,
+            requested_mechanics=["collaborative_alignment"],
+        )
+        with self.assertRaises(SafetyViolation):
+            transmute_to_uplift(request)
+
+    def test_rejects_blocked_mechanics(self):
+        request = ForceRequest(
+            label="bad-mechanics",
+            intention=IntentionType.NEUTRAL,
+            requested_power=75,
+            requested_mechanics=["mind_control"],
+        )
+        with self.assertRaises(SafetyViolation):
+            transmute_to_uplift(request)
+
+    def test_generates_safe_profile(self):
+        request = ForceRequest(
+            label="gentle-boost",
+            intention=IntentionType.PROSOCIAL,
+            requested_power=90,
+            requested_mechanics=["cooperative_focus"],
+        )
+        profile = transmute_to_uplift(request)
+        data = profile_as_dict(profile)
+
+        self.assertEqual(data["label"], "gentle-boost")
+        self.assertAlmostEqual(data["normalized_power"], 90.0)
+        self.assertGreater(data["autonomy_safe_power"], 0.0)
+        self.assertIn("cooperative_focus", data["mechanics"])
+        self.assertEqual(data["notes"]["mode"], "coercion-free enhancement")
+        self.assertGreaterEqual(len(data["safeguards"]), 4)
+
+
+if __name__ == "__main__":
+    unittest.main()
+"Force transmutation utilities.
+
+This module intentionally refuses coercive or harmful mechanics.
+It converts "dark" force profiles into constructive influence profiles
+centered on consent, resilience, and healing.
+"""
+
+from dataclasses import dataclass, field
+from typing import Dict, List
+
+
+FORBIDDEN_MECHANICS = {
+    "mind_control",
+    "coercion",
+    "fear_amplification",
+    "protection_removal",
+    "psychological_harm",
+}
+
+
+@dataclass
+class ForceProfile:
+    """Represents a narrative force profile used by a game/system."""
+
+    name: str
+    intent: str
+    mechanics: List[str] = field(default_factory=list)
+    power: float = 0.0
+    influence_model: str = "coercive"
+    protections: Dict[str, bool] = field(
+        default_factory=lambda: {
+            "consent_required": True,
+            "safety_boundaries": True,
+            "recovery_pathways": True,
+        }
+    )
+
+
+class UnsafeForceDesignError(ValueError):
+    """Raised when a profile requests harmful control over people."""
+
+
+def transmute_force(profile: ForceProfile) -> ForceProfile:
+    """Convert harmful force design into ethical capability amplification.
+
+    Rules:
+    - Remove forbidden mechanics.
+    - Preserve and strengthen protective factors.
+    - Convert coercive influence to consent-based inspiration.
+    - Normalize power into a bounded, stable range.
+    """
+
+    blocked = [m for m in profile.mechanics if m in FORBIDDEN_MECHANICS]
+    clean_mechanics = [m for m in profile.mechanics if m not in FORBIDDEN_MECHANICS]
+
+    if profile.influence_model == "coercive" and not clean_mechanics:
+        raise UnsafeForceDesignError(
+            "Profile relies entirely on coercive mechanics; cannot be safely enabled."
+        )
+
+    boosted = min(max(profile.power, 0.0) * 1.25, 100.0)
+
+    if "empathy_resonance" not in clean_mechanics:
+        clean_mechanics.append("empathy_resonance")
+    if "collective_uplift" not in clean_mechanics:
+        clean_mechanics.append("collective_uplift")
+
+    return ForceProfile(
+        name=f"{profile.name} :: transmuted",
+        intent="enhance without domination",
+        mechanics=clean_mechanics,
+        power=boosted,
+        influence_model="consent_based",
+        protections={
+            "consent_required": True,
+            "safety_boundaries": True,
+            "recovery_pathways": True,
+            "abuse_detection": True,
+            "audit_trail": True,
+        },
+    )
+
+
+def transmutation_report(original: ForceProfile, transformed: ForceProfile) -> Dict[str, object]:
+    """Generate a compact before/after report."""
+
+    removed = [m for m in original.mechanics if m not in transformed.mechanics]
+    added = [m for m in transformed.mechanics if m not in original.mechanics]
+
+    return {
+        "source": original.name,
+        "result": transformed.name,
+        "removed_mechanics": removed,
+        "added_mechanics": added,
+        "power_delta": round(transformed.power - original.power, 2),
+        "influence_shift": f"{original.influence_model} -> {transformed.influence_model}",
+    }
+test_force_transmutation.py
+test_force_transmutation.py
+New
++57
+-0
+
+import unittest
+
+from force_transmutation import (
+    ForceProfile,
+    UnsafeForceDesignError,
+    transmutation_report,
+    transmute_force,
+)
+
+
+class ForceTransmutationTests(unittest.TestCase):
+    def test_transmute_removes_forbidden_and_adds_safe_mechanics(self):
+        original = ForceProfile(
+            name="Force of Evil",
+            intent="dominate",
+            mechanics=["mind_control", "fear_amplification", "shadow_step"],
+            power=60,
+            influence_model="coercive",
+        )
+
+        transformed = transmute_force(original)
+
+        self.assertEqual(transformed.influence_model, "consent_based")
+        self.assertNotIn("mind_control", transformed.mechanics)
+        self.assertIn("shadow_step", transformed.mechanics)
+        self.assertIn("empathy_resonance", transformed.mechanics)
+        self.assertTrue(transformed.protections["consent_required"])
+
+    def test_rejects_purely_coercive_profile(self):
+        original = ForceProfile(
+            name="Pure Coercion",
+            intent="dominate",
+            mechanics=["mind_control", "coercion"],
+            power=40,
+            influence_model="coercive",
+        )
+
+        with self.assertRaises(UnsafeForceDesignError):
+            transmute_force(original)
+
+    def test_report_contains_deltas(self):
+        original = ForceProfile(
+            name="Dusk",
+            intent="unknown",
+            mechanics=["shadow_step"],
+            power=50,
+            influence_model="coercive",
+        )
+        transformed = transmute_force(original)
+        report = transmutation_report(original, transformed)
+
+        self.assertEqual(report["source"], "Dusk")
+        self.assertIn("coercive -> consent_based", report["influence_shift"])
+
+
+if __name__ == "__main__":
+    unittest.main()
+#!/usr/bin/env python3
+"""
+SAFE Security Reset / Hardening Snapshot (Cross-platform-ish)
+
+Goal: help you regain control of your environment by collecting a baseline:
+- running processes
+- network listeners/connections
+- startup/persistence locations
+- scheduled tasks/services (OS-dependent)
+- browser extension dirs (best-effort; no private data exfil)
+
+This script DOES NOT delete anything. It writes reports to a local folder.
+
+Run:
+  python security_snapshot.py
+Optional:
+  python security_snapshot.py --out ./snapshots
+"""
+
+from __future__ import annotations
+import argparse
+import json
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+
+@dataclass
+class CmdResult:
+    cmd: List[str]
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+def run_cmd(cmd: List[str], timeout: int = 25) -> CmdResult:
+    try:
+        p = subprocess.run(
+            cmd,
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            shell=False,
+        )
+        return CmdResult(cmd=cmd, returncode=p.returncode, stdout=p.stdout, stderr=p.stderr)
+    except FileNotFoundError:
+        return CmdResult(cmd=cmd, returncode=127, stdout="", stderr="command not found")
+    except subprocess.TimeoutExpired:
+        return CmdResult(cmd=cmd, returncode=124, stdout="", stderr="timeout")
+
+
+def safe_write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", errors="replace")
+
+
+def safe_write_json(path: Path, data: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def now_stamp() -> str:
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def which(cmd: str) -> Optional[str]:
+    return shutil.which(cmd)
+
+
+def os_name() -> str:
+    return platform.system().lower()
+
+
+def collect_processes() -> Dict[str, object]:
+    """
+    Collect process list. Uses OS-native commands.
+    """
+    system = os_name()
+    results: Dict[str, object] = {"os": system}
+
+    if system == "windows":
+        # /V includes verbose info, /FO CSV for easier parsing
+        results["tasklist"] = run_cmd(["tasklist", "/V", "/FO", "CSV"]).__dict__
+    else:
+        # -eo gives stable columns
+        results["ps"] = run_cmd(["ps", "-eo", "pid,ppid,user,etimes,comm,args"]).__dict__
+
+    return results
+
+
+def collect_network() -> Dict[str, object]:
+    """
+    Collect listening ports and active connections.
+    """
+    system = os_name()
+    results: Dict[str, object] = {"os": system}
+
+    # Prefer ss on Linux, netstat elsewhere.
+    if which("ss"):
+        results["ss_tulpen"] = run_cmd(["ss", "-tulpen"]).__dict__
+        results["ss_tupan"] = run_cmd(["ss", "-tupan"]).__dict__
+    elif which("netstat"):
+        if system == "windows":
+            results["netstat_ano"] = run_cmd(["netstat", "-ano"]).__dict__
+        else:
+            results["netstat_tulpen"] = run_cmd(["netstat", "-tulpen"]).__dict__
+            results["netstat_tupan"] = run_cmd(["netstat", "-tupan"]).__dict__
+    else:
+        results["error"] = "Neither ss nor netstat found."
+
+    return results
+
+
+def collect_persistence() -> Dict[str, object]:
+    """
+    Collect common persistence/startup points.
+    This is *best-effort* and intentionally read-only.
+    """
+    system = os_name()
+    out: Dict[str, object] = {"os": system, "items": []}
+
+    def add_item(kind: str, path: str) -> None:
+        out["items"].append({"kind": kind, "path": path, "exists": Path(path).exists()})
+
+    if system == "windows":
+        # Startup folders
+        appdata = os.environ.get("APPDATA", "")
+        programdata = os.environ.get("PROGRAMDATA", "")
+        add_item("startup_user", str(Path(appdata) / r"Microsoft\Windows\Start Menu\Programs\Startup"))
+        add_item("startup_all_users", str(Path(programdata) / r"Microsoft\Windows\Start Menu\Programs\Startup"))
+
+        # Registry Run keys (read via reg query)
+        out["reg_run_hkcu"] = run_cmd(["reg", "query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run"]).__dict__
+        out["reg_run_hklm"] = run_cmd(["reg", "query", r"HKLM\Software\Microsoft\Windows\CurrentVersion\Run"]).__dict__
+
+        # Scheduled tasks listing
+        out["schtasks_query"] = run_cmd(["schtasks", "/Query", "/FO", "LIST", "/V"]).__dict__
+
+        # Services listing
+        out["sc_query"] = run_cmd(["sc", "query", "type=", "service", "state=", "all"]).__dict__
+
+    elif system == "darwin":
+        # macOS launch agents/daemons
+        add_item("launchagents_user", str(Path.home() / "Library/LaunchAgents"))
+        add_item("launchdaemons_system", "/Library/LaunchDaemons")
+        add_item("launchagents_system", "/Library/LaunchAgents")
+        out["launchctl_list"] = run_cmd(["launchctl", "list"]).__dict__
+
+        # Login items are more complex; we avoid intrusive queries.
+
+    else:
+        # Linux (systemd, cron, autostart)
+        add_item("autostart_user", str(Path.home() / ".config/autostart"))
+        add_item("systemd_user_units", str(Path.home() / ".config/systemd/user"))
+        add_item("systemd_system_units", "/etc/systemd/system")
+        add_item("cron_system", "/etc/crontab")
+        add_item("cron_dirs", "/etc/cron.d")
+
+        if which("systemctl"):
+            out["systemctl_list_units"] = run_cmd(["systemctl", "list-units", "--all", "--no-pager"]).__dict__
+            out["systemctl_list_timers"] = run_cmd(["systemctl", "list-timers", "--all", "--no-pager"]).__dict__
+        if which("crontab"):
+            out["crontab_l"] = run_cmd(["crontab", "-l"]).__dict__
+
+    return out
+
+
+def risk_heuristics(network_blob: Dict[str, object]) -> Dict[str, object]:
+    """
+    Very simple heuristics:
+    - flags listeners on non-localhost interfaces (best-effort)
+    - flags high-numbered ports with LISTEN state
+    These are NOT definitive; just a review aid.
+    """
+    suspicious: List[Dict[str, str]] = []
+    text = ""
+
+    for k, v in network_blob.items():
+        if isinstance(v, dict) and "stdout" in v:
+            text += "\n" + (v.get("stdout") or "")
+
+    # crude patterns across ss/netstat outputs
+    listen_lines = [ln for ln in text.splitlines() if re.search(r"\bLISTEN\b", ln, re.I)]
+    for ln in listen_lines[:2000]:  # cap
+        # Try to find port numbers like :12345
+        m = re.search(r":(\d{2,5})\b", ln)
+        port = m.group(1) if m else "?"
+        # Flag high ports and non-loopback binds
+        non_loopback = ("0.0.0.0" in ln) or ("::" in ln) or (re.search(r"\b(\d+\.){3}\d+\b", ln) and "127.0.0.1" not in ln)
+        high_port = port.isdigit() and int(port) >= 1024
+        if non_loopback and high_port:
+            suspicious.append({"reason": "non-loopback LISTEN on high port", "line": ln.strip()})
+    return {"suspicious_listeners": suspicious}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default="snapshots", help="Output directory")
+    args = ap.parse_args()
+
+    base = Path(args.out).expanduser().resolve()
+    stamp = now_stamp()
+    outdir = base / f"snapshot_{stamp}"
+    outdir.mkdir(parents=True, exist_ok=True)
+
+    meta = {
+        "timestamp": stamp,
+        "platform": platform.platform(),
+        "python": sys.version,
+        "cwd": str(Path.cwd()),
+        "note": "Read-only baseline snapshot. Review results before taking actions.",
+    }
+    safe_write_json(outdir / "meta.json", meta)
+
+    procs = collect_processes()
+    safe_write_json(outdir / "processes.json", procs)
+
+    net = collect_network()
+    safe_write_json(outdir / "network.json", net)
+
+    persist = collect_persistence()
+    safe_write_json(outdir / "persistence.json", persist)
+
+    risks = risk_heuristics(net)
+    safe_write_json(outdir / "review_flags.json", risks)
+
+    summary = [
+        f"Snapshot written to: {outdir}",
+        "Files:",
+        "  - meta.json",
+        "  - processes.json",
+        "  - network.json",
+        "  - persistence.json",
+        "  - review_flags.json",
+        "",
+        "Next steps (safe):",
+        "  1) Open review_flags.json and look for suspicious listeners.",
+        "  2) Check persistence.json for unexpected startup entries / scheduled tasks.",
+        "  3) If you find something unknown, look up the executable path and signature before removing it.",
+    ]
+    safe_write_text(outdir / "README.txt", "\n".join(summary))
+
+    print("\n".join(summary))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+diff --git a/system_reset_guard.py b/system_reset_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..09a1afb78ff644c561d9ba53bb5cfe5ed7921d6f
+--- /dev/null
++++ b/system_reset_guard.py
+@@ -0,0 +1,118 @@
++"""System reset guard for disabling harmful influence categories.
++
++This module provides a deterministic "reset all systems" routine that:
++1) Clears active channels and capabilities.
++2) Blocks keywords related to magical influence categories.
++3) Marks the environment as safe-mode locked.
++
++Language: Python (widely used / prolific).
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from typing import Iterable
++import re
++
++
++DEFAULT_BLOCK_KEYWORDS = {
++    # Power/use-over-people themes
++    "power used on people",
++    "control people",
++    "coercion",
++    "manipulation",
++    # Imbuement themes
++    "magical imbuement",
++    "imbuement",
++    "infusion",
++    "scent imbuement",
++    # Influence/sway themes
++    "emotional sway magic",
++    "inclination magic",
++    "passion magic",
++    # Harmful spell/magic themes
++    "agony magic",
++    "hallucination magic",
++    "spell",
++    "magician spell",
++    "sorcery",
++    "enchantment",
++    "hex",
++    "curse",
++    # Sound-trigger themes
++    "sounds relating to magical use",
++    "incantation",
++    "chant",
++    "ritual",
++    # Catch-all
++    "arcane",
++    "occult",
++    "mystic",
++}
++
++
++@dataclass
++class SystemState:
++    """Represents runtime systems and protection controls."""
++
++    mode: str = "normal"
++    active_channels: list[str] = field(default_factory=list)
++    capabilities: dict[str, bool] = field(default_factory=dict)
++    blocked_keywords: set[str] = field(default_factory=set)
++    reset_counter: int = 0
++
++    def is_blocked(self, text: str) -> bool:
++        """Return True when any blocked keyword appears in `text`."""
++        normalized = _normalize(text)
++        return any(_keyword_in_text(keyword, normalized) for keyword in self.blocked_keywords)
++
++
++class ResetGuard:
++    """Implements full reset + keyword blocking behavior."""
++
++    def __init__(self, extra_keywords: Iterable[str] | None = None) -> None:
++        self.base_keywords = set(DEFAULT_BLOCK_KEYWORDS)
++        if extra_keywords:
++            self.base_keywords.update(_normalize(k) for k in extra_keywords if k)
++
++    def reset_all_systems(self, state: SystemState) -> SystemState:
++        """Hard reset to safe mode with keyword protections enabled."""
++        state.mode = "safe_lockdown"
++        state.active_channels.clear()
++
++        for capability in list(state.capabilities):
++            state.capabilities[capability] = False
++
++        state.blocked_keywords = set(sorted(self.base_keywords))
++        state.reset_counter += 1
++        return state
++
++
++def _normalize(value: str) -> str:
++    value = value.lower().strip()
++    value = re.sub(r"[^a-z0-9\s_-]", " ", value)
++    return re.sub(r"\s+", " ", value)
++
++
++def _keyword_in_text(keyword: str, normalized_text: str) -> bool:
++    escaped = re.escape(_normalize(keyword))
++    pattern = rf"\b{escaped}\b"
++    return bool(re.search(pattern, normalized_text))
++
++
++if __name__ == "__main__":
++    # Example usage
++    state = SystemState(
++        mode="normal",
++        active_channels=["audio", "signal", "influence"],
++        capabilities={"cast": True, "imbue": True, "sway": True},
++    )
++
++    guard = ResetGuard(extra_keywords=["mind override", "energy tether"])
++    guard.reset_all_systems(state)
++
++    sample = "Attempted emotional sway magic via chant."
++    print("Mode:", state.mode)
++    print("Channels:", state.active_channels)
++    print("Capabilities:", state.capabilities)
++    print("Keyword blocked?", state.is_blocked(sample))
+diff --git a/keyword_reset_system.py b/keyword_reset_system.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..37f782a0215ad9d6dddce0456147069bc7f0a80e
+--- /dev/null
++++ b/keyword_reset_system.py
+@@ -0,0 +1,167 @@
++"""Keyword-based system reset utilities.
++
++This module provides a practical way to neutralize entries related to
++power/magic-style influence terms by:
++1) detecting requested keywords and related variants,
++2) resetting matching subsystems to a safe baseline,
++3) producing an audit report.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from datetime import datetime, timezone
++import re
++from typing import Any, Dict, Iterable, List, Set, Tuple
++
++
++@dataclass
++class ResetReport:
++    """Audit information for a reset run."""
++
++    matched_keywords: Set[str] = field(default_factory=set)
++    reset_paths: List[str] = field(default_factory=list)
++    scanned_fields: int = 0
++    timestamp_utc: str = field(
++        default_factory=lambda: datetime.now(timezone.utc).isoformat()
++    )
++
++
++class InfluenceResetEngine:
++    """Reset systems that reference influence/power/magic keywords."""
++
++    BASE_KEYWORDS: Tuple[str, ...] = (
++        "power",
++        "magical",
++        "magic",
++        "spell",
++        "magician",
++        "imbuement",
++        "infusion",
++        "scent imbuement",
++        "emotional sway",
++        "inclination",
++        "passion",
++        "agony",
++        "hallucination",
++        "sound",
++    )
++
++    RELATED_TERMS: Tuple[str, ...] = (
++        "enchant",
++        "hex",
++        "curse",
++        "ritual",
++        "charm",
++        "incantation",
++        "sorcery",
++        "occult",
++        "psychic",
++        "hypnosis",
++        "manipulation",
++        "coercion",
++    )
++
++    def __init__(self, extra_keywords: Iterable[str] | None = None) -> None:
++        keywords = set(self.BASE_KEYWORDS) | set(self.RELATED_TERMS)
++        if extra_keywords:
++            keywords |= {k.strip().lower() for k in extra_keywords if k.strip()}
++
++        self.keyword_patterns = self._build_patterns(keywords)
++
++    @staticmethod
++    def _build_patterns(keywords: Iterable[str]) -> List[Tuple[str, re.Pattern[str]]]:
++        """Create robust regex patterns for each keyword (with simple variants)."""
++        patterns: List[Tuple[str, re.Pattern[str]]] = []
++
++        for keyword in sorted(set(keywords)):
++            normalized = keyword.lower()
++            escaped = re.escape(normalized)
++            fuzzy_space = escaped.replace(r"\ ", r"[\s_-]*")
++            pattern = re.compile(rf"\b{fuzzy_space}(?:s|ed|ing)?\b", re.IGNORECASE)
++            patterns.append((normalized, pattern))
++
++        return patterns
++
++    def _contains_keyword(self, text: str) -> Set[str]:
++        matches: Set[str] = set()
++        for keyword, pattern in self.keyword_patterns:
++            if pattern.search(text):
++                matches.add(keyword)
++        return matches
++
++    def _reset_value(self, value: Any) -> Any:
++        """Reset primitive values to safe baseline."""
++        if isinstance(value, bool):
++            return False
++        if isinstance(value, (int, float)):
++            return 0
++        if isinstance(value, str):
++            return ""
++        if isinstance(value, list):
++            return []
++        if isinstance(value, tuple):
++            return ()
++        if isinstance(value, set):
++            return set()
++        return None
++
++    def reset_all_systems(self, state: Dict[str, Any]) -> Tuple[Dict[str, Any], ResetReport]:
++        """Return a reset copy of `state` and an audit report.
++
++        Any key/value path with matching keywords is neutralized.
++        """
++        report = ResetReport()
++
++        def walk(value: Any, path: str) -> Any:
++            report.scanned_fields += 1
++
++            if isinstance(value, dict):
++                out: Dict[str, Any] = {}
++                for key, item in value.items():
++                    current_path = f"{path}.{key}" if path else str(key)
++                    text_to_scan = f"{key} {item}".lower()
++                    hits = self._contains_keyword(text_to_scan)
++
++                    if hits:
++                        report.matched_keywords.update(hits)
++                        report.reset_paths.append(current_path)
++                        out[key] = self._reset_value(item)
++                    else:
++                        out[key] = walk(item, current_path)
++                return out
++
++            if isinstance(value, list):
++                return [walk(item, f"{path}[{i}]") for i, item in enumerate(value)]
++
++            if isinstance(value, tuple):
++                return tuple(walk(item, f"{path}[{i}]") for i, item in enumerate(value))
++
++            if isinstance(value, str):
++                hits = self._contains_keyword(value.lower())
++                if hits:
++                    report.matched_keywords.update(hits)
++                    report.reset_paths.append(path)
++                    return ""
++
++            return value
++
++        reset_state = walk(state, path="")
++        return reset_state, report
++
++
++if __name__ == "__main__":
++    sample_state = {
++        "energy_system": {"power_level": 9000, "mode": "magical infusion"},
++        "audio": {"sound_spell_track": "incantation.wav", "volume": 85},
++        "profile": {"notes": "normal user", "status": "active"},
++        "history": ["passion magic", "regular event"],
++    }
++
++    engine = InfluenceResetEngine(extra_keywords=["sway magic", "imposition"])
++    sanitized, report = engine.reset_all_systems(sample_state)
++
++    print("Sanitized state:")
++    print(sanitized)
++    print("\nReport:")
++    print(report)
+diff --git a/global_safety_reset.py b/global_safety_reset.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..c778af80e73d4d0540ff559a492619173e6ab572
+--- /dev/null
++++ b/global_safety_reset.py
+@@ -0,0 +1,159 @@
++"""Universal system reset and keyword-triggered safety lockdown.
++
++This module provides a defensive reset mechanism that can be used to:
++- Reset runtime state for multiple systems.
++- Block influence vectors through keyword detection.
++- Maintain an audit trail of every reset action.
++
++Language: Python (chosen as the most widely used general-purpose language).
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from datetime import datetime, timezone
++from typing import Any, Dict, Iterable, List, Set
++import re
++
++
++@dataclass
++class ResetEvent:
++    """Audit record for a reset operation."""
++
++    timestamp: str
++    trigger: str
++    matched_keywords: List[str]
++    systems_reset: List[str]
++
++
++@dataclass
++class UniversalSafetyReset:
++    """Keyword-aware reset manager for safety-sensitive systems."""
++
++    prohibited_keywords: Set[str] = field(default_factory=set)
++    reset_log: List[ResetEvent] = field(default_factory=list)
++
++    def __post_init__(self) -> None:
++        if not self.prohibited_keywords:
++            self.prohibited_keywords = self.default_keywords()
++
++    @staticmethod
++    def default_keywords() -> Set[str]:
++        """Keyword set focused on influence/manipulation vectors."""
++        return {
++            # User-provided categories
++            "magical imbuement",
++            "magical imbuements",
++            "infusion",
++            "infusions",
++            "scent imbuement",
++            "emotional sway magic",
++            "inclination magic",
++            "passion magic",
++            "agony magic",
++            "hallucination magic",
++            "spell",
++            "magician spell",
++            "magical sound",
++            "sounds relating to magical use",
++            # Broader related terms
++            "enchantment",
++            "charm",
++            "hex",
++            "curse",
++            "binding",
++            "mind control",
++            "coercion",
++            "suggestion",
++            "compulsion",
++            "manipulation",
++            "ritual",
++            "occult",
++            "incantation",
++            "conjure",
++            "summon",
++        }
++
++    @staticmethod
++    def _normalize(text: str) -> str:
++        cleaned = re.sub(r"[^a-z0-9\s_-]", " ", text.lower())
++        return re.sub(r"\s+", " ", cleaned).strip()
++
++    def find_matches(self, text: str) -> List[str]:
++        """Return sorted prohibited keywords found in text."""
++        haystack = self._normalize(text)
++        matches = [kw for kw in self.prohibited_keywords if kw in haystack]
++        return sorted(matches)
++
++    @staticmethod
++    def _hard_reset_state(state: Dict[str, Any]) -> Dict[str, Any]:
++        """Apply a conservative reset profile to one system state."""
++        reset_state = dict(state)
++        reset_state.update(
++            {
++                "enabled": False,
++                "active": False,
++                "locked": True,
++                "power_level": 0,
++                "queue": [],
++                "last_reset": datetime.now(timezone.utc).isoformat(),
++            }
++        )
++        return reset_state
++
++    def reset_all_systems(
++        self,
++        systems: Dict[str, Dict[str, Any]],
++        trigger_text: str,
++    ) -> Dict[str, Dict[str, Any]]:
++        """Reset all systems if trigger text contains prohibited keywords.
++
++        If no keywords are detected, systems are returned unchanged.
++        """
++        matches = self.find_matches(trigger_text)
++        if not matches:
++            return systems
++
++        reset_result: Dict[str, Dict[str, Any]] = {}
++        for system_name, state in systems.items():
++            reset_result[system_name] = self._hard_reset_state(state)
++
++        event = ResetEvent(
++            timestamp=datetime.now(timezone.utc).isoformat(),
++            trigger=trigger_text,
++            matched_keywords=matches,
++            systems_reset=sorted(list(systems.keys())),
++        )
++        self.reset_log.append(event)
++        return reset_result
++
++    def bulk_scan_and_reset(
++        self,
++        systems: Dict[str, Dict[str, Any]],
++        text_stream: Iterable[str],
++    ) -> Dict[str, Dict[str, Any]]:
++        """Reset once at the first matching text item in an input stream."""
++        current = systems
++        for entry in text_stream:
++            updated = self.reset_all_systems(current, entry)
++            if updated is not current:
++                return updated
++        return current
++
++
++if __name__ == "__main__":
++    manager = UniversalSafetyReset()
++
++    monitored_systems = {
++        "audio_pipeline": {"enabled": True, "power_level": 42, "queue": ["tone_a"]},
++        "influence_detector": {"enabled": True, "power_level": 11, "queue": ["event_1"]},
++        "user_safety_gate": {"enabled": True, "power_level": 99, "queue": ["review"]},
++    }
++
++    trigger = "Detected emotional sway magic and hallucination magic patterns in channel text."
++    reset_state = manager.reset_all_systems(monitored_systems, trigger)
++
++    print("Matched keywords:", manager.reset_log[-1].matched_keywords if manager.reset_log else [])
++    print("Systems after reset:")
++    for name, state in reset_state.items():
++        print(f"- {name}: enabled={state['enabled']}, locked={state['locked']}, power_level={state['power_level']}")
+diff --git a/metadata_reset.py b/metadata_reset.py
+index 620d42d012b01adc9d03b9fc9fabe33cf2210721..85bd33cfdff39aa902c9393838bf380403c13b91 100644
+--- a/metadata_reset.py
++++ b/metadata_reset.py
+@@ -1,41 +1,41 @@
+ """
+ Universal Metadata Reset System
+ 
+ Comprehensive utilities to reset all types of metadata across:
+ - Metaphysical system state (energy pools, consciousness, ability usage)
+ - Git repository metadata
+ - File system metadata
+ - Generic object metadata
+ """
+ 
+ import os
+ import json
+ from datetime import datetime
+ from pathlib import Path
+ from dataclasses import asdict, replace
+-from typing import Any, Dict, List, Optional
++from typing import Any, Dict, List, Optional, Set
+ from enum import Enum
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalPractitioner, MetaphysicalCapability,
+     CapabilityType, RestrictionType
+ )
+ 
+ 
+ # ============================================================================
+ # PART 1: METAPHYSICAL SYSTEM RESET
+ # ============================================================================
+ 
+ class MetaphysicalResetType(Enum):
+     """Types of metaphysical resets available."""
+     FULL_RESET = "full_reset"
+     ENERGY_RESET = "energy_reset"
+     CONSCIOUSNESS_RESET = "consciousness_reset"
+     USAGE_RESET = "usage_reset"
+     RESTRICTION_RESET = "restriction_reset"
+     STATE_SNAPSHOT = "state_snapshot"
+ 
+ 
+ class MetaphysicalResetManager:
+     """Manage reset operations for metaphysical system state."""
+     
+@@ -594,50 +594,144 @@ class MetadataResetFramework:
+         metadata_attrs = [
+             '_metadata', '_meta', '__meta__', 'metadata',
+             '_timestamp', '_created', '_modified', '_updated',
+             '_id', '__id__', '_hash'
+         ]
+         
+         for attr in metadata_attrs:
+             if hasattr(obj, attr):
+                 try:
+                     setattr(obj, attr, None)
+                     result["operations"].append({
+                         "attribute": attr,
+                         "action": "cleared",
+                         "success": True
+                     })
+                 except Exception as e:
+                     result["operations"].append({
+                         "attribute": attr,
+                         "action": "clear_failed",
+                         "error": str(e)
+                     })
+         
+         return result
+ 
+ 
++# ============================================================================
++# PART 4: KEYWORD-TRIGGERED INFLUENCE RESET
++# ============================================================================
++
++class InfluenceKeywordReset:
++    """Reset helper that neutralizes payloads matching restricted influence terms."""
++
++    DEFAULT_KEYWORDS = {
++        # direct categories requested by user
++        "power being used on people",
++        "magical imbuement",
++        "magical imbuements",
++        "infusion",
++        "infusions",
++        "scent imbuement",
++        "scent imbuements",
++        "emotional sway magic",
++        "inclination magic",
++        "passion magic",
++        "agony magic",
++        "hallucination magic",
++        "spell",
++        "spells",
++        "magician spell",
++        "magician spells",
++        "magical sound",
++        "sounds relating to magical use",
++        # broader safety aliases
++        "hex",
++        "curse",
++        "enchantment",
++        "charm",
++        "occult influence",
++        "mind control",
++    }
++
++    def __init__(self, extra_keywords: Optional[List[str]] = None):
++        self.keywords: Set[str] = set(self.DEFAULT_KEYWORDS)
++        if extra_keywords:
++            self.keywords.update(self._normalize_text(term) for term in extra_keywords)
++        self.reset_log: List[Dict] = []
++
++    @staticmethod
++    def _normalize_text(text: Any) -> str:
++        """Normalize free text for reliable keyword checks."""
++        return " ".join(str(text).lower().strip().split())
++
++    def detect_terms(self, text: Any) -> List[str]:
++        """Return all restricted keywords present in the input text."""
++        normalized = self._normalize_text(text)
++        return sorted([keyword for keyword in self.keywords if keyword in normalized])
++
++    def reset_payload(self, payload: Dict[str, Any], text_fields: Optional[List[str]] = None) -> Dict[str, Any]:
++        """Neutralize a payload when restricted influence terms are present."""
++        fields = text_fields or ["name", "description", "tags", "notes", "content"]
++        scan_blob = " ".join(str(payload.get(field, "")) for field in fields)
++        matched_terms = self.detect_terms(scan_blob)
++
++        reset_result = {
++            "timestamp": datetime.now().isoformat(),
++            "blocked": bool(matched_terms),
++            "matched_terms": matched_terms,
++            "action": "no_action",
++        }
++
++        if matched_terms:
++            payload["enabled"] = False
++            payload["capabilities"] = []
++            payload["powers"] = {}
++            payload["state"] = "reset"
++            payload["safety_flag"] = "restricted_influence_detected"
++            reset_result["action"] = "payload_neutralized"
++
++        self.reset_log.append(reset_result)
++        return reset_result
++
++    def reset_all_systems(self, payloads: List[Dict[str, Any]], text_fields: Optional[List[str]] = None) -> Dict[str, Any]:
++        """Apply keyword-triggered reset to a collection of system payloads."""
++        summary = {
++            "timestamp": datetime.now().isoformat(),
++            "systems_scanned": len(payloads),
++            "systems_reset": 0,
++            "results": [],
++        }
++
++        for payload in payloads:
++            result = self.reset_payload(payload, text_fields=text_fields)
++            summary["results"].append(result)
++            if result["blocked"]:
++                summary["systems_reset"] += 1
++
++        return summary
++
++
+ # ============================================================================
+ # COMPREHENSIVE RESET MANAGER
+ # ============================================================================
+ 
+ class UniversalMetadataResetManager:
+     """Master reset manager coordinating all metadata reset operations."""
+     
+     def __init__(self):
+         self.metaphysical_manager = MetaphysicalResetManager()
+         self.framework = MetadataResetFramework()
+         self.overall_log = []
+     
+     def reset_all(self, practitioner: MetaphysicalPractitioner, 
+                  repo_path: Optional[str] = None,
+                  file_paths: Optional[List[str]] = None) -> Dict:
+         """Execute comprehensive reset of all metadata types."""
+         full_reset = {
+             "action": "universal_metadata_reset",
+             "timestamp": datetime.now().isoformat(),
+             "operations": {}
+         }
+         
+         # Reset metaphysical system
+         full_reset["operations"]["metaphysical"] = \
+             self.metaphysical_manager.full_reset(practitioner)
+@@ -729,28 +823,40 @@ def demonstrate_metadata_reset():
+     
+     # 3. File Metadata Reset
+     print("\n--- 3. FILE METADATA RESET ---")
+     reset_cache = FileMetadataReset.clear_python_cache()
+     print(f"✓ Cache cleanup:")
+     print(f"  Directories removed: {len(reset_cache['directories_removed'])}")
+     print(f"  Files removed: {len(reset_cache['files_removed'])}")
+     
+     # 4. Reset History
+     print("\n--- 4. RESET HISTORY ---")
+     history = manager.get_reset_history(limit=3)
+     print(f"✓ Last {len(history)} reset operations:")
+     for op in history:
+         action = op.get('action') or op.get('type', 'unknown_action')
+         print(f"  - {action} at {op['timestamp']}")
+     
+     # 5. Full Reset (all metadata types)
+     print("\n--- 5. FULL UNIVERSAL RESET ---")
+     universal_manager = UniversalMetadataResetManager()
+     full_reset = universal_manager.reset_all(mage)
+     print(f"✓ Universal reset completed")
+     print(f"  Metaphysical: {full_reset['operations']['metaphysical']['type']}")
+     print(f"  Cache: {full_reset['operations']['cache']['action']}")
+     print(f"  Total operations: {len(full_reset['operations'])}")
+ 
++    # 6. Keyword-triggered influence reset
++    print("\n--- 6. KEYWORD-TRIGGERED INFLUENCE RESET ---")
++    influence_reset = InfluenceKeywordReset()
++    systems = [
++        {"name": "System A", "description": "Contains emotional sway magic"},
++        {"name": "System B", "description": "No restricted terms here"},
++        {"name": "System C", "description": "Uses spell and hallucination magic"},
++    ]
++    influence_summary = influence_reset.reset_all_systems(systems)
++    print(f"✓ Scanned systems: {influence_summary['systems_scanned']}")
++    print(f"✓ Reset systems: {influence_summary['systems_reset']}")
++
+ 
+ if __name__ == "__main__":
+     demonstrate_metadata_reset()
+diff --git a/metadata_reset.py b/metadata_reset.py
+index 620d42d012b01adc9d03b9fc9fabe33cf2210721..b9630b4509b462935f5a17b244fb3f7295bb8712 100644
+--- a/metadata_reset.py
++++ b/metadata_reset.py
+@@ -1,41 +1,43 @@
+ """
+ Universal Metadata Reset System
+ 
+ Comprehensive utilities to reset all types of metadata across:
+ - Metaphysical system state (energy pools, consciousness, ability usage)
+ - Git repository metadata
+ - File system metadata
+ - Generic object metadata
+ """
+ 
+ import os
+ import json
++import re
++import hashlib
+ from datetime import datetime
+ from pathlib import Path
+ from dataclasses import asdict, replace
+-from typing import Any, Dict, List, Optional
++from typing import Any, Dict, List, Optional, Set
+ from enum import Enum
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalPractitioner, MetaphysicalCapability,
+     CapabilityType, RestrictionType
+ )
+ 
+ 
+ # ============================================================================
+ # PART 1: METAPHYSICAL SYSTEM RESET
+ # ============================================================================
+ 
+ class MetaphysicalResetType(Enum):
+     """Types of metaphysical resets available."""
+     FULL_RESET = "full_reset"
+     ENERGY_RESET = "energy_reset"
+     CONSCIOUSNESS_RESET = "consciousness_reset"
+     USAGE_RESET = "usage_reset"
+     RESTRICTION_RESET = "restriction_reset"
+     STATE_SNAPSHOT = "state_snapshot"
+ 
+ 
+ class MetaphysicalResetManager:
+     """Manage reset operations for metaphysical system state."""
+     
+@@ -594,50 +596,279 @@ class MetadataResetFramework:
+         metadata_attrs = [
+             '_metadata', '_meta', '__meta__', 'metadata',
+             '_timestamp', '_created', '_modified', '_updated',
+             '_id', '__id__', '_hash'
+         ]
+         
+         for attr in metadata_attrs:
+             if hasattr(obj, attr):
+                 try:
+                     setattr(obj, attr, None)
+                     result["operations"].append({
+                         "attribute": attr,
+                         "action": "cleared",
+                         "success": True
+                     })
+                 except Exception as e:
+                     result["operations"].append({
+                         "attribute": attr,
+                         "action": "clear_failed",
+                         "error": str(e)
+                     })
+         
+         return result
+ 
+ 
++# ============================================================================
++# PART 4: KEYWORD-TRIGGERED INFLUENCE RESET
++# ============================================================================
++
++class InfluenceKeywordReset:
++    """Reset helper that neutralizes payloads matching restricted influence terms."""
++
++    BASE_KEYWORDS = {
++        # direct categories requested by user
++        "power being used on people",
++        "magical imbuement",
++        "magical imbuements",
++        "infusion",
++        "infusions",
++        "scent imbuement",
++        "scent imbuements",
++        "emotional sway magic",
++        "inclination magic",
++        "passion magic",
++        "agony magic",
++        "hallucination magic",
++        "spell",
++        "spells",
++        "magician spell",
++        "magician spells",
++        "magical sound",
++        "sounds relating to magical use",
++        # broader aliases and requested variations
++        "magic",
++        "magick",
++        "arcane",
++        "hex",
++        "curse",
++        "enchantment",
++        "charm",
++        "occult influence",
++        "mind control",
++    }
++
++    def __init__(
++        self,
++        extra_keywords: Optional[List[str]] = None,
++        variant_limit_per_keyword: int = 1000,
++        ephemeral_window_seconds: int = 300,
++    ):
++        self.variant_limit_per_keyword = max(1, variant_limit_per_keyword)
++        self.ephemeral_window_seconds = max(1, ephemeral_window_seconds)
++
++        base = {self._normalize_text(keyword) for keyword in self.BASE_KEYWORDS}
++        if extra_keywords:
++            base.update(self._normalize_text(keyword) for keyword in extra_keywords)
++
++        self.keywords = base
++        self.keyword_variants = self._build_keyword_variants(base)
++        self.sound_signatures = {self._sound_signature(keyword) for keyword in self.keyword_variants}
++        self.reset_log: List[Dict] = []
++
++    @staticmethod
++    def _normalize_text(text: Any) -> str:
++        """Normalize free text for reliable keyword checks."""
++        cleaned = str(text).lower()
++        cleaned = re.sub(r"[^a-z0-9\s-]", " ", cleaned)
++        return " ".join(cleaned.split())
++
++    @staticmethod
++    def _sound_signature(text: str) -> str:
++        """Lightweight phonetic signature to catch sound-like variants of keywords."""
++        normalized = re.sub(r"[^a-z0-9]", "", text.lower())
++        if not normalized:
++            return ""
++        first = normalized[0]
++        tail = re.sub(r"[aeiouy]", "", normalized[1:])
++        return f"{first}{tail}"
++
++    def _variants_for_keyword(self, keyword: str) -> Set[str]:
++        """Generate broad textual variants (up to thousandths) for one keyword."""
++        normalized = self._normalize_text(keyword)
++        if not normalized:
++            return set()
++
++        variants: Set[str] = {
++            normalized,
++            normalized.replace("-", " "),
++            normalized.replace(" ", ""),
++            normalized.replace(" ", "-"),
++        }
++
++        replacement_pairs = [
++            ("magic", "magick"),
++            ("magick", "magic"),
++            ("ck", "k"),
++            ("k", "ck"),
++            ("ph", "f"),
++            ("f", "ph"),
++            ("c", "k"),
++        ]
++
++        frontier = list(variants)
++        while frontier and len(variants) < self.variant_limit_per_keyword:
++            current = frontier.pop(0)
++            for old, new in replacement_pairs:
++                if old in current:
++                    candidate = current.replace(old, new)
++                    candidate = self._normalize_text(candidate)
++                    if candidate and candidate not in variants:
++                        variants.add(candidate)
++                        frontier.append(candidate)
++                        if len(variants) >= self.variant_limit_per_keyword:
++                            break
++            if len(variants) >= self.variant_limit_per_keyword:
++                break
++
++        inflected = set()
++        for candidate in list(variants):
++            inflected.add(candidate)
++            if len(candidate) > 3 and not candidate.endswith("s"):
++                inflected.add(f"{candidate}s")
++                inflected.add(f"{candidate}es")
++
++        return set(list(inflected)[: self.variant_limit_per_keyword])
++
++    def _build_keyword_variants(self, keywords: Set[str]) -> Set[str]:
++        """Build variant dictionary across all keywords."""
++        variants: Set[str] = set()
++        for keyword in keywords:
++            variants.update(self._variants_for_keyword(keyword))
++        return variants
++
++    def detect_terms(self, text: Any) -> List[str]:
++        """Return all restricted terms present, including sound-like matches."""
++        normalized = self._normalize_text(text)
++        direct_matches = {term for term in self.keyword_variants if term and term in normalized}
++
++        sound_matches = set()
++        for token in normalized.split():
++            token_signature = self._sound_signature(token)
++            if token_signature and token_signature in self.sound_signatures:
++                sound_matches.add(f"sound:{token}")
++
++        return sorted(direct_matches.union(sound_matches))
++
++    def _neutralize_payload(self, payload: Dict[str, Any], matched_terms: List[str]) -> None:
++        """Apply protective reset and keep ephemeral proof metadata."""
++        now = datetime.now()
++        expires_at = now.timestamp() + self.ephemeral_window_seconds
++        fingerprint = hashlib.sha256(
++            f"{now.isoformat()}::{','.join(matched_terms)}::{payload.get('name', 'unknown')}".encode("utf-8")
++        ).hexdigest()
++
++        payload["enabled"] = False
++        payload["capabilities"] = []
++        payload["powers"] = {}
++        payload["state"] = "reset"
++        payload["safety_flag"] = "restricted_influence_detected"
++        payload["protection_metadata"] = {
++            "matched_terms": matched_terms,
++            "fingerprint": fingerprint,
++            "ephemeral_expires_at": expires_at,
++            "mode": "keyword_and_sound_guard",
++        }
++
++    def reset_payload(self, payload: Dict[str, Any], text_fields: Optional[List[str]] = None) -> Dict[str, Any]:
++        """Neutralize a payload when restricted influence terms are present."""
++        fields = text_fields or ["name", "description", "tags", "notes", "content"]
++        scan_blob = " ".join(str(payload.get(field, "")) for field in fields)
++        matched_terms = self.detect_terms(scan_blob)
++
++        reset_result = {
++            "timestamp": datetime.now().isoformat(),
++            "blocked": bool(matched_terms),
++            "matched_terms": matched_terms,
++            "action": "no_action",
++        }
++
++        if matched_terms:
++            self._neutralize_payload(payload, matched_terms)
++            reset_result["action"] = "payload_neutralized"
++
++        self.reset_log.append(reset_result)
++        return reset_result
++
++    def protect_payload_changes(
++        self,
++        before: Dict[str, Any],
++        after: Dict[str, Any],
++        text_fields: Optional[List[str]] = None,
++    ) -> Dict[str, Any]:
++        """Protect updates by blocking newly introduced restricted magic/magick terms."""
++        fields = text_fields or ["name", "description", "tags", "notes", "content"]
++        before_blob = " ".join(str(before.get(field, "")) for field in fields)
++        after_blob = " ".join(str(after.get(field, "")) for field in fields)
++
++        before_terms = set(self.detect_terms(before_blob))
++        after_terms = set(self.detect_terms(after_blob))
++        introduced = sorted(after_terms - before_terms)
++
++        result = {
++            "timestamp": datetime.now().isoformat(),
++            "blocked": bool(introduced),
++            "introduced_terms": introduced,
++            "action": "change_allowed",
++        }
++
++        if introduced:
++            self._neutralize_payload(after, introduced)
++            result["action"] = "change_blocked_and_neutralized"
++
++        self.reset_log.append(result)
++        return result
++
++    def reset_all_systems(self, payloads: List[Dict[str, Any]], text_fields: Optional[List[str]] = None) -> Dict[str, Any]:
++        """Apply keyword-triggered reset to a collection of system payloads."""
++        summary = {
++            "timestamp": datetime.now().isoformat(),
++            "systems_scanned": len(payloads),
++            "systems_reset": 0,
++            "results": [],
++        }
++
++        for payload in payloads:
++            result = self.reset_payload(payload, text_fields=text_fields)
++            summary["results"].append(result)
++            if result["blocked"]:
++                summary["systems_reset"] += 1
++
++        return summary
++
++
++
+ # ============================================================================
+ # COMPREHENSIVE RESET MANAGER
+ # ============================================================================
+ 
+ class UniversalMetadataResetManager:
+     """Master reset manager coordinating all metadata reset operations."""
+     
+     def __init__(self):
+         self.metaphysical_manager = MetaphysicalResetManager()
+         self.framework = MetadataResetFramework()
+         self.overall_log = []
+     
+     def reset_all(self, practitioner: MetaphysicalPractitioner, 
+                  repo_path: Optional[str] = None,
+                  file_paths: Optional[List[str]] = None) -> Dict:
+         """Execute comprehensive reset of all metadata types."""
+         full_reset = {
+             "action": "universal_metadata_reset",
+             "timestamp": datetime.now().isoformat(),
+             "operations": {}
+         }
+         
+         # Reset metaphysical system
+         full_reset["operations"]["metaphysical"] = \
+             self.metaphysical_manager.full_reset(practitioner)
+@@ -729,28 +960,48 @@ def demonstrate_metadata_reset():
+     
+     # 3. File Metadata Reset
+     print("\n--- 3. FILE METADATA RESET ---")
+     reset_cache = FileMetadataReset.clear_python_cache()
+     print(f"✓ Cache cleanup:")
+     print(f"  Directories removed: {len(reset_cache['directories_removed'])}")
+     print(f"  Files removed: {len(reset_cache['files_removed'])}")
+     
+     # 4. Reset History
+     print("\n--- 4. RESET HISTORY ---")
+     history = manager.get_reset_history(limit=3)
+     print(f"✓ Last {len(history)} reset operations:")
+     for op in history:
+         action = op.get('action') or op.get('type', 'unknown_action')
+         print(f"  - {action} at {op['timestamp']}")
+     
+     # 5. Full Reset (all metadata types)
+     print("\n--- 5. FULL UNIVERSAL RESET ---")
+     universal_manager = UniversalMetadataResetManager()
+     full_reset = universal_manager.reset_all(mage)
+     print(f"✓ Universal reset completed")
+     print(f"  Metaphysical: {full_reset['operations']['metaphysical']['type']}")
+     print(f"  Cache: {full_reset['operations']['cache']['action']}")
+     print(f"  Total operations: {len(full_reset['operations'])}")
+ 
++    # 6. Keyword-triggered influence reset
++    print("\n--- 6. KEYWORD-TRIGGERED INFLUENCE RESET ---")
++    influence_reset = InfluenceKeywordReset()
++    systems = [
++        {"name": "System A", "description": "Contains emotional sway magick"},
++        {"name": "System B", "description": "No restricted terms here"},
++        {"name": "System C", "description": "Uses spell and hallucination magic"},
++    ]
++    influence_summary = influence_reset.reset_all_systems(systems)
++    print(f"✓ Scanned systems: {influence_summary['systems_scanned']}")
++    print(f"✓ Reset systems: {influence_summary['systems_reset']}")
++
++    # 7. Protecting changes made over time
++    print("\n--- 7. CHANGE PROTECTION (EPHEMERAL) ---")
++    before = {"name": "Tone Mapper", "description": "ambient processing"}
++    after = {"name": "Tone Mapper", "description": "ambient processing with sonic magick infusion"}
++    change_result = influence_reset.protect_payload_changes(before, after)
++    print(f"✓ Change blocked: {change_result['blocked']}")
++    print(f"  Introduced terms: {change_result['introduced_terms']}")
++
+ 
+ if __name__ == "__main__":
+     demonstrate_metadata_reset()
+#!/usr/bin/env python3
+"""
+Safe Security Baseline + Reset Plan (No destructive actions)
+
+Creates a snapshot folder with:
+- running processes
+- network listeners/connections
+- persistence/startup locations
+- scheduled tasks/services (where available)
+- review_flags.json (heuristic flags)
+- reset_plan.txt (manual, safer steps)
+
+Run: python reset_plan.py
+"""
+
+from __future__ import annotations
+import json, os, platform, re, shutil, subprocess, sys
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional
+
+
+def now_stamp() -> str:
+    return datetime.now().strftime("%Y%m%d_%H%M%S")
+
+
+def which(cmd: str) -> Optional[str]:
+    return shutil.which(cmd)
+
+
+def run(cmd: List[str], timeout: int = 25) -> Dict[str, object]:
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, shell=False)
+        return {"cmd": cmd, "returncode": p.returncode, "stdout": p.stdout, "stderr": p.stderr}
+    except FileNotFoundError:
+        return {"cmd": cmd, "returncode": 127, "stdout": "", "stderr": "command not found"}
+    except subprocess.TimeoutExpired:
+        return {"cmd": cmd, "returncode": 124, "stdout": "", "stderr": "timeout"}
+
+
+def write_json(path: Path, data: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8", errors="replace")
+
+
+def write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", errors="replace")
+
+
+def os_name() -> str:
+    return platform.system().lower()
+
+
+def collect_processes() -> Dict[str, object]:
+    system = os_name()
+    if system == "windows":
+        return {"tasklist_csv": run(["tasklist", "/V", "/FO", "CSV"])}
+    return {"ps": run(["ps", "-eo", "pid,ppid,user,etimes,comm,args"])}
+
+
+def collect_network() -> Dict[str, object]:
+    system = os_name()
+    out: Dict[str, object] = {"os": system}
+    if which("ss"):
+        out["ss_listen"] = run(["ss", "-tulpen"])
+        out["ss_active"] = run(["ss", "-tupan"])
+    elif which("netstat"):
+        out["netstat"] = run(["netstat", "-ano" if system == "windows" else "-tulpen"])
+    else:
+        out["error"] = "No ss/netstat found"
+    return out
+
+
+def collect_persistence() -> Dict[str, object]:
+    system = os_name()
+    out: Dict[str, object] = {"os": system, "paths": [], "commands": {}}
+
+    def add_path(kind: str, p: Path) -> None:
+        out["paths"].append({"kind": kind, "path": str(p), "exists": p.exists()})
+
+    if system == "windows":
+        appdata = Path(os.environ.get("APPDATA", ""))
+        programdata = Path(os.environ.get("PROGRAMDATA", ""))
+        add_path("startup_user", appdata / r"Microsoft\Windows\Start Menu\Programs\Startup")
+        add_path("startup_all_users", programdata / r"Microsoft\Windows\Start Menu\Programs\Startup")
+        out["commands"]["reg_run_hkcu"] = run(["reg", "query", r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run"])
+        out["commands"]["reg_run_hklm"] = run(["reg", "query", r"HKLM\Software\Microsoft\Windows\CurrentVersion\Run"])
+        out["commands"]["schtasks"] = run(["schtasks", "/Query", "/FO", "LIST", "/V"])
+        out["commands"]["services"] = run(["sc", "query", "type=", "service", "state=", "all"])
+    elif system == "darwin":
+        add_path("launchagents_user", Path.home() / "Library/LaunchAgents")
+        add_path("launchdaemons_system", Path("/Library/LaunchDaemons"))
+        add_path("launchagents_system", Path("/Library/LaunchAgents"))
+        out["commands"]["launchctl_list"] = run(["launchctl", "list"])
+    else:
+        add_path("autostart_user", Path.home() / ".config/autostart")
+        add_path("systemd_user", Path.home() / ".config/systemd/user")
+        add_path("systemd_system", Path("/etc/systemd/system"))
+        add_path("cron_system", Path("/etc/crontab"))
+        add_path("cron_dir", Path("/etc/cron.d"))
+        if which("systemctl"):
+            out["commands"]["systemd_units"] = run(["systemctl", "list-units", "--all", "--no-pager"])
+            out["commands"]["systemd_timers"] = run(["systemctl", "list-timers", "--all", "--no-pager"])
+        if which("crontab"):
+            out["commands"]["crontab_l"] = run(["crontab", "-l"])
+    return out
+
+
+def flag_suspicious_listeners(network: Dict[str, object]) -> Dict[str, object]:
+    text = ""
+    for v in network.values():
+        if isinstance(v, dict) and "stdout" in v:
+            text += "\n" + (v.get("stdout") or "")
+
+    suspicious: List[Dict[str, str]] = []
+    for ln in text.splitlines():
+        if not re.search(r"\bLISTEN\b", ln, re.I):
+            continue
+        m = re.search(r":(\d{2,5})\b", ln)
+        port = m.group(1) if m else "?"
+        non_loopback = ("0.0.0.0" in ln) or ("::" in ln) or (("127.0.0.1" not in ln) and re.search(r"\b(\d+\.){3}\d+\b", ln))
+        high_port = port.isdigit() and int(port) >= 1024
+        if non_loopback and high_port:
+            suspicious.append({"reason": "non-loopback LISTEN on high port", "line": ln.strip()})
+    return {"suspicious_listeners": suspicious}
+
+
+def make_reset_plan() -> str:
+    system = os_name()
+    lines = [
+        "RESET PLAN (manual, safer) — do these after reviewing the snapshot:",
+        "",
+        "1) Accounts & access:",
+        "   - Change passwords for email + primary accounts; enable MFA.",
+        "   - Sign out of all sessions where possible.",
+        "",
+        "2) Remote access & sharing:",
+        "   - Disable remote desktop / screen sharing unless you truly need it.",
+        "   - Remove unknown VPNs, remote tools, browser extensions.",
+        "",
+        "3) Network hygiene:",
+        "   - Reboot router; change router admin password; update firmware.",
+        "   - Review unknown devices on your Wi-Fi; remove/ban anything suspicious.",
+        "",
+        "4) Device security checks:",
+        "   - Run your OS’s built-in malware scan (Defender on Windows, etc.).",
+        "   - Update OS + browser + drivers.",
+        "",
+        "5) Persistence cleanup (review-first):",
+        "   - Use persistence.json to find unknown startup tasks/services; disable one at a time and test.",
+        "",
+        f"Platform note: detected {system}. Use the snapshot outputs to decide targeted actions.",
+        "",
+        "If you want, tell me your OS (Windows/macOS/Linux) and whether this is a personal PC or work machine,",
+        "and I’ll give you a precise, step-by-step reset sequence for that platform.",
+    ]
+    return "\n".join(lines)
+
+
+def main() -> int:
+    out_base = Path("snapshots").resolve()
+    out_dir = out_base / f"reset_snapshot_{now_stamp()}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    meta = {
+        "timestamp": out_dir.name,
+        "platform": platform.platform(),
+        "python": sys.version,
+        "cwd": str(Path.cwd()),
+        "safety": "Read-only collection; no deletions performed.",
+    }
+    write_json(out_dir / "meta.json", meta)
+
+    procs = collect_processes()
+    net = collect_network()
+    persist = collect_persistence()
+    flags = flag_suspicious_listeners(net)
+
+    write_json(out_dir / "processes.json", procs)
+    write_json(out_dir / "network.json", net)
+    write_json(out_dir / "persistence.json", persist)
+    write_json(out_dir / "review_flags.json", flags)
+    write_text(out_dir / "reset_plan.txt", make_reset_plan())
+
+    print(f"Wrote snapshot: {out_dir}")
+    print("Review these files:")
+    print(" - review_flags.json (suspicious listeners)")
+    print(" - persistence.json (startup/tasks/services)")
+    print(" - reset_plan.txt (safe steps)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+#requires -RunAsAdministrator
+<#
+MAX-RESTRICTION LOCKDOWN (Windows 10/11)
+- Enables and tightens Windows Firewall (default outbound block)
+- Disables common remote access surfaces (RDP, WinRM, admin shares)
+- Enables Microsoft Defender hardening (ASR rules, Network Protection)
+- Creates a backup folder with logs
+
+Reversal: see the "ROLLBACK" section at bottom.
+#>
+
+$ErrorActionPreference = "Stop"
+$stamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$base = Join-Path $env:ProgramData "MaxRestrict_$stamp"
+New-Item -ItemType Directory -Path $base -Force | Out-Null
+Start-Transcript -Path (Join-Path $base "lockdown.log") -Force | Out-Null
+
+function Save-Info($name, $obj) {
+  $path = Join-Path $base $name
+  $obj | Out-File -FilePath $path -Encoding UTF8
+}
+
+Write-Host "Backup folder: $base"
+
+# --- Snapshot current state (before changes) ---
+Save-Info "firewall_before.txt" (netsh advfirewall show allprofiles)
+Save-Info "winrm_before.txt"    (sc.exe qc WinRM 2>&1)
+Save-Info "rdp_before.txt"      (reg query "HKLM\System\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections 2>&1)
+Save-Info "shares_before.txt"   (Get-SmbShare | Format-Table -AutoSize | Out-String)
+Save-Info "defender_before.txt" (powershell -NoProfile -Command "Get-MpPreference | Out-String")
+
+# --- FIREWALL: ON + DEFAULT OUTBOUND BLOCK (MAX RESTRICTION) ---
+Write-Host "Enabling firewall and setting default outbound to BLOCK..."
+netsh advfirewall set allprofiles state on | Out-Null
+netsh advfirewall set allprofiles firewallpolicy blockinbound,blockoutbound | Out-Null
+
+# Allow essential outbound: DHCP (67/68), DNS (53) - you may still want to restrict further later.
+# NOTE: If you use a static IP and local DNS, adjust accordingly.
+Write-Host "Adding minimal outbound allow rules (DHCP, DNS)..."
+New-NetFirewallRule -DisplayName "ALLOW OUT DHCPv4" -Direction Outbound -Action Allow -Protocol UDP -LocalPort 68 -RemotePort 67 -Profile Any | Out-Null
+New-NetFirewallRule -DisplayName "ALLOW OUT DHCPv6" -Direction Outbound -Action Allow -Protocol UDP -LocalPort 546 -RemotePort 547 -Profile Any | Out-Null
+New-NetFirewallRule -DisplayName "ALLOW OUT DNS UDP"  -Direction Outbound -Action Allow -Protocol UDP -RemotePort 53 -Profile Any | Out-Null
+New-NetFirewallRule -DisplayName "ALLOW OUT DNS TCP"  -Direction Outbound -Action Allow -Protocol TCP -RemotePort 53 -Profile Any | Out-Null
+
+# OPTIONAL: allow Windows Update later by temporarily switching outbound to allow, or by adding scoped rules.
+# Keeping maximum restriction here.
+
+# --- Disable Remote Desktop ---
+Write-Host "Disabling Remote Desktop..."
+reg add "HKLM\System\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 1 /f | Out-Null
+Disable-NetFirewallRule -DisplayGroup "Remote Desktop" -ErrorAction SilentlyContinue | Out-Null
+
+# --- Disable WinRM (remote PowerShell) ---
+Write-Host "Disabling WinRM..."
+try { Stop-Service WinRM -Force -ErrorAction SilentlyContinue } catch {}
+try { Set-Service WinRM -StartupType Disabled -ErrorAction SilentlyContinue } catch {}
+
+# --- Disable admin shares (C$, ADMIN$) ---
+Write-Host "Disabling administrative shares..."
+reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" /v AutoShareWks /t REG_DWORD /d 0 /f | Out-Null
+
+# --- Reduce name resolution attack surface (LLMNR) ---
+Write-Host "Disabling LLMNR..."
+reg add "HKLM\Software\Policies\Microsoft\Windows NT\DNSClient" /v EnableMulticast /t REG_DWORD /d 0 /f | Out-Null
+
+# --- Microsoft Defender hardening (ASR rules) ---
+# Requires Defender. On some editions, some settings may be ignored; script logs results.
+Write-Host "Configuring Microsoft Defender ASR rules + Network Protection..."
+try {
+  Set-MpPreference -EnableNetworkProtection Enabled | Out-Null
+
+  # ASR rule IDs: Microsoft published GUIDs. We set common high-value ones.
+  # Block Office from creating child processes
+  Add-MpPreference -AttackSurfaceReductionRules_Ids "D4F940AB-401B-4EFC-AADC-AD5F3C50688A" `
+                   -AttackSurfaceReductionRules_Actions Enabled | Out-Null
+  # Block Office from creating executable content
+  Add-MpPreference -AttackSurfaceReductionRules_Ids "3B576869-A4EC-4529-8536-B80A7769E899" `
+                   -AttackSurfaceReductionRules_Actions Enabled | Out-Null
+  # Block credential stealing from LSASS
+  Add-MpPreference -AttackSurfaceReductionRules_Ids "9E6C4E1F-7D60-472F-BA1A-A39EF669E4B2" `
+                   -AttackSurfaceReductionRules_Actions Enabled | Out-Null
+  # Block executable content from email/webmail
+  Add-MpPreference -AttackSurfaceReductionRules_Ids "BE9BA2D9-53EA-4CDC-84E5-9B1EEEE46550" `
+                   -AttackSurfaceReductionRules_Actions Enabled | Out-Null
+  # Block process creation from PSExec/WMI
+  Add-MpPreference -AttackSurfaceReductionRules_Ids "D1E49AAC-8F56-4280-B9BA-993A6D77406C" `
+                   -AttackSurfaceReductionRules_Actions Enabled | Out-Null
+  # Block untrusted/unsigned processes from USB
+  Add-MpPreference -AttackSurfaceReductionRules_Ids "B2B3F03D-6A65-4F7B-A9C7-1C7EF74A9BA4" `
+                   -AttackSurfaceReductionRules_Actions Enabled | Out-Null
+} catch {
+  Write-Warning "Defender settings could not be fully applied: $($_.Exception.Message)"
+}
+
+# --- Optional: Disable common remote assistance features ---
+Write-Host "Disabling Remote Assistance..."
+reg add "HKLM\SYSTEM\CurrentControlSet\Control\Remote Assistance" /v fAllowToGetHelp /t REG_DWORD /d 0 /f | Out-Null
+
+# --- Output after state ---
+Save-Info "firewall_after.txt" (netsh advfirewall show allprofiles)
+Save-Info "defender_after.txt" (powershell -NoProfile -Command "Get-MpPreference | Out-String")
+
+Write-Host ""
+Write-Host "DONE. Your machine is now in MAX RESTRICTION mode."
+Write-Host "IMPORTANT: Outbound is BLOCKED by default. Most apps will not reach the internet until you add allow rules."
+Write-Host "Backup/logs: $base"
+Stop-Transcript | Out-Null
+
+# -------------------------
+# ROLLBACK (manual guidance)
+# -------------------------
+# To revert outbound blocking:
+#   netsh advfirewall set allprofiles firewallpolicy blockinbound,allowoutbound
+#
+# To re-enable WinRM:
+#   Set-Service WinRM -StartupType Manual; Start-Service WinRM
+#
+# To re-enable admin shares:
+#   reg add "HKLM\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" /v AutoShareWks /t REG_DWORD /d 1 /f
+#
+# To re-enable LLMNR:
+#   reg delete "HKLM\Software\Policies\Microsoft\Windows NT\DNSClient" /v EnableMulticast /f
+# Allow git.exe outbound (adjust path if needed)
+New-NetFirewallRule -DisplayName "ALLOW OUT Git" -Direction Outbound -Action Allow `
+  -Program "C:\Program Files\Git\bin\git.exe" -Profile Any
+
+# Allow your browser (example Edge)
+New-NetFirewallRule -DisplayName "ALLOW OUT Edge" -Direction Outbound -Action Allow `
+  -Program "$env:ProgramFiles(x86)\Microsoft\Edge\Application\msedge.exe" -Profile Any
+diff --git a/metadata_reset.py b/metadata_reset.py
+index 620d42d012b01adc9d03b9fc9fabe33cf2210721..7df592c2e6bcb0bfdc54a4effec7c134944386ea 100644
+--- a/metadata_reset.py
++++ b/metadata_reset.py
+@@ -1,60 +1,64 @@
+ """
+ Universal Metadata Reset System
+ 
+ Comprehensive utilities to reset all types of metadata across:
+ - Metaphysical system state (energy pools, consciousness, ability usage)
+ - Git repository metadata
+ - File system metadata
+ - Generic object metadata
+ """
+ 
+ import os
+ import json
++import re
++import hashlib
+ from datetime import datetime
+ from pathlib import Path
+ from dataclasses import asdict, replace
+-from typing import Any, Dict, List, Optional
++from typing import Any, Dict, List, Optional, Set
+ from enum import Enum
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalPractitioner, MetaphysicalCapability,
+     CapabilityType, RestrictionType
+ )
+ 
+ 
+ # ============================================================================
+ # PART 1: METAPHYSICAL SYSTEM RESET
+ # ============================================================================
+ 
+ class MetaphysicalResetType(Enum):
+     """Types of metaphysical resets available."""
+     FULL_RESET = "full_reset"
+     ENERGY_RESET = "energy_reset"
+     CONSCIOUSNESS_RESET = "consciousness_reset"
+     USAGE_RESET = "usage_reset"
+     RESTRICTION_RESET = "restriction_reset"
++    CAPABILITY_LOCK_RESET = "capability_lock_reset"
++    COMPLETE_METAPHYSICAL_RESET = "complete_metaphysical_reset"
+     STATE_SNAPSHOT = "state_snapshot"
+ 
+ 
+ class MetaphysicalResetManager:
+     """Manage reset operations for metaphysical system state."""
+     
+     def __init__(self):
+         self.reset_history = []
+         self.state_snapshots = {}
+     
+     def snapshot_state(self, practitioner: MetaphysicalPractitioner, 
+                       snapshot_name: Optional[str] = None) -> Dict:
+         """Create a snapshot of practitioner state for later restoration."""
+         name = snapshot_name or f"snapshot_{datetime.now().isoformat()}"
+         
+         snapshot = {
+             "timestamp": datetime.now().isoformat(),
+             "practitioner_name": practitioner.name,
+             "consciousness_level": practitioner.consciousness_level,
+             "energy_pool": practitioner.energy_pool,
+             "max_energy": practitioner.max_energy,
+             "capabilities": []
+         }
+         
+         for cap in practitioner.capabilities:
+@@ -157,50 +161,93 @@ class MetaphysicalResetManager:
+         
+         self.reset_history.append(reset_info)
+         return reset_info
+     
+     def reset_restrictions(self, practitioner: MetaphysicalPractitioner) -> Dict:
+         """Clear all restrictions from all capabilities."""
+         reset_info = {
+             "type": "restriction_reset",
+             "abilities_modified": [],
+             "timestamp": datetime.now().isoformat()
+         }
+         
+         for capability in practitioner.capabilities:
+             old_restrictions = len(capability.restrictions)
+             capability.restrictions = []
+             
+             reset_info["abilities_modified"].append({
+                 "ability": capability.name,
+                 "old_restriction_count": old_restrictions,
+                 "new_restriction_count": 0
+             })
+         
+         self.reset_history.append(reset_info)
+         return reset_info
+     
++    def reset_capability_state(self, practitioner: MetaphysicalPractitioner, lock: bool = True) -> Dict:
++        """Reset capability runtime state and optionally lock all capabilities."""
++        reset_info = {
++            "type": "capability_lock_reset",
++            "locked": lock,
++            "capabilities_updated": [],
++            "timestamp": datetime.now().isoformat()
++        }
++
++        for capability in practitioner.capabilities:
++            old_usable = capability.is_usable
++            old_power = capability.base_power_level
++            capability.is_usable = not lock
++            if lock:
++                capability.base_power_level = 0.0
++
++            reset_info["capabilities_updated"].append({
++                "ability": capability.name,
++                "old_is_usable": old_usable,
++                "new_is_usable": capability.is_usable,
++                "old_base_power_level": old_power,
++                "new_base_power_level": capability.base_power_level,
++            })
++
++        self.reset_history.append(reset_info)
++        return reset_info
++
++    def complete_metaphysical_reset(self, practitioner: MetaphysicalPractitioner, lock_capabilities: bool = True) -> Dict:
++        """Strong reset that restores baseline state and optionally hard-locks capabilities."""
++        reset_info = {
++            "type": "complete_metaphysical_reset",
++            "timestamp": datetime.now().isoformat(),
++            "resets_applied": []
++        }
++
++        reset_info["resets_applied"].append(self.full_reset(practitioner))
++        reset_info["resets_applied"].append(
++            self.reset_capability_state(practitioner, lock=lock_capabilities)
++        )
++
++        self.reset_history.append(reset_info)
++        return reset_info
++
+     def full_reset(self, practitioner: MetaphysicalPractitioner) -> Dict:
+         """Complete reset of all metaphysical state."""
+         reset_info = {
+             "type": "full_reset",
+             "timestamp": datetime.now().isoformat(),
+             "resets_applied": []
+         }
+         
+         # Apply all resets
+         reset_info["resets_applied"].append(self.reset_energy(practitioner))
+         reset_info["resets_applied"].append(
+             self.reset_consciousness(practitioner, level=1.0)
+         )
+         reset_info["resets_applied"].append(self.reset_usage_counts(practitioner))
+         reset_info["resets_applied"].append(self.reset_restrictions(practitioner))
+         
+         self.reset_history.append(reset_info)
+         return reset_info
+     
+     def get_reset_history(self, limit: Optional[int] = None) -> List[Dict]:
+         """Get history of reset operations."""
+         history = self.reset_history
+         if limit:
+             history = history[-limit:]
+         return history
+@@ -594,75 +641,304 @@ class MetadataResetFramework:
+         metadata_attrs = [
+             '_metadata', '_meta', '__meta__', 'metadata',
+             '_timestamp', '_created', '_modified', '_updated',
+             '_id', '__id__', '_hash'
+         ]
+         
+         for attr in metadata_attrs:
+             if hasattr(obj, attr):
+                 try:
+                     setattr(obj, attr, None)
+                     result["operations"].append({
+                         "attribute": attr,
+                         "action": "cleared",
+                         "success": True
+                     })
+                 except Exception as e:
+                     result["operations"].append({
+                         "attribute": attr,
+                         "action": "clear_failed",
+                         "error": str(e)
+                     })
+         
+         return result
+ 
+ 
++# ============================================================================
++# PART 4: KEYWORD-TRIGGERED INFLUENCE RESET
++# ============================================================================
++
++class InfluenceKeywordReset:
++    """Reset helper that neutralizes payloads matching restricted influence terms."""
++
++    BASE_KEYWORDS = {
++        # direct categories requested by user
++        "power being used on people",
++        "magical imbuement",
++        "magical imbuements",
++        "infusion",
++        "infusions",
++        "scent imbuement",
++        "scent imbuements",
++        "emotional sway magic",
++        "inclination magic",
++        "passion magic",
++        "agony magic",
++        "hallucination magic",
++        "spell",
++        "spells",
++        "magician spell",
++        "magician spells",
++        "magical sound",
++        "sounds relating to magical use",
++        # broader aliases and requested variations
++        "magic",
++        "magick",
++        "arcane",
++        "hex",
++        "curse",
++        "enchantment",
++        "charm",
++        "occult influence",
++        "mind control",
++    }
++
++    def __init__(
++        self,
++        extra_keywords: Optional[List[str]] = None,
++        variant_limit_per_keyword: int = 1000,
++        ephemeral_window_seconds: int = 300,
++    ):
++        self.variant_limit_per_keyword = max(1, variant_limit_per_keyword)
++        self.ephemeral_window_seconds = max(1, ephemeral_window_seconds)
++
++        base = {self._normalize_text(keyword) for keyword in self.BASE_KEYWORDS}
++        if extra_keywords:
++            base.update(self._normalize_text(keyword) for keyword in extra_keywords)
++
++        self.keywords = base
++        self.keyword_variants = self._build_keyword_variants(base)
++        self.sound_signatures = {self._sound_signature(keyword) for keyword in self.keyword_variants}
++        self.reset_log: List[Dict] = []
++
++    @staticmethod
++    def _normalize_text(text: Any) -> str:
++        """Normalize free text for reliable keyword checks."""
++        cleaned = str(text).lower()
++        cleaned = re.sub(r"[^a-z0-9\s-]", " ", cleaned)
++        return " ".join(cleaned.split())
++
++    @staticmethod
++    def _sound_signature(text: str) -> str:
++        """Lightweight phonetic signature to catch sound-like variants of keywords."""
++        normalized = re.sub(r"[^a-z0-9]", "", text.lower())
++        if not normalized:
++            return ""
++        first = normalized[0]
++        tail = re.sub(r"[aeiouy]", "", normalized[1:])
++        return f"{first}{tail}"
++
++    def _variants_for_keyword(self, keyword: str) -> Set[str]:
++        """Generate broad textual variants (up to thousandths) for one keyword."""
++        normalized = self._normalize_text(keyword)
++        if not normalized:
++            return set()
++
++        variants: Set[str] = {
++            normalized,
++            normalized.replace("-", " "),
++            normalized.replace(" ", ""),
++            normalized.replace(" ", "-"),
++        }
++
++        replacement_pairs = [
++            ("magic", "magick"),
++            ("magick", "magic"),
++            ("ck", "k"),
++            ("k", "ck"),
++            ("ph", "f"),
++            ("f", "ph"),
++            ("c", "k"),
++        ]
++
++        frontier = list(variants)
++        while frontier and len(variants) < self.variant_limit_per_keyword:
++            current = frontier.pop(0)
++            for old, new in replacement_pairs:
++                if old in current:
++                    candidate = current.replace(old, new)
++                    candidate = self._normalize_text(candidate)
++                    if candidate and candidate not in variants:
++                        variants.add(candidate)
++                        frontier.append(candidate)
++                        if len(variants) >= self.variant_limit_per_keyword:
++                            break
++            if len(variants) >= self.variant_limit_per_keyword:
++                break
++
++        inflected = set()
++        for candidate in list(variants):
++            inflected.add(candidate)
++            if len(candidate) > 3 and not candidate.endswith("s"):
++                inflected.add(f"{candidate}s")
++                inflected.add(f"{candidate}es")
++
++        return set(list(inflected)[: self.variant_limit_per_keyword])
++
++    def _build_keyword_variants(self, keywords: Set[str]) -> Set[str]:
++        """Build variant dictionary across all keywords."""
++        variants: Set[str] = set()
++        for keyword in keywords:
++            variants.update(self._variants_for_keyword(keyword))
++        return variants
++
++    def detect_terms(self, text: Any) -> List[str]:
++        """Return all restricted terms present, including sound-like matches."""
++        normalized = self._normalize_text(text)
++        direct_matches = {term for term in self.keyword_variants if term and term in normalized}
++
++        sound_matches = set()
++        for token in normalized.split():
++            token_signature = self._sound_signature(token)
++            if token_signature and token_signature in self.sound_signatures:
++                sound_matches.add(f"sound:{token}")
++
++        return sorted(direct_matches.union(sound_matches))
++
++    def _neutralize_payload(self, payload: Dict[str, Any], matched_terms: List[str]) -> None:
++        """Apply protective reset and keep ephemeral proof metadata."""
++        now = datetime.now()
++        expires_at = now.timestamp() + self.ephemeral_window_seconds
++        fingerprint = hashlib.sha256(
++            f"{now.isoformat()}::{','.join(matched_terms)}::{payload.get('name', 'unknown')}".encode("utf-8")
++        ).hexdigest()
++
++        payload["enabled"] = False
++        payload["capabilities"] = []
++        payload["powers"] = {}
++        payload["state"] = "reset"
++        payload["safety_flag"] = "restricted_influence_detected"
++        payload["protection_metadata"] = {
++            "matched_terms": matched_terms,
++            "fingerprint": fingerprint,
++            "ephemeral_expires_at": expires_at,
++            "mode": "keyword_and_sound_guard",
++        }
++
++    def reset_payload(self, payload: Dict[str, Any], text_fields: Optional[List[str]] = None) -> Dict[str, Any]:
++        """Neutralize a payload when restricted influence terms are present."""
++        fields = text_fields or ["name", "description", "tags", "notes", "content"]
++        scan_blob = " ".join(str(payload.get(field, "")) for field in fields)
++        matched_terms = self.detect_terms(scan_blob)
++
++        reset_result = {
++            "timestamp": datetime.now().isoformat(),
++            "blocked": bool(matched_terms),
++            "matched_terms": matched_terms,
++            "action": "no_action",
++        }
++
++        if matched_terms:
++            self._neutralize_payload(payload, matched_terms)
++            reset_result["action"] = "payload_neutralized"
++
++        self.reset_log.append(reset_result)
++        return reset_result
++
++    def protect_payload_changes(
++        self,
++        before: Dict[str, Any],
++        after: Dict[str, Any],
++        text_fields: Optional[List[str]] = None,
++    ) -> Dict[str, Any]:
++        """Protect updates by blocking newly introduced restricted magic/magick terms."""
++        fields = text_fields or ["name", "description", "tags", "notes", "content"]
++        before_blob = " ".join(str(before.get(field, "")) for field in fields)
++        after_blob = " ".join(str(after.get(field, "")) for field in fields)
++
++        before_terms = set(self.detect_terms(before_blob))
++        after_terms = set(self.detect_terms(after_blob))
++        introduced = sorted(after_terms - before_terms)
++
++        result = {
++            "timestamp": datetime.now().isoformat(),
++            "blocked": bool(introduced),
++            "introduced_terms": introduced,
++            "action": "change_allowed",
++        }
++
++        if introduced:
++            self._neutralize_payload(after, introduced)
++            result["action"] = "change_blocked_and_neutralized"
++
++        self.reset_log.append(result)
++        return result
++
++    def reset_all_systems(self, payloads: List[Dict[str, Any]], text_fields: Optional[List[str]] = None) -> Dict[str, Any]:
++        """Apply keyword-triggered reset to a collection of system payloads."""
++        summary = {
++            "timestamp": datetime.now().isoformat(),
++            "systems_scanned": len(payloads),
++            "systems_reset": 0,
++            "results": [],
++        }
++
++        for payload in payloads:
++            result = self.reset_payload(payload, text_fields=text_fields)
++            summary["results"].append(result)
++            if result["blocked"]:
++                summary["systems_reset"] += 1
++
++        return summary
++
++
++
+ # ============================================================================
+ # COMPREHENSIVE RESET MANAGER
+ # ============================================================================
+ 
+ class UniversalMetadataResetManager:
+     """Master reset manager coordinating all metadata reset operations."""
+     
+     def __init__(self):
+         self.metaphysical_manager = MetaphysicalResetManager()
+         self.framework = MetadataResetFramework()
+         self.overall_log = []
+     
+     def reset_all(self, practitioner: MetaphysicalPractitioner, 
+                  repo_path: Optional[str] = None,
+                  file_paths: Optional[List[str]] = None) -> Dict:
+         """Execute comprehensive reset of all metadata types."""
+         full_reset = {
+             "action": "universal_metadata_reset",
+             "timestamp": datetime.now().isoformat(),
+             "operations": {}
+         }
+         
+-        # Reset metaphysical system
++        # Reset metaphysical system (strong complete reset)
+         full_reset["operations"]["metaphysical"] = \
+-            self.metaphysical_manager.full_reset(practitioner)
++            self.metaphysical_manager.complete_metaphysical_reset(practitioner, lock_capabilities=True)
+         
+         # Reset git metadata (if repo path provided)
+         if repo_path:
+             full_reset["operations"]["git"] = {
+                 "uncommitted": GitMetadataReset.reset_uncommitted_changes(repo_path),
+                 "author": GitMetadataReset.reset_author_metadata(repo_path)
+             }
+         
+         # Reset file metadata (if file paths provided)
+         if file_paths:
+             full_reset["operations"]["files"] = {}
+             for filepath in file_paths:
+                 full_reset["operations"]["files"][filepath] = {
+                     "timestamps": FileMetadataReset.reset_file_timestamps(filepath),
+                     "permissions": FileMetadataReset.reset_file_permissions(filepath)
+                 }
+         
+         # Clear Python cache
+         full_reset["operations"]["cache"] = FileMetadataReset.clear_python_cache()
+         
+         self.overall_log.append(full_reset)
+         return full_reset
+     
+     def get_overall_log(self) -> List[Dict]:
+         """Get log of all reset operations."""
+@@ -729,28 +1005,48 @@ def demonstrate_metadata_reset():
+     
+     # 3. File Metadata Reset
+     print("\n--- 3. FILE METADATA RESET ---")
+     reset_cache = FileMetadataReset.clear_python_cache()
+     print(f"✓ Cache cleanup:")
+     print(f"  Directories removed: {len(reset_cache['directories_removed'])}")
+     print(f"  Files removed: {len(reset_cache['files_removed'])}")
+     
+     # 4. Reset History
+     print("\n--- 4. RESET HISTORY ---")
+     history = manager.get_reset_history(limit=3)
+     print(f"✓ Last {len(history)} reset operations:")
+     for op in history:
+         action = op.get('action') or op.get('type', 'unknown_action')
+         print(f"  - {action} at {op['timestamp']}")
+     
+     # 5. Full Reset (all metadata types)
+     print("\n--- 5. FULL UNIVERSAL RESET ---")
+     universal_manager = UniversalMetadataResetManager()
+     full_reset = universal_manager.reset_all(mage)
+     print(f"✓ Universal reset completed")
+     print(f"  Metaphysical: {full_reset['operations']['metaphysical']['type']}")
+     print(f"  Cache: {full_reset['operations']['cache']['action']}")
+     print(f"  Total operations: {len(full_reset['operations'])}")
+ 
++    # 6. Keyword-triggered influence reset
++    print("\n--- 6. KEYWORD-TRIGGERED INFLUENCE RESET ---")
++    influence_reset = InfluenceKeywordReset()
++    systems = [
++        {"name": "System A", "description": "Contains emotional sway magick"},
++        {"name": "System B", "description": "No restricted terms here"},
++        {"name": "System C", "description": "Uses spell and hallucination magic"},
++    ]
++    influence_summary = influence_reset.reset_all_systems(systems)
++    print(f"✓ Scanned systems: {influence_summary['systems_scanned']}")
++    print(f"✓ Reset systems: {influence_summary['systems_reset']}")
++
++    # 7. Protecting changes made over time
++    print("\n--- 7. CHANGE PROTECTION (EPHEMERAL) ---")
++    before = {"name": "Tone Mapper", "description": "ambient processing"}
++    after = {"name": "Tone Mapper", "description": "ambient processing with sonic magick infusion"}
++    change_result = influence_reset.protect_payload_changes(before, after)
++    print(f"✓ Change blocked: {change_result['blocked']}")
++    print(f"  Introduced terms: {change_result['introduced_terms']}")
++
+ 
+ if __name__ == "__main__":
+     demonstrate_metadata_reset()
+diff --git a/magic_keyword_protection.py b/magic_keyword_protection.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ce7d5ba8128a089db9932aaa2f5d558b0e1079fe
+--- /dev/null
++++ b/magic_keyword_protection.py
+@@ -0,0 +1,132 @@
++"""Ephemeral protection utilities for magic-related language changes."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from datetime import datetime, timezone
++from hashlib import sha256
++from typing import Iterable
++import re
++import time
++
++
++@dataclass(frozen=True)
++class ProtectionEvent:
++    """Immutable audit event with millisecond precision."""
++
++    timestamp_ms: int
++    actor: str
++    original_text: str
++    normalized_text: str
++    matched_keywords: tuple[str, ...]
++    allowed: bool
++    reason: str
++    signature: str
++
++
++class EphemeralMagicProtection:
++    """
++    Protect magic-related verbiage from unauthorized changes.
++
++    Protection dimensions:
++    - words: exact + generated keyword variants ("magic", "magick", etc.)
++    - sounds: phonetic normalization (simple consonant skeleton)
++    - use: policy gate that blocks edits without an authorization token
++    - ephemerality: events are timestamped at thousandths (milliseconds) and
++      can expire from active memory after ``ttl_seconds``.
++    """
++
++    BASE_KEYWORDS = ("magic", "magick")
++
++    def __init__(self, ttl_seconds: float = 30.0, auth_token: str = "ALLOW_MAGIC_EDIT"):
++        self.ttl_seconds = ttl_seconds
++        self.auth_token = auth_token
++        self._events: list[ProtectionEvent] = []
++        self._protected_terms = self._build_keyword_graph(self.BASE_KEYWORDS)
++        self._protected_sounds = {self._sound_key(word) for word in self._protected_terms}
++
++    @staticmethod
++    def _normalize_text(text: str) -> str:
++        return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]", " ", text.lower())).strip()
++
++    @staticmethod
++    def _sound_key(word: str) -> str:
++        """Very small phonetic approximation for sound-level matching."""
++        w = re.sub(r"[^a-z]", "", word.lower())
++        if not w:
++            return ""
++        # Collapse repeated letters and remove vowels after first char.
++        collapsed = re.sub(r"(.)\1+", r"\1", w)
++        return collapsed[0] + re.sub(r"[aeiouy]", "", collapsed[1:])
++
++    def _build_keyword_graph(self, roots: Iterable[str]) -> set[str]:
++        variants: set[str] = set()
++        suffixes = ("", "al", "ally", "ian", "ians", "s", "ing", "ed", "er")
++        prefixes = ("", "anti", "meta", "neo")
++        for root in roots:
++            base = self._normalize_text(root)
++            for prefix in prefixes:
++                for suffix in suffixes:
++                    variants.add(f"{prefix}{base}{suffix}")
++            # common orthographic/spacing variants
++            variants.add(base.replace("ck", "c"))
++            variants.add(base.replace("ck", "k"))
++            variants.add(base.replace("magic", "majik"))
++            variants.add(base.replace("magic", "magik"))
++        return {v for v in variants if v}
++
++    def _find_matches(self, normalized_text: str) -> set[str]:
++        words = set(normalized_text.split())
++        direct_hits = {w for w in words if w in self._protected_terms}
++        sound_hits = {
++            w for w in words if self._sound_key(w) in self._protected_sounds and len(w) >= 4
++        }
++        return direct_hits | sound_hits
++
++    def protect_change(self, actor: str, new_text: str, token: str | None = None) -> ProtectionEvent:
++        """Audit and enforce protections for a proposed text change."""
++        now_ms = int(time.time() * 1000)  # thousandths of a second
++        normalized = self._normalize_text(new_text)
++        matches = sorted(self._find_matches(normalized))
++
++        allowed = True
++        reason = "no protected keywords found"
++        if matches and token != self.auth_token:
++            allowed = False
++            reason = "protected magic-related verbiage requires authorization"
++        elif matches:
++            reason = "authorized change on protected terms"
++
++        payload = f"{now_ms}|{actor}|{normalized}|{','.join(matches)}|{allowed}|{reason}"
++        signature = sha256(payload.encode("utf-8")).hexdigest()
++
++        event = ProtectionEvent(
++            timestamp_ms=now_ms,
++            actor=actor,
++            original_text=new_text,
++            normalized_text=normalized,
++            matched_keywords=tuple(matches),
++            allowed=allowed,
++            reason=reason,
++            signature=signature,
++        )
++        self._events.append(event)
++        self._purge_expired_events()
++        return event
++
++    def active_events(self) -> tuple[ProtectionEvent, ...]:
++        self._purge_expired_events()
++        return tuple(self._events)
++
++    def _purge_expired_events(self) -> None:
++        cutoff = int((time.time() - self.ttl_seconds) * 1000)
++        self._events = [event for event in self._events if event.timestamp_ms >= cutoff]
++
++    def export_active_audit_log(self) -> dict:
++        """Serializable snapshot of active, non-expired protection events."""
++        self._purge_expired_events()
++        return {
++            "generated_at": datetime.now(timezone.utc).isoformat(),
++            "ttl_seconds": self.ttl_seconds,
++            "events": [event.__dict__ for event in self._events],
++        }
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..54899b3887f80750fc5f655c82c13b03e4f1de86 100644
+--- a/examples.py
++++ b/examples.py
+@@ -1,39 +1,42 @@
+ """
+ Example usage demonstrating the metaphysical capabilities restriction system.
+ Shows both game mechanics and philosophical frameworks in action.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalCapability, MetaphysicalPractitioner,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework,
+     create_balanced_magic_system, create_restricted_reality_warper
+ )
+ 
+ 
++from magic_change_protector import MagicChangeProtector
++
++
+ def example_1_basic_capability_restriction():
+     """Example 1: Basic capability with multiple restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 1: Basic Capability Restriction")
+     print("="*70)
+     
+     # Create a simple telekinesis ability
+     telekinesis = MetaphysicalCapability(
+         name="Advanced Telekinesis",
+         capability_type=CapabilityType.TELEKINESIS,
+         base_power_level=60.0
+     )
+     
+     print(f"\nOriginal capability: {telekinesis}")
+     print(f"Effective power: {telekinesis.get_effective_power():.1f}")
+     
+     # Add restrictions one by one
+     restrictions = [
+         RestrictionRule(
+             RestrictionType.ENERGY_COST,
+             severity=0.3,
+             description="High energy consumption"
+         ),
+         RestrictionRule(
+             RestrictionType.RANGE_LIMIT,
+@@ -231,47 +234,67 @@ def example_7_restriction_modification():
+     print("\n--- Adding Environmental Restrictions ---")
+     
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+     
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+     
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+         print(f"Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++def example_8_magic_change_protection():
++    """Example 8: Protect edits involving magic-related terms."""
++    print("\n" + "="*70)
++    print("EXAMPLE 8: Magic Change Protection")
++    print("="*70)
++
++    protector = MagicChangeProtector(secret="demo-secret")
++    record = protector.protect_change(
++        author="scribe",
++        before_text="The ritual uses ancient magick and sigils.",
++        after_text="The ritual uses guarded magic, sigils, and sound wards.",
++        ttl_seconds=120,
++    )
++
++    print(f"Touched keywords: {record.touched_keywords}")
++    print(f"Evidence: {record.evidence}")
++    print(f"Signature valid: {protector.verify(record)}")
++
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
++    example_8_magic_change_protection()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/README.md b/README.md
+index 4d7ccaa8ce6e61c69d6948882582873badef63da..ca41a4b42eec4956e8fe6456a08f1087a05be0aa 100644
+--- a/README.md
++++ b/README.md
+@@ -344724,26 +344724,41 @@ class MetaphysicalPractitioner:
+ 
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+         energy_cost = capability.base_power_level * 0.5
+         if self.energy_pool < energy_cost:
+             return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+ 
+         # Check consciousness
+         if self.consciousness_level < 0.5:
+             return False, "Consciousness level too low to maintain metaphysical connection."
+ 
+         # Check all philosophical frameworks
+         for framework in self.philosophical_frameworks:
+             if not framework.evaluate_restriction(capability):
+                 return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+ 
+         return True, "Capability can be used."
+ 
+     def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+         """Attempt to use a capability. Returns result details."""
+         can_use, reason = self.can_use_capability(capability)
+         
+-        result = {
+\ No newline at end of file
++        result = {
++## Magic/Magick Change Protection (Python)
++
++Use `magic_change_guard.py` to protect content touching `magic`, `magick`, and related wording with direct, phonetic, and fuzzy matching scored in thousandths.
++
++```python
++from magic_change_guard import MagicChangeGuard
++
++guard = MagicChangeGuard(extra_keywords=["ritual", "sigil"])
++record = guard.protect_change("Ephemeral magick ritual update", ttl_seconds=1800)
++
++print(record.record_id)
++print(guard.verify_protection(record.record_id))
++```
++
++Set `ttl_seconds=None` for non-expiring records.
+diff --git a/magic_keyword_guard.py b/magic_keyword_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..efe94c210413309f11b4a38beba5a3195f27a70f
+--- /dev/null
++++ b/magic_keyword_guard.py
+@@ -0,0 +1,179 @@
++"""Utilities for protecting magic-related language in edited text.
++
++This module is designed to preserve or block edits affecting protected words such
++as "magic", "magick", and related variants. It combines:
++- lexical normalization for spelling/verbage variants,
++- phonetic checks for sound-alike terms,
++- fuzzy similarity checks with thousandths precision,
++- in-memory (ephemeral) audit records with optional TTL cleanup.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from datetime import datetime, timedelta, timezone
++from difflib import SequenceMatcher
++import re
++from typing import Dict, Iterable, List, Sequence, Tuple
++
++
++DEFAULT_KEYWORDS: Tuple[str, ...] = (
++    "magic",
++    "magick",
++    "mage",
++    "magi",
++    "wizard",
++    "sorcery",
++    "spell",
++    "enchant",
++    "arcane",
++)
++
++_WORD_RE = re.compile(r"\b[\w'-]+\b")
++
++
++def _normalize_token(token: str) -> str:
++    """Normalize token for robust matching across punctuation and case."""
++    return re.sub(r"[^a-z0-9]", "", token.lower())
++
++
++def _simple_metaphone_like(token: str) -> str:
++    """Compact sound-alike signature (lightweight, dependency-free)."""
++    token = _normalize_token(token)
++    if not token:
++        return ""
++
++    replacements = (
++        ("ph", "f"),
++        ("ck", "k"),
++        ("qu", "k"),
++        ("x", "ks"),
++        ("z", "s"),
++        ("j", "g"),
++    )
++    for src, dst in replacements:
++        token = token.replace(src, dst)
++
++    # Remove vowels except first character for a coarse sound signature.
++    head = token[0]
++    tail = re.sub(r"[aeiouy]", "", token[1:])
++    squashed = re.sub(r"(.)\1+", r"\1", head + tail)
++    return squashed
++
++
++def _similarity_thousandths(a: str, b: str) -> int:
++    """Return normalized similarity score in thousandths (0..1000)."""
++    score = SequenceMatcher(None, _normalize_token(a), _normalize_token(b)).ratio()
++    return int(round(score * 1000))
++
++
++@dataclass
++class GuardEvent:
++    timestamp: datetime
++    original: str
++    attempted: str
++    restored: str
++    reason: str
++
++
++@dataclass
++class EphemeralAuditTrail:
++    """In-memory events with optional expiry for ephemeral operation."""
++
++    retention_seconds: int = 300
++    events: List[GuardEvent] = field(default_factory=list)
++
++    def record(self, event: GuardEvent) -> None:
++        self.events.append(event)
++        self.prune()
++
++    def prune(self) -> None:
++        cutoff = datetime.now(timezone.utc) - timedelta(seconds=self.retention_seconds)
++        self.events = [e for e in self.events if e.timestamp >= cutoff]
++
++
++class MagicKeywordGuard:
++    """Protect edits touching magic-related terms and close variants."""
++
++    def __init__(
++        self,
++        keywords: Sequence[str] = DEFAULT_KEYWORDS,
++        min_similarity_thousandths: int = 840,
++        retention_seconds: int = 300,
++    ) -> None:
++        if not (0 <= min_similarity_thousandths <= 1000):
++            raise ValueError("min_similarity_thousandths must be in range 0..1000")
++
++        self.keywords = tuple(keywords)
++        self.min_similarity_thousandths = min_similarity_thousandths
++        self._keyword_signatures: Dict[str, str] = {
++            kw: _simple_metaphone_like(kw) for kw in self.keywords
++        }
++        self.audit = EphemeralAuditTrail(retention_seconds=retention_seconds)
++
++    def is_protected_token(self, token: str) -> bool:
++        normalized = _normalize_token(token)
++        if not normalized:
++            return False
++
++        # Exact or prefix family match for common derivations (spell, spells, spelling).
++        for kw in self.keywords:
++            nkw = _normalize_token(kw)
++            if normalized == nkw or normalized.startswith(nkw) or nkw.startswith(normalized):
++                return True
++
++        # Sound-alike protection.
++        signature = _simple_metaphone_like(normalized)
++        if signature and signature in self._keyword_signatures.values():
++            return True
++
++        # Fuzzy similarity measured in thousandths.
++        best = max(_similarity_thousandths(normalized, kw) for kw in self.keywords)
++        return best >= self.min_similarity_thousandths
++
++    def protect_text(self, original: str, attempted: str) -> str:
++        """Restore protected tokens from original if attempts modify them."""
++        original_tokens = _WORD_RE.findall(original)
++        attempted_tokens = _WORD_RE.findall(attempted)
++
++        replaced = list(attempted_tokens)
++        changed = False
++
++        for idx, (old, new) in enumerate(zip(original_tokens, replaced)):
++            if old == new:
++                continue
++            if self.is_protected_token(old) or self.is_protected_token(new):
++                replaced[idx] = old
++                changed = True
++
++        # If token counts diverge, block additional inserted protected words.
++        if len(attempted_tokens) > len(original_tokens):
++            for idx in range(len(original_tokens), len(attempted_tokens)):
++                if self.is_protected_token(replaced[idx]):
++                    replaced[idx] = "[PROTECTED]"
++                    changed = True
+diff --git a/magic_keyword_guard.py b/magic_keyword_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f388734b914d05f9f8a582d3eeb1bf387e05777d
+--- /dev/null
++++ b/magic_keyword_guard.py
+@@ -0,0 +1,222 @@
++"""Utilities for protecting magic-related language in edited text.
++
++This module preserves or blocks edits affecting protected words such as
++"magic", "magick", and related variants. It combines:
++- lexical normalization for spelling/verbage variants,
++- phonetic checks for sound-alike terms,
++- fuzzy similarity checks with thousandths precision,
++- in-memory (ephemeral) audit records with optional TTL cleanup.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from datetime import datetime, timedelta, timezone
++from difflib import SequenceMatcher
++import re
++from typing import Dict, Iterable, List, Sequence, Tuple
++
++
++DEFAULT_KEYWORDS: Tuple[str, ...] = (
++    "magic",
++    "magick",
++    "mage",
++    "magi",
++    "wizard",
++    "sorcery",
++    "spell",
++    "enchant",
++    "arcane",
++    # Added sound/verbage-oriented magical terms.
++    "shimmer",
++    "shimmering",
++    "resonance",
++    "chime",
++    "whisper",
++    "incantation",
++    "verbage",
++    "verbiage",
++)
++
++_WORD_RE = re.compile(r"\b[\w'-]+\b")
++
++
++def _normalize_token(token: str) -> str:
++    """Normalize token for robust matching across punctuation and case."""
++    return re.sub(r"[^a-z0-9]", "", token.lower())
++
++
++def _simple_metaphone_like(token: str) -> str:
++    """Compact sound-alike signature (lightweight, dependency-free)."""
++    token = _normalize_token(token)
++    if not token:
++        return ""
++
++    replacements = (
++        ("ph", "f"),
++        ("ck", "k"),
++        ("qu", "k"),
++        ("x", "ks"),
++        ("z", "s"),
++        ("j", "g"),
++        ("ci", "si"),
++        ("ce", "se"),
++    )
++    for src, dst in replacements:
++        token = token.replace(src, dst)
++
++    head = token[0]
++    tail = re.sub(r"[aeiouy]", "", token[1:])
++    squashed = re.sub(r"(.)\1+", r"\1", head + tail)
++    return squashed
++
++
++def _similarity_thousandths(a: str, b: str) -> int:
++    """Return normalized similarity score in thousandths (0..1000)."""
++    score = SequenceMatcher(None, _normalize_token(a), _normalize_token(b)).ratio()
++    return int(round(score * 1000))
++
++
++@dataclass
++class GuardEvent:
++    timestamp: datetime
++    original: str
++    attempted: str
++    restored: str
++    reason: str
++
++
++@dataclass
++class EphemeralAuditTrail:
++    """In-memory events with optional expiry for ephemeral operation."""
++
++    retention_seconds: int = 300
++    events: List[GuardEvent] = field(default_factory=list)
++
++    def record(self, event: GuardEvent) -> None:
++        self.events.append(event)
++        self.prune()
++
++    def prune(self) -> None:
++        cutoff = datetime.now(timezone.utc) - timedelta(seconds=self.retention_seconds)
++        self.events = [e for e in self.events if e.timestamp >= cutoff]
++
++
++class MagicKeywordGuard:
++    """Protect edits touching magic-related terms and close variants.
++
++    If ``restore_entire_on_protected_change`` is True, any attempt to alter
++    protected magical wording (including shimmering sound terms) restores the
++    full original text, not just individual tokens.
++    """
++
++    def __init__(
++        self,
++        keywords: Sequence[str] = DEFAULT_KEYWORDS,
++        min_similarity_thousandths: int = 840,
++        retention_seconds: int = 300,
++        restore_entire_on_protected_change: bool = True,
++    ) -> None:
++        if not (0 <= min_similarity_thousandths <= 1000):
++            raise ValueError("min_similarity_thousandths must be in range 0..1000")
++
++        self.keywords = tuple(keywords)
++        self.min_similarity_thousandths = min_similarity_thousandths
++        self.restore_entire_on_protected_change = restore_entire_on_protected_change
++        self._keyword_signatures: Dict[str, str] = {
++            kw: _simple_metaphone_like(kw) for kw in self.keywords
++        }
++        self.audit = EphemeralAuditTrail(retention_seconds=retention_seconds)
++
++    def is_protected_token(self, token: str) -> bool:
++        normalized = _normalize_token(token)
++        if not normalized:
++            return False
++
++        for kw in self.keywords:
++            nkw = _normalize_token(kw)
++            if normalized == nkw or normalized.startswith(nkw) or nkw.startswith(normalized):
++                return True
++
++        signature = _simple_metaphone_like(normalized)
++        if signature and signature in self._keyword_signatures.values():
++            return True
++
++        best = max(_similarity_thousandths(normalized, kw) for kw in self.keywords)
++        return best >= self.min_similarity_thousandths
++
++    def _has_protected_change(self, original_tokens: Sequence[str], attempted_tokens: Sequence[str]) -> bool:
++        """Detect if any non-equal edit span touches protected tokens."""
++        matcher = SequenceMatcher(a=original_tokens, b=attempted_tokens)
++        for tag, i1, i2, j1, j2 in matcher.get_opcodes():
++            if tag == "equal":
++                continue
++            old_span = original_tokens[i1:i2]
++            new_span = attempted_tokens[j1:j2]
++            if any(self.is_protected_token(tok) for tok in old_span):
++                return True
++            if any(self.is_protected_token(tok) for tok in new_span):
++                return True
++        return False
++
++    def protect_text(self, original: str, attempted: str) -> str:
++        """Restore protected text when magical terms are modified/inserted."""
++        original_tokens = _WORD_RE.findall(original)
++        attempted_tokens = _WORD_RE.findall(attempted)
++
++        if self.restore_entire_on_protected_change and self._has_protected_change(
++            original_tokens, attempted_tokens
++        ):
++            self.audit.record(
++                GuardEvent(
++                    timestamp=datetime.now(timezone.utc),
++                    original=original,
++                    attempted=attempted,
++                    restored=original,
++                    reason="full_restore_protected_change",
++                )
++            )
++            return original
++
++        replaced = list(attempted_tokens)
++        changed = False
++
++        for idx, (old, new) in enumerate(zip(original_tokens, replaced)):
++            if old == new:
++                continue
++            if self.is_protected_token(old) or self.is_protected_token(new):
++                replaced[idx] = old
++                changed = True
++
++        if len(attempted_tokens) > len(original_tokens):
++            for idx in range(len(original_tokens), len(attempted_tokens)):
++                if self.is_protected_token(replaced[idx]):
++                    replaced[idx] = "[PROTECTED]"
++                    changed = True
++
++        restored_text = self._rebuild_with_original_spacing(attempted, attempted_tokens, replaced)
++
++        if changed:
++            self.audit.record(
++                GuardEvent(
++                    timestamp=datetime.now(timezone.utc),
++                    original=original,
++                    attempted=attempted,
++                    restored=restored_text,
++                    reason="magic_keyword_protection",
++                )
++            )
++
++        return restored_text
++
++    @staticmethod
++    def _rebuild_with_original_spacing(
++        text: str, source_tokens: Iterable[str], new_tokens: Sequence[str]
++    ) -> str:
++        """Rebuild text by replacing token occurrences while keeping separators."""
++        out = text
++        for old, new in zip(source_tokens, new_tokens):
++            if old == new:
++                continue
++            out = re.sub(rf"\b{re.escape(old)}\b", new, out, count=1)
++        return out
+diff --git a/test_magic_keyword_guard.py b/test_magic_keyword_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..98999342e707b48ee94faa26c9c921e6d5925d3e
+--- /dev/null
++++ b/test_magic_keyword_guard.py
+@@ -0,0 +1,40 @@
++import unittest
++
++from magic_keyword_guard import MagicKeywordGuard
++
++
++class MagicKeywordGuardTests(unittest.TestCase):
++    def setUp(self):
++        self.guard = MagicKeywordGuard(min_similarity_thousandths=850)
++
++    def test_protected_exact_keyword_triggers_full_restore(self):
++        original = "The magic binds quietly."
++        attempted = "The logic binds quietly."
++        self.assertEqual(self.guard.protect_text(original, attempted), original)
++
++    def test_magick_variant_triggers_full_restore(self):
++        original = "Ancient magick echoes."
++        attempted = "Ancient magic echoes."
++        self.assertEqual(self.guard.protect_text(original, attempted), original)
++
++    def test_sound_alike_keyword_is_protected(self):
++        self.assertTrue(self.guard.is_protected_token("majik"))
++
++    def test_shimmering_sound_change_is_restored_entirely(self):
++        original = "A shimmering resonance carries the spell."
++        attempted = "A fading noise carries the spell."
++        self.assertEqual(self.guard.protect_text(original, attempted), original)
++
++    def test_inserted_protected_keyword_triggers_full_restore(self):
++        original = "We keep archives."
++        attempted = "We keep archives magic"
++        self.assertEqual(self.guard.protect_text(original, attempted), original)
++
++    def test_non_protected_change_passes_through(self):
++        original = "We keep archives safely."
++        attempted = "We keep archives carefully."
++        self.assertEqual(self.guard.protect_text(original, attempted), attempted)
++
++
++if __name__ == "__main__":
++    unittest.main()
+
++
++        restored_text = self._rebuild_with_original_spacing(attempted, attempted_tokens, replaced)
++
++        if changed:
++            self.audit.record(
++                GuardEvent(
++                    timestamp=datetime.now(timezone.utc),
++                    original=original,
++                    attempted=attempted,
++                    restored=restored_text,
++                    reason="magic_keyword_protection",
++                )
++            )
++
++        return restored_text
++
++    @staticmethod
++    def _rebuild_with_original_spacing(text: str, source_tokens: Iterable[str], new_tokens: Sequence[str]) -> str:
++        """Rebuild text by replacing token occurrences while keeping separators."""
++        out = text
++        for old, new in zip(source_tokens, new_tokens):
++            if old == new:
++                continue
++            out = re.sub(rf"\b{re.escape(old)}\b", new, out, count=1)
++        return out
+diff --git a/test_magic_keyword_guard.py b/test_magic_keyword_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e3c37842784ca477c57de539cd351b84b8aa5246
+--- /dev/null
++++ b/test_magic_keyword_guard.py
+@@ -0,0 +1,30 @@
++import unittest
++
++from magic_keyword_guard import MagicKeywordGuard
++
++
++class MagicKeywordGuardTests(unittest.TestCase):
++    def setUp(self):
++        self.guard = MagicKeywordGuard(min_similarity_thousandths=850)
++
++    def test_protected_exact_keyword_is_restored(self):
++        original = "The magic binds quietly."
++        attempted = "The logic binds quietly."
++        self.assertEqual(self.guard.protect_text(original, attempted), original)
++
++    def test_magick_variant_is_protected(self):
++        original = "Ancient magick echoes."
++        attempted = "Ancient magic echoes."
++        self.assertEqual(self.guard.protect_text(original, attempted), original)
++
++    def test_sound_alike_keyword_is_protected(self):
++        self.assertTrue(self.guard.is_protected_token("majik"))
++
++    def test_inserted_protected_keyword_is_masked(self):
++        original = "We keep archives."
++        attempted = "We keep archives magic"
++        self.assertIn("[PROTECTED]", self.guard.protect_text(original, attempted))
++
++
++if __name__ == "__main__":
++    unittest.main()
