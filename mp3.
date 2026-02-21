@@ -1092,3 +1092,1671 @@ index 0000000000000000000000000000000000000000..f6354a32bd5d6a4c08be14d58789adbf
 +        image_sources=["./j.pg", "https://i.imgur.com/example.jpg", "./cover.jpeg"],
 +    )
 +    print(json.dumps(locked_plan.as_dict(), indent=2))
+pip install pygame pydub numpy
+import os
+import time
+import threading
+import numpy as np
+from pydub import AudioSegment
+from pydub.playback import _play_with_simpleaudio
+from pygame import mixer
+from tkinter import Tk
+from tkinter.filedialog import askopenfilename
+
+
+# -------------------------------
+# Utility: Choose Music File
+# -------------------------------
+def choose_music_file():
+    Tk().withdraw()
+    file_path = askopenfilename(
+        title="Choose your music",
+        filetypes=[("Audio Files", "*.mp3 *.wav *.flac *.ogg")]
+    )
+    return file_path
+
+
+# -------------------------------
+# Apply Bliss Effects
+# -------------------------------
+def apply_bliss_effects(audio, mood="calm"):
+    print("Applying blissful enhancements...")
+
+    # Fade in & fade out
+    audio = audio.fade_in(5000).fade_out(5000)
+
+    if mood == "calm":
+        # Lower overall volume slightly
+        audio = audio - 3
+
+        # Gentle low-pass filter
+        audio = audio.low_pass_filter(3000)
+
+    elif mood == "dreamy":
+        audio = audio.low_pass_filter(2000)
+        audio = audio + 2
+
+    elif mood == "deep":
+        audio = audio.low_pass_filter(1500)
+        audio = audio + 1
+
+    return audio
+
+
+# -------------------------------
+# Optional Ambient Background
+# -------------------------------
+def generate_white_noise(duration_ms, volume=-30):
+    sample_rate = 44100
+    samples = np.random.normal(0, 1, int(sample_rate * duration_ms / 1000))
+    noise_audio = AudioSegment(
+        samples.tobytes(),
+        frame_rate=sample_rate,
+        sample_width=2,
+        channels=1
+    )
+    return noise_audio + volume
+
+
+# -------------------------------
+# Play Music Smoothly
+# -------------------------------
+def play_audio(audio):
+    play_obj = _play_with_simpleaudio(audio)
+    play_obj.wait_done()
+
+
+# -------------------------------
+# Main Experience
+# -------------------------------
+def main():
+    print("\n🌿 Blissful Music Experience 🌿\n")
+
+    file_path = choose_music_file()
+    if not file_path:
+        print("No file selected.")
+        return
+
+    print("\nChoose your mood:")
+    print("1 - Calm")
+    print("2 - Dreamy")
+    print("3 - Deep")
+    mood_choice = input("Enter choice (1/2/3): ")
+
+    mood_map = {
+        "1": "calm",
+        "2": "dreamy",
+        "3": "deep"
+    }
+
+    mood = mood_map.get(mood_choice, "calm")
+
+    print("\nLoading music...")
+    audio = AudioSegment.from_file(file_path)
+
+    # Apply bliss effects
+    enhanced_audio = apply_bliss_effects(audio, mood=mood)
+
+    # Optional ambient layer
+    add_ambient = input("\nAdd soft ambient background? (y/n): ").lower()
+    if add_ambient == "y":
+        noise = generate_white_noise(len(enhanced_audio))
+        enhanced_audio = enhanced_audio.overlay(noise)
+
+    print("\n✨ Entering bliss mode... Close window or Ctrl+C to stop.\n")
+
+    # Play in separate thread to keep UI responsive
+    thread = threading.Thread(target=play_audio, args=(enhanced_audio,))
+    thread.start()
+
+
+if __name__ == "__main__":
+    main()
+diff --git a/metaphysical_coda.py b/metaphysical_coda.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f6354a32bd5d6a4c08be14d58789adbf5b3410a1
+--- /dev/null
++++ b/metaphysical_coda.py
+@@ -0,0 +1,399 @@
++"""Metaphysical coda media and user-locked music transformation planner.
++
++Builds technical formatting plans for image assets and a high-detail audio
++transformation profile with user-specific access control.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from hashlib import blake2b
++from pathlib import Path
++from typing import Dict, Iterable, List, Optional
++from urllib.parse import urlparse
++
++
++class ImageFormat(str, Enum):
++    """Supported image codecs/container labels."""
++
++    JPEG = "jpeg"
++    JPG = "jpg"
++    HPEG = "hpeg"
++    PNG = "png"
++    WEBP = "webp"
++    AVIF = "avif"
++    HEIF = "heif"
++    TIFF = "tiff"
++    BMP = "bmp"
++    GIF = "gif"
++
++
++
++
++class AudioContainer(str, Enum):
++    """Supported final audio delivery containers."""
++
++    MP3 = "mp3"
++
++
++@dataclass
++class Mp3RenderProfile:
++    """MP3-only rendering controls for dramatic, physical-feel playback."""
++
++    bitrate_kbps: int = 320
++    vbr_quality: int = 0
++    lowpass_hz: int = 19_500
++    joint_stereo_mode: str = "ms"
++
++    def as_dict(self) -> Dict[str, object]:
++        return {
++            "container": AudioContainer.MP3.value,
++            "bitrate_kbps": self.bitrate_kbps,
++            "vbr_quality": self.vbr_quality,
++            "lowpass_hz": self.lowpass_hz,
++            "joint_stereo_mode": self.joint_stereo_mode,
++        }
++
++
++@dataclass
++class PhysicalityProfile:
++    """Tactile-focused psychoacoustic shaping for visceral impact."""
++
++    tactile_sub_boost_db: float = 6.5
++    chest_band_gain_db: float = 4.0
++    infrasonic_synthesis_mix: float = 0.32
++    transient_pressure: float = 0.84
++    emotional_intensity_envelope: float = 0.9
++    ephemeral_decay_s: float = 6.8
++
++    def to_chain(self) -> List[Dict[str, float]]:
++        return [
++            {"stage": "subharmonic_synth", "mix": self.infrasonic_synthesis_mix},
++            {"stage": "eq_sub_tactile", "frequency_hz": 45.0, "gain_db": self.tactile_sub_boost_db},
++            {"stage": "eq_chest_band", "frequency_hz": 120.0, "gain_db": self.chest_band_gain_db},
++            {"stage": "transient_pressure", "amount": self.transient_pressure},
++            {"stage": "emotion_envelope", "intensity": self.emotional_intensity_envelope},
++            {"stage": "ephemeral_tail", "decay_s": self.ephemeral_decay_s},
++        ]
++
++class AudioRenderMode(str, Enum):
++    """Intent-based mastering target for sonic coloration."""
++
++    SAT = "sat"
++    SOUND = "sound"
++    BASS = "bass"
++    ETHEREAL = "ethereal"
++    SURREAL_REALISM_4D = "surreal_realism_4d"
++
++
++@dataclass(frozen=True)
++class ImageDescriptor:
++    """Reference to an image source with normalized metadata."""
++
++    source: str
++    format_hint: Optional[ImageFormat] = None
++
++    def inferred_format(self) -> Optional[ImageFormat]:
++        if self.format_hint:
++            return self.format_hint
++
++        parsed = urlparse(self.source)
++        suffix = Path(parsed.path if parsed.scheme else self.source).suffix.lower().lstrip(".")
++        if not suffix:
++            return None
++
++        try:
++            return ImageFormat(suffix)
++        except ValueError:
++            return None
++
++    def is_imgur(self) -> bool:
++        parsed = urlparse(self.source)
++        host = parsed.netloc.lower()
++        return "imgur.com" in host or "i.imgur.com" in host
++
++
++@dataclass
++class ToneReference:
++    """Reference measurements for exact tonal and dynamic reconstruction."""
++
++    spectral_tilt_db_per_octave: float = -4.5
++    transient_sharpness: float = 0.72
++    crest_factor_db: float = 10.5
++    dynamic_range_db: float = 8.0
++    low_band_ratio: float = 0.34
++    mid_band_ratio: float = 0.43
++    high_band_ratio: float = 0.23
++
++
++@dataclass
++class SpatialFieldProfile:
++    """3D/4D-style immersive acoustic render profile."""
++
++    hrtf_model: str = "diffuse_field_reference"
++    bed_channels: str = "7.1.4"
++    object_count: int = 24
++    binaural_render: bool = True
++    elevation_spread_deg: float = 42.0
++    azimuth_rotation_deg_per_s: float = 5.0
++    depth_motion_hz: float = 0.08
++    early_reflection_mix: float = 0.24
++    late_reverb_time_s: float = 4.2
++
++    def to_spatial_chain(self) -> List[Dict[str, object]]:
++        """Serialize immersive spatial processing stages."""
++        return [
++            {
++                "stage": "immersive_bed",
++                "layout": self.bed_channels,
++                "object_count": self.object_count,
++            },
++            {
++                "stage": "hrtf_render",
++                "model": self.hrtf_model,
++                "binaural": self.binaural_render,
++                "elevation_spread_deg": self.elevation_spread_deg,
++            },
++            {
++                "stage": "kinematic_scene",
++                "azimuth_rotation_deg_per_s": self.azimuth_rotation_deg_per_s,
++                "depth_motion_hz": self.depth_motion_hz,
++            },
++            {
++                "stage": "acoustic_space",
++                "early_reflection_mix": self.early_reflection_mix,
++                "late_reverb_time_s": self.late_reverb_time_s,
++            },
++        ]
++
++
++@dataclass
++class AudioProfile:
++    """Detailed DSP profile for stylized output and exact tone matching."""
++
++    mode: AudioRenderMode
++    sample_rate_hz: int = 48_000
++    bit_depth: int = 24
++    channels: int = 2
++    target_lufs: float = -14.0
++    saturation_drive_db: float = 2.0
++    low_shelf_gain_db: float = 3.0
++    low_shelf_frequency_hz: float = 90.0
++    reverb_wet_mix: float = 0.22
++    shimmer_amount: float = 0.35
++    stereo_width: float = 1.1
++    tone_reference: ToneReference = field(default_factory=ToneReference)
++    spatial_field: Optional[SpatialFieldProfile] = None
++    physicality: Optional[PhysicalityProfile] = None
++    mp3_profile: Mp3RenderProfile = field(default_factory=Mp3RenderProfile)
++
++    def to_dsp_chain(self) -> List[Dict[str, object]]:
++        """Return a serializable processing graph for deterministic rendering."""
++        chain: List[Dict[str, object]] = [
++            {"stage": "input_normalize", "target_lufs": self.target_lufs},
++            {
++                "stage": "tone_match",
++                "spectral_tilt_db_per_octave": self.tone_reference.spectral_tilt_db_per_octave,
++                "transient_sharpness": self.tone_reference.transient_sharpness,
++                "crest_factor_db": self.tone_reference.crest_factor_db,
++            },
++            {
++                "stage": "multiband_balance",
++                "low_band_ratio": self.tone_reference.low_band_ratio,
++                "mid_band_ratio": self.tone_reference.mid_band_ratio,
++                "high_band_ratio": self.tone_reference.high_band_ratio,
++                "dynamic_range_db": self.tone_reference.dynamic_range_db,
++            },
++            {"stage": "saturation", "drive_db": self.saturation_drive_db},
++            {
++                "stage": "eq_low_shelf",
++                "frequency_hz": self.low_shelf_frequency_hz,
++                "gain_db": self.low_shelf_gain_db,
++            },
++        ]
++
++        if self.mode in (AudioRenderMode.ETHEREAL, AudioRenderMode.SURREAL_REALISM_4D):
++            chain.append({"stage": "shimmer", "mix": self.shimmer_amount})
++            chain.append({"stage": "reverb", "wet_mix": self.reverb_wet_mix})
++
++        if self.spatial_field:
++            chain.extend(self.spatial_field.to_spatial_chain())
++
++        if self.physicality:
++            chain.extend(self.physicality.to_chain())
++
++        chain.append({"stage": "stereo_imager", "width": self.stereo_width})
++        chain.append({"stage": "true_peak_limiter", "ceiling_dbtp": -1.0})
++        return chain
++
++
++@dataclass(frozen=True)
++class PersonalAccess:
++    """User/device lock to make transformation available only to one owner."""
++
++    owner_id: str
++    device_fingerprint: str
++    secret_phrase: str
++
++    def token(self) -> str:
++        digest = blake2b(digest_size=24)
++        digest.update(self.owner_id.encode("utf-8"))
++        digest.update(self.device_fingerprint.encode("utf-8"))
++        digest.update(self.secret_phrase.encode("utf-8"))
++        return digest.hexdigest()
++
++
++@dataclass
++class MetaphysicalCodaPlan:
++    """Unified transcoding, audio voicing, and ownership-locked transform plan."""
++
++    images: List[ImageDescriptor] = field(default_factory=list)
++    requested_formats: List[ImageFormat] = field(default_factory=list)
++    audio_profiles: List[AudioProfile] = field(default_factory=list)
++    access: Optional[PersonalAccess] = None
++
++    def verify_access(self, owner_id: str, device_fingerprint: str, secret_phrase: str) -> bool:
++        """Validate ownership lock for plan usage."""
++        if not self.access:
++            return True
++        candidate = PersonalAccess(owner_id, device_fingerprint, secret_phrase)
++        return candidate.token() == self.access.token()
++
++    def as_dict(self) -> Dict[str, object]:
++        image_matrix = []
++        for image in self.images:
++            inferred = image.inferred_format()
++            image_matrix.append(
++                {
++                    "source": image.source,
++                    "is_imgur": image.is_imgur(),
++                    "detected_format": inferred.value if inferred else None,
++                    "targets": [fmt.value for fmt in self.requested_formats],
++                    "pipeline": {
++                        "decode": "colorspace=bt709",
++                        "resample": "lanczos3",
++                        "quantization": "perceptual",
++                    },
++                }
++            )
++
++        payload: Dict[str, object] = {
++            "image_transcoding": image_matrix,
++            "audio_mastering": [
++                {
++                    "mode": profile.mode.value,
++                    "sample_rate_hz": profile.sample_rate_hz,
++                    "bit_depth": profile.bit_depth,
++                    "channels": profile.channels,
++                    "dsp_chain": profile.to_dsp_chain(),
++                    "delivery": profile.mp3_profile.as_dict(),
++                }
++                for profile in self.audio_profiles
++            ],
++        }
++        if self.access:
++            payload["usage_lock"] = {
++                "owner_id": self.access.owner_id,
++                "device_fingerprint": self.access.device_fingerprint,
++                "access_token": self.access.token(),
++                "policy": "single-owner-execution",
++            }
++        return payload
++
++
++def reconstruct_metaphysical_coda(
++    image_sources: Iterable[str],
++    include_hpeg: bool = True,
++    include_imgur_targets: bool = True,
++) -> MetaphysicalCodaPlan:
++    """Build a comprehensive technical plan from image inputs."""
++    descriptors = [ImageDescriptor(source=src) for src in image_sources]
++    if not include_imgur_targets:
++        descriptors = [d for d in descriptors if not d.is_imgur()]
++
++    targets: List[ImageFormat] = [ImageFormat.JPEG, ImageFormat.PNG, ImageFormat.WEBP, ImageFormat.AVIF]
++    if include_hpeg:
++        targets.append(ImageFormat.HPEG)
++
++    immersive_field = SpatialFieldProfile(
++        hrtf_model="cinematic_immersive_reference",
++        bed_channels="7.1.4",
++        object_count=32,
++        binaural_render=True,
++        elevation_spread_deg=48.0,
++        azimuth_rotation_deg_per_s=7.5,
++        depth_motion_hz=0.11,
++        early_reflection_mix=0.28,
++        late_reverb_time_s=5.1,
++    )
++
++    dramatic_physicality = PhysicalityProfile(
++        tactile_sub_boost_db=8.0,
++        chest_band_gain_db=5.5,
++        infrasonic_synthesis_mix=0.4,
++        transient_pressure=0.9,
++        emotional_intensity_envelope=0.96,
++        ephemeral_decay_s=8.2,
++    )
++
++    profiles = [
++        AudioProfile(mode=AudioRenderMode.SAT, saturation_drive_db=4.0),
++        AudioProfile(mode=AudioRenderMode.SOUND, saturation_drive_db=2.5, reverb_wet_mix=0.15),
++        AudioProfile(mode=AudioRenderMode.BASS, low_shelf_gain_db=6.5, low_shelf_frequency_hz=75.0),
++        AudioProfile(
++            mode=AudioRenderMode.ETHEREAL,
++            reverb_wet_mix=0.48,
++            shimmer_amount=0.64,
++            stereo_width=1.3,
++            physicality=dramatic_physicality,
++        ),
++        AudioProfile(
++            mode=AudioRenderMode.SURREAL_REALISM_4D,
++            target_lufs=-16.0,
++            shimmer_amount=0.66,
++            reverb_wet_mix=0.52,
++            stereo_width=1.35,
++            spatial_field=immersive_field,
++            physicality=dramatic_physicality,
++            tone_reference=ToneReference(
++                spectral_tilt_db_per_octave=-5.1,
++                transient_sharpness=0.78,
++                crest_factor_db=11.8,
++                dynamic_range_db=10.5,
++                low_band_ratio=0.37,
++                mid_band_ratio=0.39,
++                high_band_ratio=0.24,
++            ),
++        ),
++    ]
++
++    return MetaphysicalCodaPlan(images=descriptors, requested_formats=targets, audio_profiles=profiles)
++
++
++def create_personal_music_lock(
++    owner_id: str,
++    device_fingerprint: str,
++    secret_phrase: str,
++    image_sources: Iterable[str],
++) -> MetaphysicalCodaPlan:
++    """Create a coda plan with an ownership lock for one specific user."""
++    plan = reconstruct_metaphysical_coda(image_sources=image_sources, include_hpeg=True, include_imgur_targets=True)
++    plan.access = PersonalAccess(
++        owner_id=owner_id,
++        device_fingerprint=device_fingerprint,
++        secret_phrase=secret_phrase,
++    )
++    return plan
++
++
++if __name__ == "__main__":
++    import json
++
++    locked_plan = create_personal_music_lock(
++        owner_id="user_me",
++        device_fingerprint="device_7f3a",
++        secret_phrase="my-private-coda",
++        image_sources=["./j.pg", "https://i.imgur.com/example.jpg", "./cover.jpeg"],
++    )
++    print(json.dumps(locked_plan.as_dict(), indent=2))
+pip install pydub numpy simpleaudio scipy
+pip install pydub numpy simpleaudio scipy
+import numpy as np
+import threading
+import time
+from pydub import AudioSegment
+from pydub.playback import _play_with_simpleaudio
+from pydub.generators import Sine
+from scipy.signal import fftconvolve
+from tkinter import Tk
+from tkinter.filedialog import askopenfilename
+
+
+# -----------------------------
+# File Picker
+# -----------------------------
+def choose_music():
+    Tk().withdraw()
+    return askopenfilename(
+        title="Choose your music",
+        filetypes=[("Audio Files", "*.mp3 *.wav *.flac *.ogg")]
+    )
+
+
+# -----------------------------
+# Binaural Beat Generator
+# -----------------------------
+def generate_binaural(duration_ms, base_freq=220, beat_freq=6, volume=-30):
+    left = Sine(base_freq).to_audio_segment(duration=duration_ms)
+    right = Sine(base_freq + beat_freq).to_audio_segment(duration=duration_ms)
+
+    stereo = AudioSegment.from_mono_audiosegments(left, right)
+    return stereo + volume
+
+
+# -----------------------------
+# Soft Reverb (Convolution)
+# -----------------------------
+def apply_reverb(audio, decay=0.3):
+    samples = np.array(audio.get_array_of_samples()).astype(np.float32)
+
+    # Create simple impulse response
+    impulse_length = int(audio.frame_rate * 0.3)
+    impulse = np.zeros(impulse_length)
+    impulse[0] = 1.0
+    for i in range(1, impulse_length):
+        impulse[i] = impulse[i-1] * decay
+
+    convolved = fftconvolve(samples, impulse)[:len(samples)]
+    convolved = np.int16(convolved / np.max(np.abs(convolved)) * 32767)
+
+    return audio._spawn(convolved.tobytes())
+
+
+# -----------------------------
+# Stereo Widening
+# -----------------------------
+def widen_stereo(audio, amount=0.2):
+    if audio.channels == 1:
+        audio = AudioSegment.from_mono_audiosegments(audio, audio)
+
+    left, right = audio.split_to_mono()
+    left = left + (amount * 5)
+    right = right - (amount * 5)
+
+    return AudioSegment.from_mono_audiosegments(left, right)
+
+
+# -----------------------------
+# Breathing Pulse (Volume Modulation)
+# -----------------------------
+def breathing_effect(audio, cycle_seconds=8):
+    samples = np.array(audio.get_array_of_samples()).astype(np.float32)
+    frame_rate = audio.frame_rate
+    t = np.linspace(0, len(samples) / frame_rate, num=len(samples))
+
+    modulation = 0.7 + 0.3 * np.sin(2 * np.pi * (1 / cycle_seconds) * t)
+    modulated = samples * modulation
+
+    modulated = np.int16(modulated / np.max(np.abs(modulated)) * 32767)
+    return audio._spawn(modulated.tobytes())
+
+
+# -----------------------------
+# Harmonic Drone
+# -----------------------------
+def generate_drone(duration_ms, root_freq=110, volume=-28):
+    drone = (
+        Sine(root_freq).to_audio_segment(duration=duration_ms) +
+        Sine(root_freq * 2).to_audio_segment(duration=duration_ms) - 6
+    )
+    return drone + volume
+
+
+# -----------------------------
+# Bliss Processing Pipeline
+# -----------------------------
+def process_bliss(audio, mode="alpha"):
+    duration = len(audio)
+
+    # Fade
+    audio = audio.fade_in(6000).fade_out(6000)
+
+    # Light low-pass
+    audio = audio.low_pass_filter(3500)
+
+    # Stereo widen
+    audio = widen_stereo(audio, amount=0.3)
+
+    # Reverb
+    audio = apply_reverb(audio, decay=0.35)
+
+    # Breathing
+    audio = breathing_effect(audio)
+
+    # Brainwave modes
+    if mode == "alpha":
+        binaural = generate_binaural(duration, beat_freq=8)
+    elif mode == "theta":
+        binaural = generate_binaural(duration, beat_freq=5)
+    elif mode == "delta":
+        binaural = generate_binaural(duration, beat_freq=2)
+    else:
+        binaural = generate_binaural(duration, beat_freq=6)
+
+    drone = generate_drone(duration)
+
+    # Overlay all layers
+    final = audio.overlay(binaural).overlay(drone)
+
+    return final
+
+
+# -----------------------------
+# Play Audio
+# -----------------------------
+def play(audio):
+    play_obj = _play_with_simpleaudio(audio)
+    play_obj.wait_done()
+
+
+# -----------------------------
+# Main
+# -----------------------------
+def main():
+    print("\nAdvanced Bliss Music Engine\n")
+
+    path = choose_music()
+    if not path:
+        print("No file selected.")
+        return
+
+    print("\nChoose brainwave mode:")
+    print("1 - Alpha (Relaxed focus)")
+    print("2 - Theta (Deep meditation)")
+    print("3 - Delta (Sleep state)")
+    choice = input("Select (1/2/3): ")
+
+    modes = {"1": "alpha", "2": "theta", "3": "delta"}
+    mode = modes.get(choice, "alpha")
+
+    print("\nLoading...")
+    audio = AudioSegment.from_file(path)
+
+    print("Entering immersive bliss state...\n")
+    enhanced = process_bliss(audio, mode)
+
+    thread = threading.Thread(target=play, args=(enhanced,))
+    thread.start()
+
+
+if __name__ == "__main__":
+    main()
+pip install numpy sounddevice soundfile scipy
+import numpy as np
+import sounddevice as sd
+import soundfile as sf
+from scipy.signal import butter, lfilter
+import threading
+import time
+from tkinter import Tk
+from tkinter.filedialog import askopenfilename
+
+# -----------------------------
+# Load Music
+# -----------------------------
+def choose_music():
+    Tk().withdraw()
+    return askopenfilename(
+        title="Choose your music",
+        filetypes=[("Audio Files", "*.wav *.flac *.ogg *.mp3")]
+    )
+
+# -----------------------------
+# Low-pass filter
+# -----------------------------
+def lowpass(data, cutoff, fs, order=4):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    return lfilter(b, a, data)
+
+# -----------------------------
+# Bliss Engine
+# -----------------------------
+class BlissEngine:
+    def __init__(self, music, samplerate):
+        self.music = music
+        self.fs = samplerate
+        self.position = 0
+        self.start_time = time.time()
+        self.duration = len(music) / samplerate
+
+        self.sleep_mode = False
+
+    def generate_binaural(self, frames, t):
+        # Brainwave progression over time
+        progress = min((time.time() - self.start_time) / 600, 1)
+
+        # Alpha -> Theta -> Delta transition
+        beat_freq = 8 - 6 * progress
+
+        base = 220
+        left = np.sin(2 * np.pi * base * t)
+        right = np.sin(2 * np.pi * (base + beat_freq) * t)
+
+        binaural = np.column_stack((left, right)) * 0.05
+        return binaural
+
+    def generate_pad(self, frames, t):
+        drift = np.sin(2 * np.pi * 0.05 * t)
+        pad = np.sin(2 * np.pi * (110 + drift * 5) * t)
+        stereo = np.column_stack((pad, pad)) * 0.03
+        return stereo
+
+    def callback(self, outdata, frames, time_info, status):
+        if self.position + frames >= len(self.music):
+            self.position = 0
+
+        chunk = self.music[self.position:self.position + frames]
+        self.position += frames
+
+        t = np.arange(frames) / self.fs
+
+        # Apply evolving low-pass (gradually darker)
+        progress = min((time.time() - self.start_time) / 600, 1)
+        cutoff = 6000 - 4500 * progress
+        chunk[:, 0] = lowpass(chunk[:, 0], cutoff, self.fs)
+        chunk[:, 1] = lowpass(chunk[:, 1], cutoff, self.fs)
+
+        # Add bliss layers
+        binaural = self.generate_binaural(frames, t)
+        pad = self.generate_pad(frames, t)
+
+        # Gentle breathing amplitude
+        breath = 0.85 + 0.15 * np.sin(2 * np.pi * 0.1 * t)
+        chunk = chunk * breath[:, None]
+
+        outdata[:] = chunk + binaural + pad
+
+# -----------------------------
+# Main
+# -----------------------------
+def main():
+    print("\n🌌 Bliss Engine v3 — Adaptive Neural Audio\n")
+
+    path = choose_music()
+    if not path:
+        print("No file selected.")
+        return
+
+    music, fs = sf.read(path)
+
+    # Ensure stereo
+    if len(music.shape) == 1:
+        music = np.column_stack((music, music))
+
+    engine = BlissEngine(music, fs)
+
+    print("Entering evolving bliss state...")
+    print("Alpha → Theta → Delta over 10 minutes.\nPress Ctrl+C to exit.\n")
+
+    with sd.OutputStream(callback=engine.callback,
+                         samplerate=fs,
+                         channels=2,
+                         blocksize=1024):
+        while True:
+            time.sleep(1)
+
+if __name__ == "__main__":
+    main()
+pip install numpy sounddevice soundfile scipy
+pip install sounddevice
+import numpy as np
+import sounddevice as sd
+import soundfile as sf
+from scipy.signal import butter, lfilter
+import time
+from tkinter import Tk
+from tkinter.filedialog import askopenfilename
+import threading
+
+# --------------------------
+# Utility Filters
+# --------------------------
+def lowpass(data, cutoff, fs, order=4):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = butter(order, normal_cutoff, btype='low')
+    return lfilter(b, a, data)
+
+# --------------------------
+# Choose Music
+# --------------------------
+def choose_music():
+    Tk().withdraw()
+    return askopenfilename(
+        title="Choose your music",
+        filetypes=[("Audio Files", "*.wav *.flac *.ogg *.mp3")]
+    )
+
+# --------------------------
+# Bliss Engine
+# --------------------------
+class UnifiedBlissEngine:
+    def __init__(self, music, fs, mode):
+        self.music = music
+        self.fs = fs
+        self.mode = mode
+        self.pos = 0
+        self.start_time = time.time()
+        self.heartbeat_phase = 0
+
+    # ----------------------
+    # Brainwave progression
+    # ----------------------
+    def brainwave_freq(self, progress):
+        if self.mode == "meditation":
+            return 8 - 4 * progress  # alpha -> theta
+        elif self.mode == "sleep":
+            return 6 - 5 * progress  # theta -> delta
+        elif self.mode == "focus":
+            return 12 - 4 * progress # beta -> alpha
+        elif self.mode == "psychedelic":
+            return 3 + 10 * np.sin(progress * 10)
+        elif self.mode == "experimental":
+            return np.random.uniform(1, 15)
+        return 6
+
+    # ----------------------
+    # Binaural
+    # ----------------------
+    def binaural(self, frames, t, progress):
+        beat = self.brainwave_freq(progress)
+        base = 220 + 10 * np.sin(progress * 5)
+
+        left = np.sin(2*np.pi*base*t)
+        right = np.sin(2*np.pi*(base+beat)*t)
+
+        return np.column_stack((left, right)) * 0.05
+
+    # ----------------------
+    # Fractal Ambient
+    # ----------------------
+    def fractal_pad(self, frames, t, progress):
+        f1 = 110 + 40*np.sin(progress*3)
+        f2 = 220 + 30*np.sin(progress*7)
+        pad = np.sin(2*np.pi*f1*t) + 0.5*np.sin(2*np.pi*f2*t)
+        return np.column_stack((pad, pad)) * 0.03
+
+    # ----------------------
+    # Heartbeat Entrainment
+    # ----------------------
+    def heartbeat(self, frames, t):
+        bpm = 60
+        beat_freq = bpm / 60
+        pulse = np.sin(2*np.pi*beat_freq*t)
+        shaped = np.maximum(pulse, 0) ** 2
+        return shaped[:, None] * 0.04
+
+    # ----------------------
+    # Stereo 3D motion
+    # ----------------------
+    def spatial_motion(self, frames, t):
+        pan = 0.5 + 0.5*np.sin(2*np.pi*0.05*t)
+        return pan
+
+    # ----------------------
+    # Callback
+    # ----------------------
+    def callback(self, outdata, frames, time_info, status):
+        if self.pos + frames >= len(self.music):
+            self.pos = 0
+
+        chunk = self.music[self.pos:self.pos+frames]
+        self.pos += frames
+
+        t = np.arange(frames)/self.fs
+        progress = min((time.time()-self.start_time)/600,1)
+
+        # Darken for sleep
+        if self.mode == "sleep":
+            cutoff = 6000 - 5000*progress
+            chunk[:,0] = lowpass(chunk[:,0], cutoff, self.fs)
+            chunk[:,1] = lowpass(chunk[:,1], cutoff, self.fs)
+
+        # Focus brightens
+        if self.mode == "focus":
+            cutoff = 3000 + 4000*(1-progress)
+            chunk[:,0] = lowpass(chunk[:,0], cutoff, self.fs)
+            chunk[:,1] = lowpass(chunk[:,1], cutoff, self.fs)
+
+        binaural = self.binaural(frames, t, progress)
+        pad = self.fractal_pad(frames, t, progress)
+        heart = self.heartbeat(frames, t)
+
+        # Breathing modulation
+        breath = 0.85 + 0.15*np.sin(2*np.pi*0.1*t)
+        chunk = chunk * breath[:,None]
+
+        # Spatial panning
+        pan = self.spatial_motion(frames, t)
+        chunk[:,0] *= pan
+        chunk[:,1] *= (1-pan)
+
+        outdata[:] = chunk + binaural + pad + heart
+
+
+# --------------------------
+# Main
+# --------------------------
+def main():
+    print("\n🌌 Unified Bliss System\n")
+    print("1 - Meditation")
+    print("2 - Sleep")
+    print("3 - Focus")
+    print("4 - Psychedelic")
+    print("5 - Experimental")
+
+    choice = input("Choose mode: ")
+
+    modes = {
+        "1": "meditation",
+        "2": "sleep",
+        "3": "focus",
+        "4": "psychedelic",
+        "5": "experimental"
+    }
+
+    mode = modes.get(choice, "meditation")
+
+    path = choose_music()
+    if not path:
+        print("No file selected.")
+        return
+
+    music, fs = sf.read(path)
+    if len(music.shape) == 1:
+        music = np.column_stack((music, music))
+
+    engine = UnifiedBlissEngine(music, fs, mode)
+
+    print(f"\nEntering {mode} state...\nPress Ctrl+C to exit.\n")
+
+    with sd.OutputStream(callback=engine.callback,
+                         samplerate=fs,
+                         channels=2,
+                         blocksize=1024):
+        while True:
+            time.sleep(1)
+
+if __name__ == "__main__":
+    main()
+pip install numpy sounddevice scipy
+pip install sounddevice
+pip install sounddevice
+import numpy as np
+import sounddevice as sd
+from scipy.signal import butter, lfilter
+import time
+import threading
+
+# ==============================
+# Utility Filters
+# ==============================
+def lowpass(data, cutoff, fs, order=4):
+    nyq = 0.5 * fs
+    cutoff = max(10, min(cutoff, nyq - 100))
+    b, a = butter(order, cutoff / nyq, btype='low')
+    return lfilter(b, a, data)
+
+# ==============================
+# Maximum Engine
+# ==============================
+class MaximumBlissEngine:
+
+    def __init__(self, fs=44100):
+        self.fs = fs
+        self.start_time = time.time()
+        self.phase = 0
+        self.sleep_cycle_length = 90 * 60  # 90 min
+        self.breath_level = 0.5
+        self.enable_mic = False
+
+    # -----------------------------------
+    # Brainwave State Architecture
+    # -----------------------------------
+    def brainwave(self, t_global):
+        cycle_pos = (t_global % self.sleep_cycle_length) / self.sleep_cycle_length
+
+        # 90-minute architecture
+        if cycle_pos < 0.3:
+            return 8  # alpha
+        elif cycle_pos < 0.6:
+            return 5  # theta
+        elif cycle_pos < 0.85:
+            return 2  # delta
+        else:
+            return 10  # REM-like activation
+
+    # -----------------------------------
+    # Fractal Harmonic Generator
+    # -----------------------------------
+    def fractal_field(self, t, progress):
+        base = 110 + 30*np.sin(progress*2)
+        layers = (
+            np.sin(2*np.pi*base*t) +
+            0.5*np.sin(2*np.pi*(base*1.5)*t) +
+            0.3*np.sin(2*np.pi*(base*2.1)*t)
+        )
+        return layers
+
+    # -----------------------------------
+    # Psychedelic Bloom
+    # -----------------------------------
+    def harmonic_bloom(self, t, intensity):
+        mod = np.sin(2*np.pi*0.1*t)
+        bloom = np.sin(2*np.pi*(220+40*mod)*t)
+        return bloom * intensity
+
+    # -----------------------------------
+    # Heartbeat Entrainment
+    # -----------------------------------
+    def heartbeat(self, t, calm_factor):
+        bpm = 60 - 20*calm_factor
+        beat = bpm/60
+        pulse = np.maximum(np.sin(2*np.pi*beat*t), 0)**2
+        return pulse
+
+    # -----------------------------------
+    # Breathing Detection (optional)
+    # -----------------------------------
+    def mic_listener(self):
+        def callback(indata, frames, time_info, status):
+            volume = np.linalg.norm(indata) * 10
+            self.breath_level = min(volume, 1)
+        with sd.InputStream(callback=callback):
+            while True:
+                time.sleep(0.1)
+
+    # -----------------------------------
+    # Audio Callback
+    # -----------------------------------
+    def callback(self, outdata, frames, time_info, status):
+        t_global = time.time() - self.start_time
+        t = np.arange(frames)/self.fs + self.phase
+        self.phase += frames/self.fs
+
+        progress = (t_global % self.sleep_cycle_length)/self.sleep_cycle_length
+        beat_freq = self.brainwave(t_global)
+
+        # Binaural
+        left = np.sin(2*np.pi*220*t)
+        right = np.sin(2*np.pi*(220+beat_freq)*t)
+        binaural = np.column_stack((left, right)) * 0.04
+
+        # Fractal harmonic field
+        fractal = self.fractal_field(t, progress)
+        fractal = np.column_stack((fractal, fractal)) * 0.05
+
+        # Psychedelic bloom (activates near REM phase)
+        bloom_intensity = max(0, progress-0.75)*4
+        bloom = self.harmonic_bloom(t, bloom_intensity)
+        bloom = np.column_stack((bloom, bloom)) * 0.04
+
+        # Heartbeat entrainment
+        heart = self.heartbeat(t, progress)
+        heart = heart[:,None] * 0.03
+
+        # Breathing modulation
+        breath_mod = 0.8 + 0.2*np.sin(2*np.pi*0.1*t)
+        if self.enable_mic:
+            breath_mod *= (0.7 + self.breath_level*0.6)
+
+        # Spatial motion
+        pan = 0.5 + 0.5*np.sin(2*np.pi*0.03*t)
+        spatial = np.zeros((frames,2))
+        spatial[:,0] = breath_mod * pan
+        spatial[:,1] = breath_mod * (1-pan)
+
+        mix = (binaural + fractal + bloom + heart) * spatial
+
+        # Darken in deep sleep
+        if progress > 0.5:
+            mix[:,0] = lowpass(mix[:,0], 1200, self.fs)
+            mix[:,1] = lowpass(mix[:,1], 1200, self.fs)
+
+        outdata[:] = mix.astype(np.float32)
+
+# ==============================
+# Run Engine
+# ==============================
+def main():
+    print("\n🌌 MAXIMUM BLISS ENGINE 🌌")
+    print("1 - Pure generative mode")
+    print("2 - Generative + microphone breathing")
+
+    choice = input("Select mode: ")
+
+    engine = MaximumBlissEngine()
+
+    if choice == "2":
+        engine.enable_mic = True
+        threading.Thread(target=engine.mic_listener, daemon=True).start()
+
+    print("\nEntering autonomous neuroacoustic environment...")
+    print("Sleep cycles: 90-minute architecture.")
+    print("Runs indefinitely. Ctrl+C to exit.\n")
+
+    with sd.OutputStream(callback=engine.callback,
+                         samplerate=engine.fs,
+                         channels=2,
+                         blocksize=1024):
+        while True:
+            time.sleep(1)
+
+if __name__ == "__main__":
+    main()
+pip install numpy sounddevice scipy
+import numpy as np
+import sounddevice as sd
+from scipy.signal import butter, lfilter
+import threading
+import time
+
+# ==========================================
+# Utility Filter
+# ==========================================
+def lowpass(data, cutoff, fs, order=4):
+    nyq = 0.5 * fs
+    cutoff = max(20, min(cutoff, nyq - 100))
+    b, a = butter(order, cutoff/nyq, btype='low')
+    return lfilter(b, a, data)
+
+# ==========================================
+# Lorenz Attractor (Chaotic Core)
+# ==========================================
+class Lorenz:
+    def __init__(self):
+        self.x = 0.1
+        self.y = 0.0
+        self.z = 0.0
+        self.sigma = 10
+        self.rho = 28
+        self.beta = 8/3
+
+    def step(self, dt=0.01):
+        dx = self.sigma*(self.y - self.x)
+        dy = self.x*(self.rho - self.z) - self.y
+        dz = self.x*self.y - self.beta*self.z
+
+        self.x += dx*dt
+        self.y += dy*dt
+        self.z += dz*dt
+
+        return self.x, self.y, self.z
+
+# ==========================================
+# Transcendent Engine
+# ==========================================
+class TranscendentEngine:
+
+    def __init__(self, fs=44100):
+        self.fs = fs
+        self.start_time = time.time()
+        self.phase = 0
+        self.lorenz = Lorenz()
+        self.breath_energy = 0.3
+        self.enable_mic = False
+        self.self_awareness = 0.5  # feedback evolution
+
+    # ---------------------------------------
+    # Microphone Listener
+    # ---------------------------------------
+    def mic_listener(self):
+        def callback(indata, frames, time_info, status):
+            energy = np.linalg.norm(indata) * 5
+            self.breath_energy = min(energy, 1.0)
+        with sd.InputStream(callback=callback):
+            while True:
+                time.sleep(0.1)
+
+    # ---------------------------------------
+    # Audio Self-Analysis
+    # ---------------------------------------
+    def analyze_output(self, signal):
+        energy = np.mean(np.abs(signal))
+        self.self_awareness = 0.9*self.self_awareness + 0.1*energy
+
+    # ---------------------------------------
+    # Audio Callback
+    # ---------------------------------------
+    def callback(self, outdata, frames, time_info, status):
+        t = np.arange(frames)/self.fs
+        t_global = time.time() - self.start_time
+
+        # Chaotic attractor evolution
+        x, y, z = self.lorenz.step(0.005 + 0.005*self.self_awareness)
+
+        base_freq = 110 + abs(x)*4
+        mod_freq = 220 + abs(y)*3
+        chaos_mod = abs(z) * 0.01
+
+        # Brainwave adaptive entrainment
+        brainwave = 8 - 6*self.self_awareness
+
+        left = np.sin(2*np.pi*(base_freq)*t + self.phase)
+        right = np.sin(2*np.pi*(base_freq+brainwave)*t + self.phase)
+
+        harmonic = np.sin(2*np.pi*(mod_freq+chaos_mod)*t)
+
+        # Layer mix
+        mix = (
+            0.4*np.column_stack((left, right)) +
+            0.3*np.column_stack((harmonic, harmonic))
+        )
+
+        # Breathing modulation
+        breath = 0.8 + 0.4*np.sin(2*np.pi*(0.1+self.breath_energy*0.2)*t)
+        mix *= breath[:,None]
+
+        # Spatial orbital motion
+        pan = 0.5 + 0.5*np.sin(2*np.pi*0.02*t_global)
+        mix[:,0] *= pan
+        mix[:,1] *= (1-pan)
+
+        # Deep-state darkening
+        cutoff = 5000 - 4000*self.self_awareness
+        mix[:,0] = lowpass(mix[:,0], cutoff, self.fs)
+        mix[:,1] = lowpass(mix[:,1], cutoff, self.fs)
+
+        self.analyze_output(mix)
+
+        self.phase += frames/self.fs
+        outdata[:] = mix.astype(np.float32)
+
+# ==========================================
+# Run
+# ==========================================
+def main():
+    print("\n🌌 TRANSCENDENT NEUROACOUSTIC ENGINE 🌌")
+    print("1 - Autonomous")
+    print("2 - Breath Reactive")
+
+    choice = input("Mode: ")
+
+    engine = TranscendentEngine()
+
+    if choice == "2":
+        engine.enable_mic = True
+        threading.Thread(target=engine.mic_listener, daemon=True).start()
+
+    print("\nEntering self-evolving audio field...")
+    print("System adapts to itself and to you.")
+    print("Infinite. Ctrl+C to exit.\n")
+
+    with sd.OutputStream(callback=engine.callback,
+                         samplerate=engine.fs,
+                         channels=2,
+                         blocksize=1024):
+        while True:
+            time.sleep(1)
+
+if __name__ == "__main__":
+    main()
+pip install numpy sounddevice scipy
+import numpy as np
+import sounddevice as sd
+from scipy.signal import butter, lfilter
+import threading
+import time
+import json
+import os
+import random
+
+STATE_FILE = "bliss_state.json"
+
+# ======================================
+# Utility Filter
+# ======================================
+def lowpass(data, cutoff, fs, order=4):
+    nyq = 0.5 * fs
+    cutoff = max(20, min(cutoff, nyq - 100))
+    b, a = butter(order, cutoff/nyq, btype='low')
+    return lfilter(b, a, data)
+
+# ======================================
+# Genetic Harmonic Genome
+# ======================================
+class Genome:
+    def __init__(self):
+        self.base_freq = random.uniform(80, 200)
+        self.mod_freq = random.uniform(150, 300)
+        self.chaos_intensity = random.uniform(0.005, 0.02)
+        self.brainwave_bias = random.uniform(4, 10)
+
+    def mutate(self, influence):
+        self.base_freq += random.uniform(-5, 5) * influence
+        self.mod_freq += random.uniform(-5, 5) * influence
+        self.chaos_intensity += random.uniform(-0.002, 0.002) * influence
+        self.brainwave_bias += random.uniform(-1, 1) * influence
+
+# ======================================
+# Engine
+# ======================================
+class EvolvingEngine:
+
+    def __init__(self, fs=44100):
+        self.fs = fs
+        self.phase = 0
+        self.start_time = time.time()
+        self.breath_energy = 0.3
+        self.self_state = 0.5
+        self.genome = Genome()
+        self.load_state()
+
+    # ----------------------------------
+    # Save & Load Memory
+    # ----------------------------------
+    def save_state(self):
+        data = {
+            "base_freq": self.genome.base_freq,
+            "mod_freq": self.genome.mod_freq,
+            "chaos_intensity": self.genome.chaos_intensity,
+            "brainwave_bias": self.genome.brainwave_bias,
+            "self_state": self.self_state
+        }
+        with open(STATE_FILE, "w") as f:
+            json.dump(data, f)
+
+    def load_state(self):
+        if os.path.exists(STATE_FILE):
+            with open(STATE_FILE, "r") as f:
+                data = json.load(f)
+                self.genome.base_freq = data["base_freq"]
+                self.genome.mod_freq = data["mod_freq"]
+                self.genome.chaos_intensity = data["chaos_intensity"]
+                self.genome.brainwave_bias = data["brainwave_bias"]
+                self.self_state = data["self_state"]
+
+    # ----------------------------------
+    # Microphone
+    # ----------------------------------
+    def mic_listener(self):
+        def callback(indata, frames, time_info, status):
+            energy = np.linalg.norm(indata) * 5
+            self.breath_energy = min(energy, 1.0)
+        with sd.InputStream(callback=callback):
+            while True:
+                time.sleep(0.1)
+
+    # ----------------------------------
+    # Self-analysis
+    # ----------------------------------
+    def analyze(self, mix):
+        energy = np.mean(np.abs(mix))
+        self.self_state = 0.98*self.self_state + 0.02*energy
+
+    # ----------------------------------
+    # Audio Callback
+    # ----------------------------------
+    def callback(self, outdata, frames, time_info, status):
+        t = np.arange(frames)/self.fs
+        progress = (time.time()-self.start_time)/600
+
+        # Brainwave adapts from genome
+        brainwave = self.genome.brainwave_bias - 6*self.self_state
+
+        left = np.sin(2*np.pi*self.genome.base_freq*t + self.phase)
+        right = np.sin(2*np.pi*(self.genome.base_freq+brainwave)*t + self.phase)
+
+        harmonic = np.sin(2*np.pi*self.genome.mod_freq*t)
+
+        chaos = np.sin(2*np.pi*(self.genome.base_freq +
+                 self.genome.chaos_intensity*np.sin(t*5))*t)
+
+        mix = (
+            0.4*np.column_stack((left, right)) +
+            0.3*np.column_stack((harmonic, harmonic)) +
+            0.3*np.column_stack((chaos, chaos))
+        )
+
+        # Breathing modulation
+        breath = 0.8 + 0.4*np.sin(2*np.pi*(0.1+self.breath_energy*0.2)*t)
+        mix *= breath[:,None]
+
+        # Spatial drift
+        pan = 0.5 + 0.5*np.sin(2*np.pi*0.02*progress)
+        mix[:,0] *= pan
+        mix[:,1] *= (1-pan)
+
+        # Deepening filter
+        cutoff = 6000 - 5000*self.self_state
+        mix[:,0] = lowpass(mix[:,0], cutoff, self.fs)
+        mix[:,1] = lowpass(mix[:,1], cutoff, self.fs)
+
+        self.analyze(mix)
+
+        # Genetic mutation slowly over time
+        if int(progress) % 60 == 0:
+            self.genome.mutate(self.self_state)
+
+        self.phase += frames/self.fs
+        outdata[:] = mix.astype(np.float32)
+
+# ======================================
+# Run
+# ======================================
+def main():
+    print("\n🌌 EVOLVING TRANSCENDENT ENGINE 🌌")
+    print("1 - Autonomous")
+    print("2 - Breath Reactive")
+
+    choice = input("Mode: ")
+
+    engine = EvolvingEngine()
+
+    if choice == "2":
+        threading.Thread(target=engine.mic_listener, daemon=True).start()
+
+    print("\nSystem remembers past sessions.")
+    print("Evolution continues each time you run it.")
+    print("Press Ctrl+C to exit.\n")
+
+    try:
+        with sd.OutputStream(callback=engine.callback,
+                             samplerate=engine.fs,
+                             channels=2,
+                             blocksize=1024):
+            while True:
+                time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nSaving state...")
+        engine.save_state()
+        print("Session memory preserved.")
+
+if __name__ == "__main__":
+    main()
+pip install numpy sounddevice scipy
+import numpy as np
+import sounddevice as sd
+from scipy.signal import butter, lfilter
+import threading
+import time
+import json
+import os
+import random
+
+STATE_FILE = "ascended_state.json"
+
+# ==========================================
+# Utility Filter
+# ==========================================
+def lowpass(data, cutoff, fs, order=4):
+    nyq = 0.5 * fs
+    cutoff = max(40, min(cutoff, nyq - 200))
+    b, a = butter(order, cutoff/nyq, btype='low')
+    return lfilter(b, a, data)
+
+# ==========================================
+# Genome
+# ==========================================
+class Genome:
+    def __init__(self):
+        self.base = random.uniform(90, 180)
+        self.mod = random.uniform(150, 320)
+        self.brainwave = random.uniform(4, 10)
+        self.chaos = random.uniform(0.001, 0.02)
+        self.fitness = 0.5
+
+    def mutate(self, pressure=0.1):
+        self.base += random.uniform(-5,5)*pressure
+        self.mod += random.uniform(-5,5)*pressure
+        self.brainwave += random.uniform(-1,1)*pressure
+        self.chaos += random.uniform(-0.002,0.002)*pressure
+
+    def crossover(self, other):
+        child = Genome()
+        child.base = (self.base + other.base)/2
+        child.mod = (self.mod + other.mod)/2
+        child.brainwave = (self.brainwave + other.brainwave)/2
+        child.chaos = (self.chaos + other.chaos)/2
+        return child
+
+# ==========================================
+# Ascended Engine
+# ==========================================
+class AscendedEngine:
+
+    def __init__(self, fs=44100):
+        self.fs = fs
+        self.phase = 0
+        self.start_time = time.time()
+        self.breath_energy = 0.3
+        self.self_state = 0.5
+        self.genomes = [Genome() for _ in range(3)]
+        self.active = self.genomes[0]
+        self.load_state()
+
+    # --------------------------------------
+    # Memory
+    # --------------------------------------
+    def save_state(self):
+        data = []
+        for g in self.genomes:
+            data.append(g.__dict__)
+        with open(STATE_FILE, "w") as f:
+            json.dump(data, f)
+
+    def load_state(self):
+        if os.path.exists(STATE_FILE):
+            with open(STATE_FILE, "r") as f:
+                data = json.load(f)
+                self.genomes = []
+                for gdata in data:
+                    g = Genome()
+                    g.__dict__.update(gdata)
+                    self.genomes.append(g)
+                self.active = self.genomes[0]
+
+    # --------------------------------------
+    # Mic input
+    # --------------------------------------
+    def mic_listener(self):
+        def callback(indata, frames, time_info, status):
+            energy = np.linalg.norm(indata)*5
+            self.breath_energy = min(energy,1.0)
+        with sd.InputStream(callback=callback):
+            while True:
+                time.sleep(0.1)
+
+    # --------------------------------------
+    # Reward Function (calm optimization)
+    # --------------------------------------
+    def reward(self, mix):
+        energy = np.mean(np.abs(mix))
+        calm_score = 1 - energy
+        self.active.fitness = 0.98*self.active.fitness + 0.02*calm_score
+
+    # --------------------------------------
+    # Evolution Cycle
+    # --------------------------------------
+    def evolve(self):
+        self.genomes.sort(key=lambda g: g.fitness, reverse=True)
+
+        parent1 = self.genomes[0]
+        parent2 = self.genomes[1]
+
+        child = parent1.crossover(parent2)
+        child.mutate(pressure=0.3)
+
+        self.genomes[-1] = child
+        self.active = random.choice(self.genomes)
+
+    # --------------------------------------
+    # Audio Callback
+    # --------------------------------------
+    def callback(self, outdata, frames, time_info, status):
+        t = np.arange(frames)/self.fs
+
+        g = self.active
+
+        left = np.sin(2*np.pi*g.base*t + self.phase)
+        right = np.sin(2*np.pi*(g.base+g.brainwave)*t + self.phase)
+
+        harmonic = np.sin(2*np.pi*g.mod*t)
+        chaos = np.sin(2*np.pi*(g.base + g.chaos*np.sin(t*5))*t)
+
+        mix = (
+            0.4*np.column_stack((left, right)) +
+            0.3*np.column_stack((harmonic, harmonic)) +
+            0.3*np.column_stack((chaos, chaos))
+        )
+
+        breath = 0.8 + 0.4*np.sin(2*np.pi*(0.1+self.breath_energy*0.2)*t)
+        mix *= breath[:,None]
+
+        cutoff = 5000 - 4000*self.active.fitness
+        mix[:,0] = lowpass(mix[:,0], cutoff, self.fs)
+        mix[:,1] = lowpass(mix[:,1], cutoff, self.fs)
+
+        self.reward(mix)
+
+        if int(time.time()-self.start_time) % 45 == 0:
+            self.evolve()
+
+        self.phase += frames/self.fs
+        outdata[:] = mix.astype(np.float32)
+
+# ==========================================
+# Run
+# ==========================================
+def main():
+    print("\n🌌 ASCENDED ADAPTIVE ENGINE 🌌")
+    print("1 - Autonomous")
+    print("2 - Breath Reactive")
+
+    choice = input("Mode: ")
+
+    engine = AscendedEngine()
+
+    if choice == "2":
+        threading.Thread(target=engine.mic_listener, daemon=True).start()
+
+    print("\nSystem now optimizes toward calm states.")
+    print("Multi-genome evolution active.")
+    print("Session memory persists.")
+    print("Ctrl+C to exit.\n")
+
+    try:
+        with sd.OutputStream(callback=engine.callback,
+                             samplerate=engine.fs,
+                             channels=2,
+                             blocksize=1024):
+            while True:
+                time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nSaving evolutionary state...")
+        engine.save_state()
+        print("Evolution preserved.")
+
+if __name__ == "__main__":
+    main()
