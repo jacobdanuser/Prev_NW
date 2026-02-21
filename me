@@ -1,0 +1,2502 @@
+pip install numpy sounddevice soundfile
+#!/usr/bin/env python3
+"""
+gong_root_cause.py
+
+Cross-platform "gong / deep thump" investigator:
+- Listens for low-frequency transient events (e.g., 20–200 Hz)
+- When detected, saves:
+  - WAV clip (pre+post seconds)
+  - JSON analysis (dominant frequency, level, timestamp)
+  - OS log snippet near the event time
+
+This is diagnostic tooling. It does NOT modify system settings.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import platform
+import subprocess
+import time
+from collections import deque
+from dataclasses import dataclass, asdict
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Optional, Tuple
+
+import numpy as np
+
+try:
+    import sounddevice as sd
+    import soundfile as sf
+except ImportError as e:
+    raise SystemExit(
+        "Missing dependencies. Install with:\n"
+        "  pip install numpy sounddevice soundfile\n"
+        f"Error: {e}"
+    )
+
+
+@dataclass
+class EventAnalysis:
+    timestamp_local: str
+    sample_rate: int
+    low_band_hz: Tuple[float, float]
+    peak_freq_hz: float
+    low_band_rms: float
+    full_band_rms: float
+    ratio_low_to_full: float
+    note: str
+
+
+def now_local_str() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def run_cmd(cmd: list[str], timeout: int = 20) -> str:
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, shell=False)
+        out = (p.stdout or "") + ("\n" + p.stderr if p.stderr else "")
+        return out.strip()
+    except Exception as e:
+        return f"[command failed] {cmd}\n{e}"
+
+
+def os_logs_snapshot(outdir: Path, minutes: int = 5) -> None:
+    """
+    Save a small log snapshot to correlate with the audio event.
+    """
+    sysname = platform.system().lower()
+    stamp = datetime.now()
+
+    if sysname == "windows":
+        # Grab recent System + Application events (last N minutes)
+        # Note: This may be large; we keep it bounded with /c.
+        ms = minutes * 60 * 1000
+        system = run_cmd(["wevtutil", "qe", "System", f"/q:*[System[TimeCreated[timediff(@SystemTime) <= {ms}]]]", "/f:text", "/c:200"])
+        app = run_cmd(["wevtutil", "qe", "Application", f"/q:*[System[TimeCreated[timediff(@SystemTime) <= {ms}]]]", "/f:text", "/c:200"])
+        (outdir / "logs_system.txt").write_text(system, encoding="utf-8", errors="replace")
+        (outdir / "logs_application.txt").write_text(app, encoding="utf-8", errors="replace")
+
+    elif sysname == "darwin":
+        # macOS unified logs
+        # "log show --last 5m" is often enough to catch device reconnects / audio daemon messages.
+        logs = run_cmd(["log", "show", "--style", "syslog", "--last", f"{minutes}m"])
+        (outdir / "logs_macos.txt").write_text(logs, encoding="utf-8", errors="replace")
+
+    else:
+        # Linux journald
+        logs = run_cmd(["journalctl", "--since", f"{minutes} minutes ago", "--no-pager", "-n", "400"])
+        (outdir / "logs_linux.txt").write_text(logs, encoding="utf-8", errors="replace")
+
+    (outdir / "logs_meta.json").write_text(
+        json.dumps({"captured_at": stamp.isoformat(), "minutes": minutes, "platform": platform.platform()}, indent=2),
+        encoding="utf-8"
+    )
+
+
+def band_rms(x: np.ndarray, sr: int, f_lo: float, f_hi: float) -> float:
+    """
+    RMS energy in a frequency band using FFT magnitude.
+    """
+    x = x.astype(np.float32)
+    if x.ndim > 1:
+        x = x.mean(axis=1)  # mixdown to mono
+
+    n = len(x)
+    if n < 256:
+        return 0.0
+
+    # windowed FFT
+    w = np.hanning(n).astype(np.float32)
+    X = np.fft.rfft(x * w)
+    freqs = np.fft.rfftfreq(n, d=1.0 / sr)
+    mag2 = (np.abs(X) ** 2)
+
+    band = (freqs >= f_lo) & (freqs <= f_hi)
+    if not np.any(band):
+        return 0.0
+    # energy proxy -> sqrt(mean power)
+    return float(np.sqrt(np.mean(mag2[band])))
+
+
+def peak_freq(x: np.ndarray, sr: int, f_lo: float, f_hi: float) -> float:
+    """
+    Dominant frequency in a band.
+    """
+    x = x.astype(np.float32)
+    if x.ndim > 1:
+        x = x.mean(axis=1)
+
+    n = len(x)
+    w = np.hanning(n).astype(np.float32)
+    X = np.fft.rfft(x * w)
+    freqs = np.fft.rfftfreq(n, d=1.0 / sr)
+    mag = np.abs(X)
+
+    band = (freqs >= f_lo) & (freqs <= f_hi)
+    if not np.any(band):
+        return 0.0
+    idx = np.argmax(mag[band])
+    return float(freqs[band][idx])
+
+
+def rms(x: np.ndarray) -> float:
+    x = x.astype(np.float32)
+    if x.ndim > 1:
+        x = x.mean(axis=1)
+    return float(np.sqrt(np.mean(x * x)))
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", default="gong_events", help="Output directory")
+    ap.add_argument("--sr", type=int, default=48000, help="Sample rate")
+    ap.add_argument("--chunk", type=float, default=0.50, help="Chunk seconds for detection")
+    ap.add_argument("--pre", type=float, default=2.0, help="Seconds to keep before event")
+    ap.add_argument("--post", type=float, default=3.0, help="Seconds to keep after event")
+    ap.add_argument("--low_lo", type=float, default=20.0, help="Low band min Hz")
+    ap.add_argument("--low_hi", type=float, default=200.0, help="Low band max Hz")
+    ap.add_argument("--ratio", type=float, default=2.5, help="Trigger ratio: low_band_rms / full_band_rms")
+    ap.add_argument("--min_rms", type=float, default=0.004, help="Minimum full-band RMS to consider")
+    ap.add_argument("--cooldown", type=float, default=10.0, help="Seconds between triggers")
+    ap.add_argument("--log_minutes", type=int, default=5, help="Minutes of OS logs to capture on trigger")
+    args = ap.parse_args()
+
+    out_base = Path(args.out).expanduser().resolve()
+    out_base.mkdir(parents=True, exist_ok=True)
+
+    sr = args.sr
+    chunk_frames = int(args.chunk * sr)
+    pre_frames = int(args.pre * sr)
+    post_frames = int(args.post * sr)
+
+    ring = deque(maxlen=pre_frames)  # store mono samples
+    last_trigger = 0.0
+
+    print(f"[{now_local_str()}] Listening… (sr={sr}, chunk={args.chunk}s, band={args.low_lo}-{args.low_hi} Hz)")
+    print("Tip: If you can, place mic near your speakers first; then later move it away to see if event persists.")
+
+    def callback(indata, frames, time_info, status):
+        nonlocal last_trigger
+        if status:
+            # non-fatal warnings like overflows
+            pass
+
+        mono = indata.mean(axis=1).astype(np.float32)
+        for s in mono:
+            ring.append(float(s))
+
+        full = rms(mono)
+        if full < args.min_rms:
+            return
+
+        low = band_rms(mono, sr, args.low_lo, args.low_hi)
+        ratio = (low / (full + 1e-9))
+
+        now = time.time()
+        if ratio >= args.ratio and (now - last_trigger) >= args.cooldown:
+            last_trigger = now
+            # copy pre + current; post will be captured by main thread
+            pre_buf = np.array(ring, dtype=np.float32)
+            cur_buf = mono.copy()
+            # stash on disk via a quick flag file
+            trigger_dir = out_base / f"event_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            trigger_dir.mkdir(parents=True, exist_ok=True)
+
+            # Save immediate pre+current; main thread will append post.
+            np.save(trigger_dir / "pre.npy", pre_buf)
+            np.save(trigger_dir / "cur.npy", cur_buf)
+            (trigger_dir / "TRIGGERED").write_text("triggered", encoding="utf-8")
+
+    with sd.InputStream(channels=1, samplerate=sr, blocksize=chunk_frames, callback=callback):
+        while True:
+            time.sleep(0.2)
+
+            # If any triggered directories exist, finalize them by capturing post audio
+            for d in out_base.glob("event_*/TRIGGERED"):
+                trigger_dir = d.parent
+                try:
+                    pre_buf = np.load(trigger_dir / "pre.npy")
+                    cur_buf = np.load(trigger_dir / "cur.npy")
+
+                    # capture post
+                    post = sd.rec(frames=post_frames, samplerate=sr, channels=1, dtype="float32", blocking=True).reshape(-1)
+
+                    clip = np.concatenate([pre_buf, cur_buf, post], axis=0)
+
+                    # analyze
+                    pk = peak_freq(clip, sr, args.low_lo, args.low_hi)
+                    low = band_rms(clip, sr, args.low_lo, args.low_hi)
+                    full = rms(clip)
+                    ratio = low / (full + 1e-9)
+
+                    analysis = EventAnalysis(
+                        timestamp_local=now_local_str(),
+                        sample_rate=sr,
+                        low_band_hz=(args.low_lo, args.low_hi),
+                        peak_freq_hz=pk,
+                        low_band_rms=low,
+                        full_band_rms=full,
+                        ratio_low_to_full=ratio,
+                        note="Correlate timestamp with OS logs + what devices were on (speakers/headphones/HVAC).",
+                    )
+
+                    # write wav + json
+                    sf.write(trigger_dir / "clip.wav", clip, sr)
+                    (trigger_dir / "analysis.json").write_text(json.dumps(asdict(analysis), indent=2), encoding="utf-8")
+
+                    # grab logs
+                    os_logs_snapshot(trigger_dir, minutes=args.log_minutes)
+
+                    # cleanup trigger markers
+                    d.unlink(missing_ok=True)
+                    for f in ["pre.npy", "cur.npy"]:
+                        try:
+                            (trigger_dir / f).unlink(missing_ok=True)
+                        except Exception:
+                            pass
+
+                    print(f"[{analysis.timestamp_local}] EVENT captured -> {trigger_dir}")
+                    print(f"  peak_freq ≈ {analysis.peak_freq_hz:.1f} Hz | ratio={analysis.ratio_low_to_full:.2f} | full_rms={analysis.full_band_rms:.4f}")
+
+                except Exception as e:
+                    # If anything fails, keep the folder for manual inspection.
+                    (trigger_dir / "error.txt").write_text(str(e), encoding="utf-8", errors="replace")
+                    try:
+                        d.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+diff --git a/gong_root_analyzer.py b/gong_root_analyzer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f2010e255e6b82f1cb4a1c07e68fc9ba88dd8485
+--- /dev/null
++++ b/gong_root_analyzer.py
+@@ -0,0 +1,182 @@
++#!/usr/bin/env python3
++"""Cross-platform analyzer for deep gong-like sounds.
++
++This script offers a structured, non-supernatural diagnosis focused on
++physical, environmental, and neutral metaphysical interpretations.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import platform
++from dataclasses import dataclass
++from typing import Dict, List, Tuple
++
++
++@dataclass
++class SignalProfile:
++    frequency_hz: float
++    duration_s: float
++    repeat_interval_min: float
++    location: str
++    vibration_felt: bool
++    time_pattern: str
++    weather_related: bool
++    stress_related: bool
++
++
++def likely_sources(profile: SignalProfile) -> List[Tuple[str, float, str]]:
++    """Return ranked likely causes for a deep gong-like sound."""
++    scores: Dict[str, float] = {
++        "industrial_infrastructure": 0.0,
++        "building_resonance": 0.0,
++        "transport_low_frequency": 0.0,
++        "tinnitus_or_infrasound_perception": 0.0,
++        "neutral_metaphysical_interpretation": 0.0,
++    }
++
++    if 20 <= profile.frequency_hz <= 120:
++        scores["industrial_infrastructure"] += 2.0
++        scores["building_resonance"] += 2.0
++        scores["transport_low_frequency"] += 1.5
++
++    if profile.vibration_felt:
++        scores["industrial_infrastructure"] += 1.5
++        scores["building_resonance"] += 1.0
++        scores["transport_low_frequency"] += 1.0
++    else:
++        scores["tinnitus_or_infrasound_perception"] += 1.2
++
++    if profile.repeat_interval_min <= 30:
++        scores["industrial_infrastructure"] += 1.2
++        scores["transport_low_frequency"] += 1.0
++
++    if profile.time_pattern.lower() in {"night", "late-night", "dawn"}:
++        scores["building_resonance"] += 1.2
++        scores["tinnitus_or_infrasound_perception"] += 1.0
++
++    if profile.weather_related:
++        scores["building_resonance"] += 1.0
++        scores["industrial_infrastructure"] += 0.6
++
++    if profile.stress_related:
++        scores["tinnitus_or_infrasound_perception"] += 1.8
++        scores["neutral_metaphysical_interpretation"] += 0.4
++
++    explanations = {
++        "industrial_infrastructure": "Possible pumps, compressors, turbines, or utility systems creating periodic low-frequency pressure waves.",
++        "building_resonance": "A structural cavity or room mode may amplify distant low-frequency sound into a gong-like pulse.",
++        "transport_low_frequency": "Rail, heavy trucks, or marine traffic can create deep repeating tones and pressure-like pulses.",
++        "tinnitus_or_infrasound_perception": "Inner-ear sensitivity, stress, or low-frequency infrasound can produce perceived hum/gong sounds without a clear external source.",
++        "neutral_metaphysical_interpretation": "Some traditions frame repetitive tones as attention cues or meaning-making events; this can be personally significant without implying harm.",
++    }
++
++    ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
++    return [(name, score, explanations[name]) for name, score in ranked]
++
++
++def classify_impact(profile: SignalProfile) -> Dict[str, str]:
++    """Describe likely effect and whether it's potentially harmful."""
++    physically_bad = profile.frequency_hz < 30 and profile.duration_s > 10
++    quality = "mixed"
++    if physically_bad:
++        quality = "potentially_bad"
++    elif 30 <= profile.frequency_hz <= 120 and not profile.stress_related:
++        quality = "mostly_neutral"
++
++    return {
++        "physical_assessment": (
++            "Potentially harmful if prolonged low-frequency exposure disrupts sleep, focus, or causes headaches."
++            if physically_bad
++            else "Usually benign when brief and infrequent; investigate if persistent or health symptoms appear."
++        ),
++        "metaphysical_assessment": "Can be interpreted as meaningful pattern recognition or reflective signal; not inherently good or bad.",
++        "overall_quality": quality,
++    }
++
++
++def build_report(profile: SignalProfile) -> Dict[str, object]:
++    ranked = likely_sources(profile)
++    impact = classify_impact(profile)
++
++    top = ranked[0]
++    report = {
++        "platform": {
++            "system": platform.system(),
++            "release": platform.release(),
++            "python": platform.python_version(),
++        },
++        "input_profile": profile.__dict__,
++        "top_cause": {
++            "label": top[0],
++            "confidence_score": round(top[1], 2),
++            "why_happening": top[2],
++            "how_happening": "Low-frequency energy couples with local structures and perception pathways, creating a deep gong sensation.",
++            "for_what_reason": "Most often mechanical cycles, environmental resonance, or neuroacoustic sensitivity.",
++        },
++        "ranked_causes": [
++            {"label": label, "score": round(score, 2), "explanation": explanation}
++            for label, score, explanation in ranked
++        ],
++        "is_it_bad_or_good": impact,
++        "scope_notice": "Analysis intentionally excludes any interpretation involving forces of evil.",
++        "next_steps": [
++            "Log exact times and locations for 7 days.",
++            "Use a phone spectrum analyzer app to estimate frequency peaks.",
++            "Check nearby HVAC/mechanical cycles and transport schedules.",
++            "If accompanied by ear pain, dizziness, or insomnia, seek clinical hearing evaluation.",
++        ],
++    }
++    return report
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(
++        description="Analyze the likely root of a deep gong-like sound (physical + neutral metaphysical framing)."
++    )
++    parser.add_argument("--frequency-hz", type=float, default=60.0)
++    parser.add_argument("--duration-s", type=float, default=5.0)
++    parser.add_argument("--repeat-interval-min", type=float, default=20.0)
++    parser.add_argument("--location", type=str, default="unknown")
++    parser.add_argument("--vibration-felt", action="store_true")
++    parser.add_argument("--time-pattern", type=str, default="night")
++    parser.add_argument("--weather-related", action="store_true")
++    parser.add_argument("--stress-related", action="store_true")
++    parser.add_argument("--json", action="store_true", help="Output machine-readable JSON")
++    return parser.parse_args()
++
++
++def main() -> None:
++    args = parse_args()
++    profile = SignalProfile(
++        frequency_hz=args.frequency_hz,
++        duration_s=args.duration_s,
++        repeat_interval_min=args.repeat_interval_min,
++        location=args.location,
++        vibration_felt=args.vibration_felt,
++        time_pattern=args.time_pattern,
++        weather_related=args.weather_related,
++        stress_related=args.stress_related,
++    )
++    report = build_report(profile)
++
++    if args.json:
++        print(json.dumps(report, indent=2))
++        return
++
++    print("=== Deep Gong Sound Root Analysis ===")
++    print(f"Platform: {report['platform']['system']} {report['platform']['release']} | Python {report['platform']['python']}")
++    print(f"Top cause: {report['top_cause']['label']} (score={report['top_cause']['confidence_score']})")
++    print(f"Why: {report['top_cause']['why_happening']}")
++    print(f"How: {report['top_cause']['how_happening']}")
++    print(f"Reason: {report['top_cause']['for_what_reason']}")
++    print("\nIs it bad or good?")
++    print(f"- Physical: {report['is_it_bad_or_good']['physical_assessment']}")
++    print(f"- Metaphysical: {report['is_it_bad_or_good']['metaphysical_assessment']}")
++    print(f"- Overall: {report['is_it_bad_or_good']['overall_quality']}")
++    print(f"\nNote: {report['scope_notice']}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/gong_root_analyzer.py b/gong_root_analyzer.py
+new file mode 100755
+index 0000000000000000000000000000000000000000..62809994992f046072e824ff8df61d7edc85dd11
+--- /dev/null
++++ b/gong_root_analyzer.py
+@@ -0,0 +1,305 @@
++#!/usr/bin/env python3
++"""Cross-platform analyzer for deep, gong-like sounds.
++
++What it does:
++- Loads a mono/stereo PCM WAV file.
++- Estimates low-frequency resonance, decay, and strike/transient behavior.
++- Produces a plain-language report covering:
++  * why it is happening,
++  * how it is happening,
++  * what purpose/reason it may serve,
++  * whether it is likely good/bad/neutral,
++  * physical and metaphysical interpretations.
++
++Constraint from request:
++- The report intentionally excludes explanations based on "forces of evil".
++"""
++
++from __future__ import annotations
++
++import argparse
++import audioop
++import math
++import os
++import platform
++import statistics
++import struct
++import sys
++import wave
++from dataclasses import dataclass
++from typing import List, Tuple
++
++
++@dataclass
++class AudioMetrics:
++    sample_rate: int
++    duration_s: float
++    rms: float
++    crest_factor: float
++    peak: float
++    low_band_strength: float
++    dominant_low_hz: float
++    decay_half_life_s: float
++    strike_index_s: float
++    periodicity_hint: str
++
++
++def read_wav_as_mono_float(path: str) -> Tuple[List[float], int]:
++    with wave.open(path, "rb") as wf:
++        channels = wf.getnchannels()
++        sample_width = wf.getsampwidth()
++        sample_rate = wf.getframerate()
++        frames = wf.readframes(wf.getnframes())
++
++    if channels > 1:
++        frames = audioop.tomono(frames, sample_width, 0.5, 0.5)
++
++    if sample_width == 1:
++        # unsigned 8-bit PCM
++        ints = [(b - 128) / 128.0 for b in frames]
++    elif sample_width == 2:
++        ints = [x / 32768.0 for x in struct.unpack("<{}h".format(len(frames) // 2), frames)]
++    elif sample_width == 4:
++        ints = [x / 2147483648.0 for x in struct.unpack("<{}i".format(len(frames) // 4), frames)]
++    else:
++        raise ValueError("Unsupported WAV sample width. Use 8/16/32-bit PCM WAV.")
++
++    return ints, sample_rate
++
++
++def rms(samples: List[float]) -> float:
++    if not samples:
++        return 0.0
++    return math.sqrt(sum(s * s for s in samples) / len(samples))
++
++
++def goertzel_power(samples: List[float], sample_rate: int, freq: float) -> float:
++    # Frequency-specific power estimator.
++    n = len(samples)
++    if n == 0:
++        return 0.0
++    k = int(0.5 + (n * freq / sample_rate))
++    omega = (2.0 * math.pi * k) / n
++    coeff = 2.0 * math.cos(omega)
++    q0 = q1 = q2 = 0.0
++    for x in samples:
++        q0 = coeff * q1 - q2 + x
++        q2 = q1
++        q1 = q0
++    return q1 * q1 + q2 * q2 - coeff * q1 * q2
++
++
++def estimate_decay_half_life(samples: List[float], sample_rate: int) -> float:
++    if len(samples) < sample_rate // 2:
++        return 0.0
++
++    window = max(256, sample_rate // 100)  # ~10ms
++    env = []
++    for i in range(0, len(samples), window):
++        chunk = samples[i : i + window]
++        env.append(rms(chunk))
++
++    peak = max(env) if env else 0.0
++    if peak <= 1e-9:
++        return 0.0
++
++    target = peak * 0.5
++    peak_i = env.index(peak)
++    for i in range(peak_i, len(env)):
++        if env[i] <= target:
++            return (i - peak_i) * (window / sample_rate)
++    return (len(env) - peak_i) * (window / sample_rate)
++
++
++def detect_strike_time(samples: List[float], sample_rate: int) -> float:
++    if not samples:
++        return 0.0
++    abs_vals = [abs(x) for x in samples]
++    max_val = max(abs_vals)
++    if max_val <= 1e-9:
++        return 0.0
++    threshold = max_val * 0.6
++    for i, v in enumerate(abs_vals):
++        if v >= threshold:
++            return i / sample_rate
++    return 0.0
++
++
++def periodicity_hint(samples: List[float], sample_rate: int) -> str:
++    # Check if the sound repeats in evenly spaced blocks.
++    block = sample_rate // 2
++    if block <= 0 or len(samples) < block * 4:
++        return "insufficient_data"
++
++    energies = []
++    for i in range(0, len(samples) - block + 1, block):
++        energies.append(rms(samples[i : i + block]))
++
++    if len(energies) < 4:
++        return "insufficient_data"
++
++    diffs = [abs(energies[i + 1] - energies[i]) for i in range(len(energies) - 1)]
++    mean_diff = statistics.mean(diffs)
++    mean_energy = statistics.mean(energies)
++
++    if mean_energy <= 1e-9:
++        return "very_quiet"
++    ratio = mean_diff / mean_energy
++    if ratio < 0.1:
++        return "steady_or_looped"
++    if ratio < 0.35:
++        return "mild_repetition"
++    return "single_hit_or_irregular"
++
++
++def analyze(samples: List[float], sample_rate: int) -> AudioMetrics:
++    if not samples:
++        raise ValueError("No audio samples found.")
++
++    total_rms = rms(samples)
++    peak = max(abs(x) for x in samples)
++    crest = (peak / total_rms) if total_rms > 1e-12 else 0.0
++
++    # Analyze low-end candidates where deep gong fundamentals often sit.
++    low_candidates = list(range(30, 201, 5))
++    powers = {f: goertzel_power(samples, sample_rate, f) for f in low_candidates}
++    dominant_low = max(powers, key=powers.get)
++    low_strength = powers[dominant_low] / (sum(powers.values()) + 1e-12)
++
++    return AudioMetrics(
++        sample_rate=sample_rate,
++        duration_s=len(samples) / sample_rate,
++        rms=total_rms,
++        crest_factor=crest,
++        peak=peak,
++        low_band_strength=low_strength,
++        dominant_low_hz=float(dominant_low),
++        decay_half_life_s=estimate_decay_half_life(samples, sample_rate),
++        strike_index_s=detect_strike_time(samples, sample_rate),
++        periodicity_hint=periodicity_hint(samples, sample_rate),
++    )
++
++
++def classify(metrics: AudioMetrics) -> str:
++    deep = metrics.dominant_low_hz <= 120 and metrics.low_band_strength >= 0.2
++    resonant = metrics.decay_half_life_s >= 0.2
++    struck = metrics.crest_factor >= 4.0
++
++    if deep and resonant and struck:
++        return "strong_gong_signature"
++    if deep and resonant:
++        return "gong_like_resonance"
++    if deep:
++        return "low_frequency_dominant"
++    return "not_clearly_gong_like"
++
++
++def render_report(path: str, metrics: AudioMetrics, label: str) -> str:
++    quality = "neutral"
++    if label in {"strong_gong_signature", "gong_like_resonance"}:
++        quality = "context-dependent (often useful, occasionally problematic)"
++    elif label == "low_frequency_dominant":
++        quality = "potentially useful but may need control"
++
++    physical = (
++        "A deep gong profile usually comes from a strong initial strike exciting a metal/object resonance, "
++        "then decaying over time. Dominant low frequency and half-life indicate how much energy the structure stores."
++    )
++
++    metaphysical = (
++        "Metaphysically (non-evil framing), people often interpret deep gong tones as grounding, attention-focusing, "
++        "or transition markers in ritual/meditation contexts. This is more about human perception and meaning-making "
++        "than objective external agents."
++    )
++
++    why = (
++        "It happens when an impulse (hit, impact, or sudden excitation) injects energy into a resonant body. "
++        "The body emphasizes certain frequencies, especially low modes if mass/shape support them."
++    )
++
++    how = (
++        "Observed by: strike time, crest factor (transient sharpness), dominant low frequency, and decay profile. "
++        "Your signal suggests '{}' with dominant low ≈ {:.1f} Hz and decay half-life ≈ {:.2f}s."
++    ).format(label, metrics.dominant_low_hz, metrics.decay_half_life_s)
++
++    reason = (
++        "Common reasons include acoustic design (notification tone, ceremonial cue), structural vibration, "
++        "or environmental excitation (machinery/airflow/contact). If periodic, automation or loops are likely."
++    )
++
++    risk = (
++        "Potentially bad: fatigue, annoyance, masking speech, or vibration issues if persistent/loud. "
++        "Potentially good: clear attention cue, calming resonance, or sonic branding."
++    )
++
++    return f"""
++=== Deep Gong Root Analysis ===
++File: {path}
++Platform: {platform.system()} {platform.release()} ({platform.machine()})
++Duration: {metrics.duration_s:.2f}s @ {metrics.sample_rate} Hz
++
++Classification: {label}
++Periodicity hint: {metrics.periodicity_hint}
++
++Metrics:
++- RMS level: {metrics.rms:.4f}
++- Peak amplitude: {metrics.peak:.4f}
++- Crest factor: {metrics.crest_factor:.2f}
++- Dominant low frequency: {metrics.dominant_low_hz:.1f} Hz
++- Low-band concentration: {metrics.low_band_strength:.3f}
++- Strike onset: {metrics.strike_index_s:.3f}s
++- Decay half-life: {metrics.decay_half_life_s:.3f}s
++
++Why it's happening:
++{why}
++
++How it's happening:
++{how}
++
++For what reason:
++{reason}
++
++Is it bad or good?
++{quality}. {risk}
++
++Physical interpretation:
++{physical}
++
++Metaphysical interpretation (excluding forces-of-evil narratives):
++{metaphysical}
++""".strip()
++
++
++def build_parser() -> argparse.ArgumentParser:
++    p = argparse.ArgumentParser(description="Analyze deep gong-like audio and explain root causes.")
++    p.add_argument("wav_file", help="Path to PCM WAV file")
++    p.add_argument("--save-report", help="Optional output text file for the report")
++    return p
++
++
++def main(argv: List[str]) -> int:
++    parser = build_parser()
++    args = parser.parse_args(argv)
++
++    if not os.path.exists(args.wav_file):
++        print(f"Error: file not found: {args.wav_file}", file=sys.stderr)
++        return 2
++
++    try:
++        samples, sr = read_wav_as_mono_float(args.wav_file)
++        metrics = analyze(samples, sr)
++        label = classify(metrics)
++        report = render_report(args.wav_file, metrics, label)
++    except Exception as exc:  # runtime guard for malformed files
++        print(f"Analysis failed: {exc}", file=sys.stderr)
++        return 1
++
++    print(report)
++    if args.save_report:
++        with open(args.save_report, "w", encoding="utf-8") as f:
++            f.write(report + "\n")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main(sys.argv[1:]))
+diff --git a/gong_root_analysis.py b/gong_root_analysis.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..447933c2fdf6f68ba3476e6e523b40fabe8e96b2
+--- /dev/null
++++ b/gong_root_analysis.py
+@@ -0,0 +1,159 @@
++#!/usr/bin/env python3
++"""Platform-aware deep gong sound root-cause explorer.
++
++This script gives a structured explanation of *why* a deep, bass-heavy gong-like
++sound may be happening, *how* it is produced, and whether it is likely good,
++bad, or neutral from physical and metaphysical viewpoints.
++
++It intentionally avoids "forces of evil" explanations.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import math
++import platform
++from dataclasses import dataclass, asdict
++
++
++@dataclass
++class Observation:
++    frequency_hz: float
++    duration_s: float
++    repeats: bool
++    environment: str
++    emotional_state: str
++
++
++@dataclass
++class Assessment:
++    likely_mechanism: str
++    why_happening: str
++    how_happening: str
++    reason_or_driver: str
++    valence: str
++    physical_view: str
++    metaphysical_view: str
++    next_checks: list[str]
++    platform_context: str
++
++
++def choose_mechanism(obs: Observation) -> str:
++    if obs.frequency_hz < 80 and obs.environment in {"indoors", "urban"}:
++        return "Low-frequency structural resonance (HVAC, building vibration, distant traffic/industry)."
++    if 80 <= obs.frequency_hz <= 220 and obs.repeats:
++        return "Mechanical periodic source (fans, pumps, rail lines, rotating equipment)."
++    if obs.environment == "natural":
++        return "Natural resonance and reflections (terrain, wind cavities, water/rock coupling)."
++    return "Mixed-source resonance: one source plus reflections and room/body perception effects."
++
++
++def valence(obs: Observation) -> str:
++    stress_weight = {
++        "calm": -1,
++        "neutral": 0,
++        "stressed": 1,
++    }.get(obs.emotional_state, 0)
++    repetition_weight = 1 if obs.repeats else 0
++    intensity = math.log(max(obs.duration_s, 0.2) + 1.0) + repetition_weight + stress_weight
++    if intensity < 0.8:
++        return "Mostly neutral-to-good (informational/atmospheric)."
++    if intensity < 1.8:
++        return "Context-dependent (can be grounding or irritating)."
++    return "Potentially bad if persistent: may disturb sleep, focus, or stress levels."
++
++
++def assess(obs: Observation) -> Assessment:
++    mechanism = choose_mechanism(obs)
++    platform_context = (
++        f"Detected OS={platform.system()} {platform.release()} | "
++        f"Python={platform.python_version()}"
++    )
++
++    return Assessment(
++        likely_mechanism=mechanism,
++        why_happening=(
++            "Deep gong-like sounds stand out because low frequencies travel farther, "
++            "pass through walls, and trigger strong body/room resonance cues."
++        ),
++        how_happening=(
++            "A source excites low-frequency vibrations; structures/air cavities amplify "
++            "specific bands, producing the rounded, lingering 'gong' envelope."
++        ),
++        reason_or_driver=(
++            "Most often: mechanical systems, infrastructure vibration, architecture, "
++            "or natural acoustics—not supernatural evil agencies."
++        ),
++        valence=valence(obs),
++        physical_view=(
++            "Physically: this is an acoustics + resonance phenomenon. Check frequency, "
++            "timing patterns, and nearby machinery/traffic/HVAC cycles."
++        ),
++        metaphysical_view=(
++            "Metaphysically (non-evil framing): many traditions interpret deep tones as "
++            "signals for attention, grounding, transition, or contemplative focus."
++        ),
++        next_checks=[
++            "Record 60-120 seconds of audio and inspect spectrum (look for dominant Hz peaks).",
++            "Log exact times; compare with HVAC, train, industrial, or building cycle schedules.",
++            "Walk location grid to find where amplitude increases/decreases sharply.",
++            "If sleep/health is affected, consider mitigation: isolation pads, white noise, or inspection.",
++        ],
++        platform_context=platform_context,
++    )
++
++
++def build_parser() -> argparse.ArgumentParser:
++    parser = argparse.ArgumentParser(description="Analyze deep gong-like sound causes.")
++    parser.add_argument("--frequency", type=float, default=110.0, help="Estimated dominant frequency in Hz.")
++    parser.add_argument("--duration", type=float, default=2.0, help="Approximate ring duration in seconds.")
++    parser.add_argument("--repeats", action="store_true", help="Set if the sound repeats periodically.")
++    parser.add_argument(
++        "--environment",
++        choices=["indoors", "urban", "natural", "mixed"],
++        default="mixed",
++        help="Primary listening environment.",
++    )
++    parser.add_argument(
++        "--emotional-state",
++        choices=["calm", "neutral", "stressed"],
++        default="neutral",
++        help="Your current state (influences perceived valence).",
++    )
++    parser.add_argument("--json", action="store_true", help="Emit JSON output.")
++    return parser
++
++
++def main() -> None:
++    args = build_parser().parse_args()
++    obs = Observation(
++        frequency_hz=args.frequency,
++        duration_s=args.duration,
++        repeats=args.repeats,
++        environment=args.environment,
++        emotional_state=args.emotional_state,
++    )
++    result = assess(obs)
++
++    if args.json:
++        print(json.dumps(asdict(result), indent=2))
++        return
++
++    print("Deep Gong Sound Root-Cause Report")
++    print("=" * 34)
++    print(f"Likely mechanism : {result.likely_mechanism}")
++    print(f"Why happening    : {result.why_happening}")
++    print(f"How happening    : {result.how_happening}")
++    print(f"Reason           : {result.reason_or_driver}")
++    print(f"Good/Bad?        : {result.valence}")
++    print(f"Physical view    : {result.physical_view}")
++    print(f"Metaphysical view: {result.metaphysical_view}")
++    print("Next checks:")
++    for i, check in enumerate(result.next_checks, start=1):
++        print(f"  {i}. {check}")
++    print(f"Platform context : {result.platform_context}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/deep_gong_root_analyzer.py b/deep_gong_root_analyzer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..14d600171088b173b839cf61a7176bccfe3f4c51
+--- /dev/null
++++ b/deep_gong_root_analyzer.py
+@@ -0,0 +1,274 @@
++#!/usr/bin/env python3
++"""Deep Gong Root Analyzer.
++
++A small platform-ready Python CLI that inspects low-frequency, gong-like sounds
++from WAV files and reports:
++- why it may be happening,
++- how it is happening,
++- likely reason/purpose,
++- whether it is likely harmful or benign,
++- physical and metaphysical interpretations.
++
++Scope policy:
++This tool intentionally excludes "forces of evil" explanations and focuses on
++acoustic, environmental, physiological, and neutral metaphysical framing.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import math
++import platform
++import statistics
++import wave
++from dataclasses import dataclass, asdict
++from pathlib import Path
++from typing import Dict, List, Sequence, Tuple
++
++
++@dataclass
++class GongMetrics:
++    sample_rate: int
++    duration_s: float
++    fundamental_hz: float
++    low_band_ratio: float
++    decay_time_s: float
++    spectral_flatness: float
++    pulse_rate_hz: float
++
++
++@dataclass
++class GongAssessment:
++    why: str
++    how: str
++    likely_reason: str
++    is_it_bad_or_good: str
++    physical_view: str
++    metaphysical_view: str
++    confidence_0_to_1: float
++
++
++def read_wav_mono(path: Path) -> Tuple[int, List[float]]:
++    with wave.open(str(path), "rb") as wf:
++        channels = wf.getnchannels()
++        sample_width = wf.getsampwidth()
++        sample_rate = wf.getframerate()
++        frames = wf.getnframes()
++        raw = wf.readframes(frames)
++
++    if sample_width != 2:
++        raise ValueError("Only 16-bit PCM WAV is supported in this version.")
++
++    total_samples = len(raw) // 2
++    values = [int.from_bytes(raw[i * 2:(i + 1) * 2], "little", signed=True) for i in range(total_samples)]
++
++    if channels > 1:
++        mono: List[float] = []
++        for i in range(0, len(values), channels):
++            mono.append(sum(values[i:i + channels]) / channels)
++        values_f = mono
++    else:
++        values_f = [float(v) for v in values]
++
++    peak = max(1.0, max(abs(v) for v in values_f))
++    normalized = [v / peak for v in values_f]
++    return sample_rate, normalized
++
++
++def rms(signal: Sequence[float]) -> float:
++    if not signal:
++        return 0.0
++    return math.sqrt(sum(s * s for s in signal) / len(signal))
++
++
++def dft_magnitude(signal: Sequence[float], sample_rate: int, max_hz: int = 400) -> List[Tuple[float, float]]:
++    n = len(signal)
++    if n == 0:
++        return []
++    bin_hz = sample_rate / n
++    max_k = min(int(max_hz / bin_hz), n // 2)
++    spectrum: List[Tuple[float, float]] = []
++
++    for k in range(1, max_k + 1):
++        re = 0.0
++        im = 0.0
++        for t, x in enumerate(signal):
++            angle = 2.0 * math.pi * k * t / n
++            re += x * math.cos(angle)
++            im -= x * math.sin(angle)
++        mag = math.sqrt(re * re + im * im)
++        spectrum.append((k * bin_hz, mag))
++
++    return spectrum
++
++
++def estimate_decay(signal: Sequence[float], sample_rate: int, window_ms: int = 50) -> float:
++    if not signal:
++        return 0.0
++    w = max(1, sample_rate * window_ms // 1000)
++    windows = [signal[i:i + w] for i in range(0, len(signal), w)]
++    energies = [rms(win) for win in windows if win]
++    if not energies:
++        return 0.0
++
++    peak = max(energies)
++    target = peak * 0.37  # ~= e^-1
++    for idx, e in enumerate(energies):
++        if e <= target:
++            return idx * (window_ms / 1000.0)
++    return len(energies) * (window_ms / 1000.0)
++
++
++def estimate_pulse_rate(signal: Sequence[float], sample_rate: int) -> float:
++    if not signal:
++        return 0.0
++    env_win = max(1, sample_rate // 100)
++    env = [rms(signal[i:i + env_win]) for i in range(0, len(signal), env_win)]
++    if len(env) < 5:
++        return 0.0
++
++    threshold = statistics.mean(env) + statistics.pstdev(env) * 0.5
++    peaks = [i for i in range(1, len(env) - 1) if env[i] > env[i - 1] and env[i] > env[i + 1] and env[i] > threshold]
++
++    if len(peaks) < 2:
++        return 0.0
++
++    intervals = [(peaks[i] - peaks[i - 1]) * (env_win / sample_rate) for i in range(1, len(peaks))]
++    avg = statistics.mean(intervals)
++    return 0.0 if avg <= 0 else 1.0 / avg
++
++
++def analyze_metrics(sample_rate: int, signal: Sequence[float]) -> GongMetrics:
++    duration = len(signal) / sample_rate if sample_rate else 0.0
++    spectrum = dft_magnitude(signal[: min(len(signal), sample_rate * 3)], sample_rate, max_hz=400)
++
++    if spectrum:
++        fundamental = max(spectrum, key=lambda p: p[1])[0]
++        low_energy = sum(m for f, m in spectrum if f <= 120.0)
++        total_energy = sum(m for _, m in spectrum) + 1e-9
++        low_ratio = low_energy / total_energy
++        mags = [m + 1e-12 for _, m in spectrum]
++        gmean = math.exp(sum(math.log(m) for m in mags) / len(mags))
++        amean = sum(mags) / len(mags)
++        flatness = gmean / amean
++    else:
++        fundamental = 0.0
++        low_ratio = 0.0
++        flatness = 0.0
++
++    return GongMetrics(
++        sample_rate=sample_rate,
++        duration_s=duration,
++        fundamental_hz=fundamental,
++        low_band_ratio=low_ratio,
++        decay_time_s=estimate_decay(signal, sample_rate),
++        spectral_flatness=flatness,
++        pulse_rate_hz=estimate_pulse_rate(signal, sample_rate),
++    )
++
++
++def build_assessment(metrics: GongMetrics) -> GongAssessment:
++    low = metrics.fundamental_hz <= 120 and metrics.low_band_ratio > 0.55
++    long_decay = metrics.decay_time_s > 0.9
++    pulsed = 0.15 <= metrics.pulse_rate_hz <= 2.2
++
++    why = (
++        "The sound is likely a structural resonance: a low mode is being excited "
++        "and rings out like a gong."
++        if low and long_decay
++        else "The sound has partial gong traits but may involve mixed sources (mechanical + ambient)."
++    )
++
++    how = (
++        "An impulse (impact, pressure change, HVAC cycle, traffic vibration, or speaker bass) "
++        "injects energy into a resonant object/space. The resonant frequency amplifies and decays slowly."
++    )
++
++    likely_reason = (
++        "Most likely: physical resonance in architecture, ducts, fixtures, large metal objects, "
++        "or room standing waves."
++    )
++
++    if low and long_decay and not pulsed:
++        good_bad = "Usually neutral to mildly negative (annoying), not inherently dangerous at this intensity."
++    elif pulsed and low:
++        good_bad = "Could be mildly stressful over time if repetitive; investigate sources to reduce fatigue."
++    else:
++        good_bad = "Likely benign; monitor if it grows louder, causes vibration damage, or affects sleep."
++
++    physical_view = (
++        "Physically this is explainable by resonance, damping, material geometry, and periodic forcing. "
++        "Check vents, pipes, suspended metal, subwoofers, and nearby heavy traffic cycles."
++    )
++
++    metaphysical_view = (
++        "Metaphysically (without evil-force framing), low gong tones are often interpreted as "
++        "environmental entrainment cues: signals of transition, attention, or grounding. "
++        "That interpretation is symbolic, not proof of non-physical causation."
++    )
++
++    score = 0.35
++    if low:
++        score += 0.3
++    if long_decay:
++        score += 0.2
++    if pulsed:
++        score += 0.1
++    score = min(1.0, score)
++
++    return GongAssessment(
++        why=why,
++        how=how,
++        likely_reason=likely_reason,
++        is_it_bad_or_good=good_bad,
++        physical_view=physical_view,
++        metaphysical_view=metaphysical_view,
++        confidence_0_to_1=score,
++    )
++
++
++def run(path: Path, as_json: bool) -> int:
++    sample_rate, signal = read_wav_mono(path)
++    metrics = analyze_metrics(sample_rate, signal)
++    assessment = build_assessment(metrics)
++
++    payload: Dict[str, object] = {
++        "platform": {
++            "os": platform.system(),
++            "release": platform.release(),
++            "python": platform.python_version(),
++        },
++        "input": {"file": str(path), "samples": len(signal)},
++        "metrics": asdict(metrics),
++        "assessment": asdict(assessment),
++        "policy": "Excludes forces-of-evil explanations by design.",
++    }
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++    else:
++        print("== Deep Gong Root Analyzer ==")
++        print(f"File: {path}")
++        print(f"Platform: {payload['platform']}")
++        print("\n-- Metrics --")
++        for k, v in payload["metrics"].items():
++            print(f"{k}: {v}")
++        print("\n-- Assessment --")
++        for k, v in payload["assessment"].items():
++            print(f"{k}: {v}")
++        print(f"\nPolicy: {payload['policy']}")
++
++    return 0
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description="Analyze deep gong-like audio and explain likely causes.")
++    parser.add_argument("wav_file", type=Path, help="Path to a 16-bit PCM WAV file.")
++    parser.add_argument("--json", action="store_true", help="Output JSON.")
++    return parser.parse_args()
++
++
++if __name__ == "__main__":
++    args = parse_args()
++    raise SystemExit(run(args.wav_file, as_json=args.json))
+diff --git a/deep_gong_root_analyzer.py b/deep_gong_root_analyzer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..a9c48db8f0df939715e3a4acf32a09553355aba0
+--- /dev/null
++++ b/deep_gong_root_analyzer.py
+@@ -0,0 +1,335 @@
++#!/usr/bin/env python3
++"""Deep Gong Root Analyzer + Combative Program Guard.
++
++Usable cross-platform CLI to:
++1) analyze a gong-like WAV sound,
++2) inspect running programs for likely low-frequency noise emitters,
++3) optionally deactivate (terminate) matched programs.
++
++Policy: explanations intentionally exclude "forces of evil" framing.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import math
++import platform
++import signal
++import statistics
++import subprocess
++import sys
++import wave
++from dataclasses import asdict, dataclass
++from pathlib import Path
++from typing import Dict, List, Sequence, Tuple
++
++
++COMBATIVE_HINTS = [
++    "subwoofer", "bassboost", "eq", "equalizer", "audioenhancer",
++    "virtualdj", "traktor", "serato", "obs", "daemon", "loopback",
++]
++
++
++@dataclass
++class GongMetrics:
++    sample_rate: int
++    duration_s: float
++    fundamental_hz: float
++    low_band_ratio: float
++    decay_time_s: float
++    spectral_flatness: float
++    pulse_rate_hz: float
++
++
++@dataclass
++class GongAssessment:
++    why: str
++    how: str
++    likely_reason: str
++    is_it_bad_or_good: str
++    physical_view: str
++    metaphysical_view: str
++    confidence_0_to_1: float
++
++
++@dataclass
++class ProcessMatch:
++    pid: int
++    command: str
++    matched_token: str
++
++
++def read_wav_mono(path: Path) -> Tuple[int, List[float]]:
++    with wave.open(str(path), "rb") as wf:
++        channels = wf.getnchannels()
++        sample_width = wf.getsampwidth()
++        sample_rate = wf.getframerate()
++        frames = wf.getnframes()
++        raw = wf.readframes(frames)
++
++    if sample_width != 2:
++        raise ValueError("Only 16-bit PCM WAV is supported.")
++
++    total_samples = len(raw) // 2
++    values = [int.from_bytes(raw[i * 2:(i + 1) * 2], "little", signed=True) for i in range(total_samples)]
++
++    if channels > 1:
++        mono = []
++        for i in range(0, len(values), channels):
++            mono.append(sum(values[i:i + channels]) / channels)
++        vals = mono
++    else:
++        vals = [float(v) for v in values]
++
++    peak = max(1.0, max(abs(v) for v in vals))
++    return sample_rate, [v / peak for v in vals]
++
++
++def rms(signal_: Sequence[float]) -> float:
++    return 0.0 if not signal_ else math.sqrt(sum(s * s for s in signal_) / len(signal_))
++
++
++def dft_magnitude(signal_: Sequence[float], sample_rate: int, max_hz: int = 400) -> List[Tuple[float, float]]:
++    n = len(signal_)
++    if n == 0:
++        return []
++    bin_hz = sample_rate / n
++    max_k = min(int(max_hz / bin_hz), n // 2)
++    out: List[Tuple[float, float]] = []
++    for k in range(1, max_k + 1):
++        re = 0.0
++        im = 0.0
++        for t, x in enumerate(signal_):
++            angle = 2.0 * math.pi * k * t / n
++            re += x * math.cos(angle)
++            im -= x * math.sin(angle)
++        out.append((k * bin_hz, math.sqrt(re * re + im * im)))
++    return out
++
++
++def estimate_decay(signal_: Sequence[float], sample_rate: int, window_ms: int = 50) -> float:
++    if not signal_:
++        return 0.0
++    w = max(1, sample_rate * window_ms // 1000)
++    energies = [rms(signal_[i:i + w]) for i in range(0, len(signal_), w)]
++    peak = max(energies) if energies else 0.0
++    if peak == 0:
++        return 0.0
++    target = peak * 0.37
++    for i, e in enumerate(energies):
++        if e <= target:
++            return i * window_ms / 1000.0
++    return len(energies) * window_ms / 1000.0
++
++
++def estimate_pulse_rate(signal_: Sequence[float], sample_rate: int) -> float:
++    if not signal_:
++        return 0.0
++    env_win = max(1, sample_rate // 100)
++    env = [rms(signal_[i:i + env_win]) for i in range(0, len(signal_), env_win)]
++    if len(env) < 5:
++        return 0.0
++    threshold = statistics.mean(env) + statistics.pstdev(env) * 0.5
++    peaks = [i for i in range(1, len(env) - 1) if env[i] > env[i - 1] and env[i] > env[i + 1] and env[i] > threshold]
++    if len(peaks) < 2:
++        return 0.0
++    intervals = [(peaks[i] - peaks[i - 1]) * (env_win / sample_rate) for i in range(1, len(peaks))]
++    avg = statistics.mean(intervals)
++    return 0.0 if avg <= 0 else 1.0 / avg
++
++
++def analyze_metrics(sample_rate: int, signal_: Sequence[float]) -> GongMetrics:
++    duration = len(signal_) / sample_rate if sample_rate else 0.0
++    spectrum = dft_magnitude(signal_[: min(len(signal_), sample_rate * 3)], sample_rate)
++
++    if spectrum:
++        fundamental = max(spectrum, key=lambda x: x[1])[0]
++        low_energy = sum(m for f, m in spectrum if f <= 120)
++        total = sum(m for _, m in spectrum) + 1e-9
++        low_ratio = low_energy / total
++        mags = [m + 1e-12 for _, m in spectrum]
++        gmean = math.exp(sum(math.log(m) for m in mags) / len(mags))
++        flatness = gmean / (sum(mags) / len(mags))
++    else:
++        fundamental = 0.0
++        low_ratio = 0.0
++        flatness = 0.0
++
++    return GongMetrics(
++        sample_rate=sample_rate,
++        duration_s=duration,
++        fundamental_hz=fundamental,
++        low_band_ratio=low_ratio,
++        decay_time_s=estimate_decay(signal_, sample_rate),
++        spectral_flatness=flatness,
++        pulse_rate_hz=estimate_pulse_rate(signal_, sample_rate),
++    )
++
++
++def build_assessment(metrics: GongMetrics) -> GongAssessment:
++    low = metrics.fundamental_hz <= 120 and metrics.low_band_ratio > 0.55
++    long_decay = metrics.decay_time_s > 0.9
++    pulsed = 0.15 <= metrics.pulse_rate_hz <= 2.2
++
++    why = "Structural resonance is likely being excited and ringing like a gong." if low and long_decay else "Mixed source likely (mechanical + ambient)."
++    how = "Impulse energy from HVAC, traffic, impact, or speakers is coupling into resonant objects and slowly decaying."
++    likely_reason = "Architecture/duct/fixture resonance, standing waves, or audio-chain processing."
++
++    if low and long_decay and not pulsed:
++        good_bad = "Mostly benign but can be annoying; monitor if intensity rises."
++    elif pulsed and low:
++        good_bad = "Can become stressful if repetitive; mitigate source to protect sleep/focus."
++    else:
++        good_bad = "Likely benign."
++
++    physical = "Physical explanation: resonance, damping, geometry, and periodic forcing."
++    metaphysical = (
++        "Neutral metaphysical interpretation: a grounding/attention signal. "
++        "Symbolic interpretation only; not proof of non-physical causation."
++    )
++
++    score = min(1.0, 0.35 + (0.3 if low else 0) + (0.2 if long_decay else 0) + (0.1 if pulsed else 0))
++    return GongAssessment(why, how, likely_reason, good_bad, physical, metaphysical, score)
++
++
++def _list_processes() -> List[Tuple[int, str]]:
++    system = platform.system().lower()
++    if "windows" in system:
++        cmd = ["tasklist", "/fo", "csv", "/nh"]
++        proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
++        rows = []
++        for line in proc.stdout.splitlines():
++            parts = [p.strip('"') for p in line.split('","')]
++            if len(parts) >= 2 and parts[1].isdigit():
++                rows.append((int(parts[1]), parts[0]))
++        return rows
++
++    cmd = ["ps", "-eo", "pid=,command="]
++    proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
++    rows = []
++    for line in proc.stdout.splitlines():
++        line = line.strip()
++        if not line:
++            continue
++        pid_text, _, command = line.partition(" ")
++        if pid_text.isdigit():
++            rows.append((int(pid_text), command.strip()))
++    return rows
++
++
++def find_combative_programs(extra_tokens: Sequence[str]) -> List[ProcessMatch]:
++    tokens = [t.lower() for t in COMBATIVE_HINTS + list(extra_tokens)]
++    matches: List[ProcessMatch] = []
++    for pid, command in _list_processes():
++        lower_cmd = command.lower()
++        for token in tokens:
++            if token and token in lower_cmd:
++                matches.append(ProcessMatch(pid=pid, command=command, matched_token=token))
++                break
++    return matches
++
++
++def deactivate_programs(matches: Sequence[ProcessMatch], force: bool) -> Dict[str, int]:
++    terminated = 0
++    failed = 0
++    for m in matches:
++        try:
++            if platform.system().lower().startswith("win"):
++                args = ["taskkill", "/PID", str(m.pid), "/T"]
++                if force:
++                    args.append("/F")
++                subprocess.run(args, check=True, capture_output=True, text=True)
++            else:
++                osig = signal.SIGKILL if force else signal.SIGTERM
++                subprocess.run(["kill", f"-{int(osig)}", str(m.pid)], check=True, capture_output=True, text=True)
++            terminated += 1
++        except Exception:
++            failed += 1
++    return {"terminated": terminated, "failed": failed}
++
++
++def run_analyze(path: Path, as_json: bool) -> int:
++    sample_rate, signal_ = read_wav_mono(path)
++    metrics = analyze_metrics(sample_rate, signal_)
++    assessment = build_assessment(metrics)
++
++    payload: Dict[str, object] = {
++        "platform": {"os": platform.system(), "release": platform.release(), "python": platform.python_version()},
++        "input": {"file": str(path), "samples": len(signal_)},
++        "metrics": asdict(metrics),
++        "assessment": asdict(assessment),
++        "policy": "Excludes forces-of-evil explanations by design.",
++    }
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++    else:
++        print("== Deep Gong Root Analyzer ==")
++        for section, data in payload.items():
++            if isinstance(data, dict):
++                print(f"\n-- {section} --")
++                for k, v in data.items():
++                    print(f"{k}: {v}")
++            else:
++                print(f"\n{section}: {data}")
++    return 0
++
++
++def run_guard(tokens: Sequence[str], kill: bool, force: bool, as_json: bool) -> int:
++    matches = find_combative_programs(tokens)
++    result: Dict[str, object] = {
++        "platform": platform.system(),
++        "match_count": len(matches),
++        "matches": [asdict(m) for m in matches],
++        "action": "scan_only",
++    }
++
++    if kill:
++        summary = deactivate_programs(matches, force=force)
++        result["action"] = "terminate"
++        result["terminate_summary"] = summary
++
++    if as_json:
++        print(json.dumps(result, indent=2))
++    else:
++        print("== Combative Program Guard ==")
++        print(f"Matches: {len(matches)}")
++        for m in matches:
++            print(f"- pid={m.pid} token={m.matched_token} cmd={m.command}")
++        if kill:
++            print(f"Termination: {result['terminate_summary']}")
++        else:
++            print("Dry run only. Use --kill to deactivate matched programs.")
++
++    return 0
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description="Analyze deep gong sounds and deactivate likely noisy/combative programs.")
++    sub = parser.add_subparsers(dest="command", required=True)
++
++    p_analyze = sub.add_parser("analyze", help="Analyze a 16-bit PCM WAV file.")
++    p_analyze.add_argument("wav_file", type=Path)
++    p_analyze.add_argument("--json", action="store_true")
++
++    p_guard = sub.add_parser("guard", help="Scan running processes and optionally deactivate matches.")
++    p_guard.add_argument("--token", action="append", default=[], help="Extra substring token to match process commands.")
++    p_guard.add_argument("--kill", action="store_true", help="Terminate matched programs.")
++    p_guard.add_argument("--force", action="store_true", help="Force kill (SIGKILL / taskkill /F).")
++    p_guard.add_argument("--json", action="store_true")
++
++    return parser.parse_args()
++
++
++def main() -> int:
++    args = parse_args()
++    if args.command == "analyze":
++        return run_analyze(args.wav_file, as_json=args.json)
++    if args.command == "guard":
++        return run_guard(tokens=args.token, kill=args.kill, force=args.force, as_json=args.json)
++    return 2
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+diff --git a/deep_gong_root_analyzer.py b/deep_gong_root_analyzer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..58af659813fd114d2b3f126869cd61066261ce21
+--- /dev/null
++++ b/deep_gong_root_analyzer.py
+@@ -0,0 +1,360 @@
++#!/usr/bin/env python3
++"""Deep Gong Root Analyzer.
++
++Usable cross-platform CLI for investigating deep, gong-like sounds.
++
++What it can do:
++1) Analyze a 16-bit PCM WAV recording and explain why/how it happens.
++2) Produce practical mitigation steps.
++3) Optionally deactivate likely "combative" audio programs (aggressive audio
++   enhancers / noise suppression / effects engines) in SAFE mode by default.
++
++Policy:
++- Excludes "forces of evil" framing by design.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import math
++import platform
++import statistics
++import subprocess
++import wave
++from dataclasses import asdict, dataclass
++from pathlib import Path
++from typing import Dict, List, Sequence, Tuple
++
++
++@dataclass
++class GongMetrics:
++    sample_rate: int
++    duration_s: float
++    fundamental_hz: float
++    low_band_ratio: float
++    decay_time_s: float
++    spectral_flatness: float
++    pulse_rate_hz: float
++
++
++@dataclass
++class GongAssessment:
++    why: str
++    how: str
++    likely_reason: str
++    is_it_bad_or_good: str
++    physical_view: str
++    metaphysical_view: str
++    confidence_0_to_1: float
++
++
++@dataclass
++class MitigationAction:
++    process_name: str
++    matched_pid_count: int
++    action: str
++    result: str
++
++
++DEFAULT_COMBATIVE_PROGRAMS = [
++    "NahimicService",
++    "RtkAudioService",
++    "DolbyDAX2API",
++    "SteelSeriesSonar",
++    "Krisp",
++    "Voicemod",
++    "EqualizerAPO",
++    "Boom3D",
++    "WavesSvc64",
++]
++
++
++def read_wav_mono(path: Path) -> Tuple[int, List[float]]:
++    with wave.open(str(path), "rb") as wf:
++        channels = wf.getnchannels()
++        sample_width = wf.getsampwidth()
++        sample_rate = wf.getframerate()
++        frames = wf.getnframes()
++        raw = wf.readframes(frames)
++
++    if sample_width != 2:
++        raise ValueError("Only 16-bit PCM WAV is supported.")
++
++    total_samples = len(raw) // 2
++    values = [int.from_bytes(raw[i * 2:(i + 1) * 2], "little", signed=True) for i in range(total_samples)]
++
++    if channels > 1:
++        values_f = [sum(values[i:i + channels]) / channels for i in range(0, len(values), channels)]
++    else:
++        values_f = [float(v) for v in values]
++
++    peak = max(1.0, max(abs(v) for v in values_f))
++    normalized = [v / peak for v in values_f]
++    return sample_rate, normalized
++
++
++def rms(signal: Sequence[float]) -> float:
++    return math.sqrt(sum(s * s for s in signal) / len(signal)) if signal else 0.0
++
++
++def dft_magnitude(signal: Sequence[float], sample_rate: int, max_hz: int = 400) -> List[Tuple[float, float]]:
++    n = len(signal)
++    if n == 0:
++        return []
++    bin_hz = sample_rate / n
++    max_k = min(int(max_hz / bin_hz), n // 2)
++    spectrum: List[Tuple[float, float]] = []
++
++    for k in range(1, max_k + 1):
++        re = 0.0
++        im = 0.0
++        for t, x in enumerate(signal):
++            angle = 2.0 * math.pi * k * t / n
++            re += x * math.cos(angle)
++            im -= x * math.sin(angle)
++        spectrum.append((k * bin_hz, math.sqrt(re * re + im * im)))
++    return spectrum
++
++
++def estimate_decay(signal: Sequence[float], sample_rate: int, window_ms: int = 50) -> float:
++    if not signal:
++        return 0.0
++    w = max(1, sample_rate * window_ms // 1000)
++    energies = [rms(signal[i:i + w]) for i in range(0, len(signal), w)]
++    peak = max(energies) if energies else 0.0
++    target = peak * 0.37
++    for idx, energy in enumerate(energies):
++        if energy <= target:
++            return idx * (window_ms / 1000.0)
++    return len(energies) * (window_ms / 1000.0)
++
++
++def estimate_pulse_rate(signal: Sequence[float], sample_rate: int) -> float:
++    if not signal:
++        return 0.0
++    env_win = max(1, sample_rate // 100)
++    env = [rms(signal[i:i + env_win]) for i in range(0, len(signal), env_win)]
++    if len(env) < 5:
++        return 0.0
++
++    threshold = statistics.mean(env) + 0.5 * statistics.pstdev(env)
++    peaks = [
++        i for i in range(1, len(env) - 1)
++        if env[i] > env[i - 1] and env[i] > env[i + 1] and env[i] > threshold
++    ]
++    if len(peaks) < 2:
++        return 0.0
++
++    intervals_s = [(peaks[i] - peaks[i - 1]) * (env_win / sample_rate) for i in range(1, len(peaks))]
++    avg = statistics.mean(intervals_s)
++    return 0.0 if avg <= 0 else 1.0 / avg
++
++
++def analyze_metrics(sample_rate: int, signal: Sequence[float]) -> GongMetrics:
++    duration = len(signal) / sample_rate if sample_rate else 0.0
++    segment = signal[: min(len(signal), sample_rate * 3)]
++    spectrum = dft_magnitude(segment, sample_rate, max_hz=400)
++
++    if spectrum:
++        fundamental = max(spectrum, key=lambda pair: pair[1])[0]
++        low_energy = sum(mag for freq, mag in spectrum if freq <= 120.0)
++        total_energy = sum(mag for _, mag in spectrum) + 1e-9
++        low_ratio = low_energy / total_energy
++        mags = [mag + 1e-12 for _, mag in spectrum]
++        gmean = math.exp(sum(math.log(m) for m in mags) / len(mags))
++        flatness = gmean / (sum(mags) / len(mags))
++    else:
++        fundamental = 0.0
++        low_ratio = 0.0
++        flatness = 0.0
++
++    return GongMetrics(
++        sample_rate=sample_rate,
++        duration_s=duration,
++        fundamental_hz=fundamental,
++        low_band_ratio=low_ratio,
++        decay_time_s=estimate_decay(signal, sample_rate),
++        spectral_flatness=flatness,
++        pulse_rate_hz=estimate_pulse_rate(signal, sample_rate),
++    )
++
++
++def build_assessment(metrics: GongMetrics) -> GongAssessment:
++    low = metrics.fundamental_hz <= 120 and metrics.low_band_ratio > 0.55
++    long_decay = metrics.decay_time_s > 0.9
++    pulsed = 0.15 <= metrics.pulse_rate_hz <= 2.2
++
++    why = (
++        "A low-frequency resonance mode is likely being excited and ringing out (gong-like behavior)."
++        if low and long_decay
++        else "The signal has partial gong characteristics, likely mixed with ambient/mechanical noise."
++    )
++    how = (
++        "A trigger event (impact, air-pressure shift, fan/HVAC cycle, traffic vibration, or sub-bass) "
++        "feeds energy into a resonant structure and it decays over time."
++    )
++    likely_reason = (
++        "Most likely source: room/structure resonance from ducts, vents, metal fixtures, furniture cavities, "
++        "or audio-processing feedback."
++    )
++
++    if low and long_decay and not pulsed:
++        good_bad = "Usually benign but can be annoying and sleep-disruptive."
++    elif pulsed and low:
++        good_bad = "Likely not dangerous, but repetitive exposure may increase stress/fatigue."
++    else:
++        good_bad = "Likely benign. Investigate only if intensity or recurrence rises."
++
++    physical = (
++        "Physical explanation: resonance, damping, boundary conditions, and periodic forcing. "
++        "Inspect ventilation, pipes, fans, speaker EQ/enhancers, and nearby machinery cycles."
++    )
++    metaphysical = (
++        "Metaphysical (non-evil framing): deep tones are often interpreted as grounding/attention cues. "
++        "Useful symbolically, while physical diagnostics remain primary."
++    )
++
++    confidence = min(1.0, 0.3 + (0.3 if low else 0.0) + (0.2 if long_decay else 0.0) + (0.1 if pulsed else 0.0))
++
++    return GongAssessment(why, how, likely_reason, good_bad, physical, metaphysical, confidence)
++
++
++def mitigation_plan(metrics: GongMetrics) -> List[str]:
++    steps = [
++        "Disable all audio effects/enhancements in OS sound settings.",
++        "Set playback device sample rate to 48kHz, 24-bit (or match source) and retest.",
++        "Temporarily mute/disable subwoofer and bass boost.",
++        "Inspect HVAC vents/metal grilles for sympathetic vibration.",
++        "Record at 3 times (quiet, normal, peak) and compare fundamental frequency stability.",
++    ]
++    if metrics.fundamental_hz < 90:
++        steps.append("Add vibration isolation (rubber pads) to low-frequency-radiating devices.")
++    if metrics.pulse_rate_hz > 0.2:
++        steps.append("Check cyclical appliances (fridge compressor, air handler, water pumps).")
++    return steps
++
++
++def list_processes() -> List[str]:
++    sys = platform.system().lower()
++    try:
++        if "windows" in sys:
++            out = subprocess.check_output(["tasklist"], text=True, errors="ignore")
++            return [line.split()[0] for line in out.splitlines()[3:] if line.strip()]
++        if "darwin" in sys or "linux" in sys:
++            out = subprocess.check_output(["ps", "-A", "-o", "comm="], text=True, errors="ignore")
++            return [Path(line.strip()).name for line in out.splitlines() if line.strip()]
++    except Exception:
++        return []
++    return []
++
++
++def stop_process(name: str) -> str:
++    sys = platform.system().lower()
++    try:
++        if "windows" in sys:
++            subprocess.run(["taskkill", "/IM", name, "/F"], check=False, capture_output=True, text=True)
++            return "stop command sent (Windows taskkill)"
++        if "darwin" in sys or "linux" in sys:
++            subprocess.run(["pkill", "-f", name], check=False, capture_output=True, text=True)
++            return "stop command sent (pkill -f)"
++    except Exception as exc:
++        return f"error: {exc}"
++    return "unsupported platform"
++
++
++def deactivate_combative_programs(targets: Sequence[str], apply: bool) -> List[MitigationAction]:
++    running = list_processes()
++    actions: List[MitigationAction] = []
++    for target in targets:
++        matches = [p for p in running if target.lower() in p.lower()]
++        if not matches:
++            actions.append(MitigationAction(target, 0, "none", "not running"))
++            continue
++
++        if apply:
++            result = stop_process(target)
++            actions.append(MitigationAction(target, len(matches), "deactivate", result))
++        else:
++            actions.append(MitigationAction(target, len(matches), "dry-run", "would deactivate with --apply"))
++    return actions
++
++
++def build_payload(path: Path, metrics: GongMetrics, assessment: GongAssessment, actions: List[MitigationAction]) -> Dict[str, object]:
++    return {
++        "platform": {
++            "os": platform.system(),
++            "release": platform.release(),
++            "python": platform.python_version(),
++        },
++        "input": {"file": str(path)},
++        "metrics": asdict(metrics),
++        "assessment": asdict(assessment),
++        "mitigation_steps": mitigation_plan(metrics),
++        "combative_program_actions": [asdict(a) for a in actions],
++        "policy": "Excludes forces-of-evil explanations by design.",
++    }
++
++
++def print_human(payload: Dict[str, object]) -> None:
++    print("== Deep Gong Root Analyzer ==")
++    print(f"File: {payload['input']['file']}")
++    print(f"Platform: {payload['platform']}")
++
++    print("\n-- Metrics --")
++    for k, v in payload["metrics"].items():
++        print(f"{k}: {v}")
++
++    print("\n-- Assessment --")
++    for k, v in payload["assessment"].items():
++        print(f"{k}: {v}")
++
++    print("\n-- Mitigation Steps --")
++    for step in payload["mitigation_steps"]:
++        print(f"- {step}")
++
++    print("\n-- Combative Program Actions --")
++    for action in payload["combative_program_actions"]:
++        print(f"- {action['process_name']}: {action['action']} ({action['result']}, matches={action['matched_pid_count']})")
++
++    print(f"\nPolicy: {payload['policy']}")
++
++
++def run(args: argparse.Namespace) -> int:
++    sample_rate, signal = read_wav_mono(args.wav_file)
++    metrics = analyze_metrics(sample_rate, signal)
++    assessment = build_assessment(metrics)
++
++    targets = args.targets if args.targets else DEFAULT_COMBATIVE_PROGRAMS
++    actions = deactivate_combative_programs(targets, apply=args.apply)
++    payload = build_payload(args.wav_file, metrics, assessment, actions)
++
++    if args.json:
++        print(json.dumps(payload, indent=2))
++    else:
++        print_human(payload)
++    return 0
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(
++        description="Analyze deep gong-like WAV audio and optionally deactivate combative audio programs."
++    )
++    parser.add_argument("wav_file", type=Path, help="Path to 16-bit PCM WAV file")
++    parser.add_argument("--json", action="store_true", help="Emit JSON output")
++    parser.add_argument(
++        "--targets",
++        nargs="*",
++        default=[],
++        help="Program names to check/deactivate (substring match). Defaults to known audio effect engines.",
++    )
++    parser.add_argument(
++        "--apply",
++        action="store_true",
++        help="Actually send stop commands. Without this flag, only dry-run recommendations are shown.",
++    )
++    return parser.parse_args()
++
++
++if __name__ == "__main__":
++    raise SystemExit(run(parse_args()))
+diff --git a/gong_root_analyzer.py b/gong_root_analyzer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f2010e255e6b82f1cb4a1c07e68fc9ba88dd8485
+--- /dev/null
++++ b/gong_root_analyzer.py
+@@ -0,0 +1,182 @@
++#!/usr/bin/env python3
++"""Cross-platform analyzer for deep gong-like sounds.
++
++This script offers a structured, non-supernatural diagnosis focused on
++physical, environmental, and neutral metaphysical interpretations.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import platform
++from dataclasses import dataclass
++from typing import Dict, List, Tuple
++
++
++@dataclass
++class SignalProfile:
++    frequency_hz: float
++    duration_s: float
++    repeat_interval_min: float
++    location: str
++    vibration_felt: bool
++    time_pattern: str
++    weather_related: bool
++    stress_related: bool
++
++
++def likely_sources(profile: SignalProfile) -> List[Tuple[str, float, str]]:
++    """Return ranked likely causes for a deep gong-like sound."""
++    scores: Dict[str, float] = {
++        "industrial_infrastructure": 0.0,
++        "building_resonance": 0.0,
++        "transport_low_frequency": 0.0,
++        "tinnitus_or_infrasound_perception": 0.0,
++        "neutral_metaphysical_interpretation": 0.0,
++    }
++
++    if 20 <= profile.frequency_hz <= 120:
++        scores["industrial_infrastructure"] += 2.0
++        scores["building_resonance"] += 2.0
++        scores["transport_low_frequency"] += 1.5
++
++    if profile.vibration_felt:
++        scores["industrial_infrastructure"] += 1.5
++        scores["building_resonance"] += 1.0
++        scores["transport_low_frequency"] += 1.0
++    else:
++        scores["tinnitus_or_infrasound_perception"] += 1.2
++
++    if profile.repeat_interval_min <= 30:
++        scores["industrial_infrastructure"] += 1.2
++        scores["transport_low_frequency"] += 1.0
++
++    if profile.time_pattern.lower() in {"night", "late-night", "dawn"}:
++        scores["building_resonance"] += 1.2
++        scores["tinnitus_or_infrasound_perception"] += 1.0
++
++    if profile.weather_related:
++        scores["building_resonance"] += 1.0
++        scores["industrial_infrastructure"] += 0.6
++
++    if profile.stress_related:
++        scores["tinnitus_or_infrasound_perception"] += 1.8
++        scores["neutral_metaphysical_interpretation"] += 0.4
++
++    explanations = {
++        "industrial_infrastructure": "Possible pumps, compressors, turbines, or utility systems creating periodic low-frequency pressure waves.",
++        "building_resonance": "A structural cavity or room mode may amplify distant low-frequency sound into a gong-like pulse.",
++        "transport_low_frequency": "Rail, heavy trucks, or marine traffic can create deep repeating tones and pressure-like pulses.",
++        "tinnitus_or_infrasound_perception": "Inner-ear sensitivity, stress, or low-frequency infrasound can produce perceived hum/gong sounds without a clear external source.",
++        "neutral_metaphysical_interpretation": "Some traditions frame repetitive tones as attention cues or meaning-making events; this can be personally significant without implying harm.",
++    }
++
++    ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
++    return [(name, score, explanations[name]) for name, score in ranked]
++
++
++def classify_impact(profile: SignalProfile) -> Dict[str, str]:
++    """Describe likely effect and whether it's potentially harmful."""
++    physically_bad = profile.frequency_hz < 30 and profile.duration_s > 10
++    quality = "mixed"
++    if physically_bad:
++        quality = "potentially_bad"
++    elif 30 <= profile.frequency_hz <= 120 and not profile.stress_related:
++        quality = "mostly_neutral"
++
++    return {
++        "physical_assessment": (
++            "Potentially harmful if prolonged low-frequency exposure disrupts sleep, focus, or causes headaches."
++            if physically_bad
++            else "Usually benign when brief and infrequent; investigate if persistent or health symptoms appear."
++        ),
++        "metaphysical_assessment": "Can be interpreted as meaningful pattern recognition or reflective signal; not inherently good or bad.",
++        "overall_quality": quality,
++    }
++
++
++def build_report(profile: SignalProfile) -> Dict[str, object]:
++    ranked = likely_sources(profile)
++    impact = classify_impact(profile)
++
++    top = ranked[0]
++    report = {
++        "platform": {
++            "system": platform.system(),
++            "release": platform.release(),
++            "python": platform.python_version(),
++        },
++        "input_profile": profile.__dict__,
++        "top_cause": {
++            "label": top[0],
++            "confidence_score": round(top[1], 2),
++            "why_happening": top[2],
++            "how_happening": "Low-frequency energy couples with local structures and perception pathways, creating a deep gong sensation.",
++            "for_what_reason": "Most often mechanical cycles, environmental resonance, or neuroacoustic sensitivity.",
++        },
++        "ranked_causes": [
++            {"label": label, "score": round(score, 2), "explanation": explanation}
++            for label, score, explanation in ranked
++        ],
++        "is_it_bad_or_good": impact,
++        "scope_notice": "Analysis intentionally excludes any interpretation involving forces of evil.",
++        "next_steps": [
++            "Log exact times and locations for 7 days.",
++            "Use a phone spectrum analyzer app to estimate frequency peaks.",
++            "Check nearby HVAC/mechanical cycles and transport schedules.",
++            "If accompanied by ear pain, dizziness, or insomnia, seek clinical hearing evaluation.",
++        ],
++    }
++    return report
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(
++        description="Analyze the likely root of a deep gong-like sound (physical + neutral metaphysical framing)."
++    )
++    parser.add_argument("--frequency-hz", type=float, default=60.0)
++    parser.add_argument("--duration-s", type=float, default=5.0)
++    parser.add_argument("--repeat-interval-min", type=float, default=20.0)
++    parser.add_argument("--location", type=str, default="unknown")
++    parser.add_argument("--vibration-felt", action="store_true")
++    parser.add_argument("--time-pattern", type=str, default="night")
++    parser.add_argument("--weather-related", action="store_true")
++    parser.add_argument("--stress-related", action="store_true")
++    parser.add_argument("--json", action="store_true", help="Output machine-readable JSON")
++    return parser.parse_args()
++
++
++def main() -> None:
++    args = parse_args()
++    profile = SignalProfile(
++        frequency_hz=args.frequency_hz,
++        duration_s=args.duration_s,
++        repeat_interval_min=args.repeat_interval_min,
++        location=args.location,
++        vibration_felt=args.vibration_felt,
++        time_pattern=args.time_pattern,
++        weather_related=args.weather_related,
++        stress_related=args.stress_related,
++    )
++    report = build_report(profile)
++
++    if args.json:
++        print(json.dumps(report, indent=2))
++        return
++
++    print("=== Deep Gong Sound Root Analysis ===")
++    print(f"Platform: {report['platform']['system']} {report['platform']['release']} | Python {report['platform']['python']}")
++    print(f"Top cause: {report['top_cause']['label']} (score={report['top_cause']['confidence_score']})")
++    print(f"Why: {report['top_cause']['why_happening']}")
++    print(f"How: {report['top_cause']['how_happening']}")
++    print(f"Reason: {report['top_cause']['for_what_reason']}")
++    print("\nIs it bad or good?")
++    print(f"- Physical: {report['is_it_bad_or_good']['physical_assessment']}")
++    print(f"- Metaphysical: {report['is_it_bad_or_good']['metaphysical_assessment']}")
++    print(f"- Overall: {report['is_it_bad_or_good']['overall_quality']}")
++    print(f"\nNote: {report['scope_notice']}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/deep_gong_root_analyzer.py b/deep_gong_root_analyzer.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..8236c4c99e95cad78275fe7cb45fe24e1d6642cd
+--- /dev/null
++++ b/deep_gong_root_analyzer.py
+@@ -0,0 +1,379 @@
++#!/usr/bin/env python3
++"""Deep Gong Root Analyzer + Mitigator.
++
++A platform-ready Python CLI for two tasks:
++1) Analyze deep/gong-like low-frequency WAV audio and explain why/how it happens,
++   likely reason, and physical/metaphysical interpretation.
++2) Deactivate potentially combative/noise-aggressive programs by process-name match,
++   with a safe dry-run default and explicit execute mode.
++
++Policy: excludes "forces of evil" explanations by design.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import math
++import platform
++import signal
++import statistics
++import subprocess
++import wave
++from dataclasses import asdict, dataclass
++from pathlib import Path
++from typing import Dict, List, Sequence, Tuple
++
++
++DEFAULT_COMBATIVE_KEYWORDS = [
++    "combative",
++    "aggressive",
++    "noiseflood",
++    "ultrasonic",
++    "sonic",
++    "attack",
++]
++
++
++@dataclass
++class GongMetrics:
++    sample_rate: int
++    duration_s: float
++    fundamental_hz: float
++    low_band_ratio: float
++    decay_time_s: float
++    spectral_flatness: float
++    pulse_rate_hz: float
++
++
++@dataclass
++class GongAssessment:
++    why: str
++    how: str
++    likely_reason: str
++    is_it_bad_or_good: str
++    physical_view: str
++    metaphysical_view: str
++    confidence_0_to_1: float
++
++
++def read_wav_mono(path: Path) -> Tuple[int, List[float]]:
++    with wave.open(str(path), "rb") as wf:
++        channels = wf.getnchannels()
++        sample_width = wf.getsampwidth()
++        sample_rate = wf.getframerate()
++        frames = wf.getnframes()
++        raw = wf.readframes(frames)
++
++    if sample_width != 2:
++        raise ValueError("Only 16-bit PCM WAV is supported in this version.")
++
++    total_samples = len(raw) // 2
++    values = [int.from_bytes(raw[i * 2:(i + 1) * 2], "little", signed=True) for i in range(total_samples)]
++
++    if channels > 1:
++        mono: List[float] = []
++        for i in range(0, len(values), channels):
++            mono.append(sum(values[i:i + channels]) / channels)
++        values_f = mono
++    else:
++        values_f = [float(v) for v in values]
++
++    peak = max(1.0, max(abs(v) for v in values_f))
++    normalized = [v / peak for v in values_f]
++    return sample_rate, normalized
++
++
++def rms(signal_values: Sequence[float]) -> float:
++    if not signal_values:
++        return 0.0
++    return math.sqrt(sum(s * s for s in signal_values) / len(signal_values))
++
++
++def dft_magnitude(signal_values: Sequence[float], sample_rate: int, max_hz: int = 400) -> List[Tuple[float, float]]:
++    n = len(signal_values)
++    if n == 0:
++        return []
++    bin_hz = sample_rate / n
++    max_k = min(int(max_hz / bin_hz), n // 2)
++    spectrum: List[Tuple[float, float]] = []
++
++    for k in range(1, max_k + 1):
++        re = 0.0
++        im = 0.0
++        for t, x in enumerate(signal_values):
++            angle = 2.0 * math.pi * k * t / n
++            re += x * math.cos(angle)
++            im -= x * math.sin(angle)
++        mag = math.sqrt(re * re + im * im)
++        spectrum.append((k * bin_hz, mag))
++
++    return spectrum
++
++
++def estimate_decay(signal_values: Sequence[float], sample_rate: int, window_ms: int = 50) -> float:
++    if not signal_values:
++        return 0.0
++    w = max(1, sample_rate * window_ms // 1000)
++    windows = [signal_values[i:i + w] for i in range(0, len(signal_values), w)]
++    energies = [rms(win) for win in windows if win]
++    if not energies:
++        return 0.0
++
++    peak = max(energies)
++    target = peak * 0.37
++    for idx, val in enumerate(energies):
++        if val <= target:
++            return idx * (window_ms / 1000.0)
++    return len(energies) * (window_ms / 1000.0)
++
++
++def estimate_pulse_rate(signal_values: Sequence[float], sample_rate: int) -> float:
++    if not signal_values:
++        return 0.0
++    env_win = max(1, sample_rate // 100)
++    env = [rms(signal_values[i:i + env_win]) for i in range(0, len(signal_values), env_win)]
++    if len(env) < 5:
++        return 0.0
++
++    threshold = statistics.mean(env) + statistics.pstdev(env) * 0.5
++    peaks = [i for i in range(1, len(env) - 1) if env[i] > env[i - 1] and env[i] > env[i + 1] and env[i] > threshold]
++
++    if len(peaks) < 2:
++        return 0.0
++
++    intervals = [(peaks[i] - peaks[i - 1]) * (env_win / sample_rate) for i in range(1, len(peaks))]
++    avg = statistics.mean(intervals)
++    return 0.0 if avg <= 0 else 1.0 / avg
++
++
++def analyze_metrics(sample_rate: int, signal_values: Sequence[float]) -> GongMetrics:
++    duration = len(signal_values) / sample_rate if sample_rate else 0.0
++    clipped = signal_values[: min(len(signal_values), sample_rate * 3)]
++    spectrum = dft_magnitude(clipped, sample_rate, max_hz=400)
++
++    if spectrum:
++        fundamental = max(spectrum, key=lambda p: p[1])[0]
++        low_energy = sum(m for f, m in spectrum if f <= 120.0)
++        total_energy = sum(m for _, m in spectrum) + 1e-9
++        low_ratio = low_energy / total_energy
++        mags = [m + 1e-12 for _, m in spectrum]
++        gmean = math.exp(sum(math.log(m) for m in mags) / len(mags))
++        amean = sum(mags) / len(mags)
++        flatness = gmean / amean
++    else:
++        fundamental = 0.0
++        low_ratio = 0.0
++        flatness = 0.0
++
++    return GongMetrics(
++        sample_rate=sample_rate,
++        duration_s=duration,
++        fundamental_hz=fundamental,
++        low_band_ratio=low_ratio,
++        decay_time_s=estimate_decay(signal_values, sample_rate),
++        spectral_flatness=flatness,
++        pulse_rate_hz=estimate_pulse_rate(signal_values, sample_rate),
++    )
++
++
++def build_assessment(metrics: GongMetrics) -> GongAssessment:
++    low = metrics.fundamental_hz <= 120 and metrics.low_band_ratio > 0.55
++    long_decay = metrics.decay_time_s > 0.9
++    pulsed = 0.15 <= metrics.pulse_rate_hz <= 2.2
++
++    why = (
++        "The sound is likely structural or cavity resonance: a low mode is being excited and rings out like a gong."
++        if low and long_decay
++        else "The sound has partial gong traits and may involve a mixed source (mechanical + ambient + room modes)."
++    )
++
++    how = (
++        "An impulse or periodic forcing (impact, pressure change, HVAC cycle, traffic vibration, or bass source) "
++        "injects energy into a resonant object/space. The dominant resonant mode amplifies then decays."
++    )
++
++    likely_reason = (
++        "Most likely: resonance in architecture, ducts, fixtures, large metal objects, pipes, or room standing waves."
++    )
++
++    if low and long_decay and not pulsed:
++        good_bad = "Usually neutral to mildly negative (annoying), not inherently dangerous at typical household levels."
++    elif pulsed and low:
++        good_bad = "Potentially stressful if repetitive; mitigation is recommended for sleep and concentration quality."
++    else:
++        good_bad = "Likely benign; monitor if intensity rises, causes structural vibration, or disrupts health/sleep."
++
++    physical_view = (
++        "Physically this is consistent with resonance, damping, material geometry, and boundary conditions. "
++        "Inspect vents, pipes, suspended metal, appliances, subwoofers, and nearby transport cycles."
++    )
++
++    metaphysical_view = (
++        "Metaphysically (non-combative and non-evil framing), low gong tones are often interpreted as "
++        "grounding/transition cues for attention and state shifts. This is symbolic interpretation, not causal proof."
++    )
++
++    score = 0.35 + (0.3 if low else 0.0) + (0.2 if long_decay else 0.0) + (0.1 if pulsed else 0.0)
++    score = min(1.0, score)
++
++    return GongAssessment(
++        why=why,
++        how=how,
++        likely_reason=likely_reason,
++        is_it_bad_or_good=good_bad,
++        physical_view=physical_view,
++        metaphysical_view=metaphysical_view,
++        confidence_0_to_1=score,
++    )
++
++
++def list_processes() -> List[Tuple[int, str]]:
++    os_name = platform.system().lower()
++    processes: List[Tuple[int, str]] = []
++
++    if os_name == "windows":
++        output = subprocess.check_output(["tasklist", "/FO", "CSV", "/NH"], text=True, errors="ignore")
++        for line in output.splitlines():
++            parts = [p.strip().strip('"') for p in line.split('","')]
++            if len(parts) >= 2 and parts[1].isdigit():
++                processes.append((int(parts[1]), parts[0]))
++        return processes
++
++    output = subprocess.check_output(["ps", "-eo", "pid=,comm="], text=True, errors="ignore")
++    for line in output.splitlines():
++        bits = line.strip().split(maxsplit=1)
++        if len(bits) == 2 and bits[0].isdigit():
++            processes.append((int(bits[0]), bits[1]))
++    return processes
++
++
++def find_combative_processes(keywords: Sequence[str]) -> List[Tuple[int, str]]:
++    lowered = [k.lower() for k in keywords]
++    found: List[Tuple[int, str]] = []
++    for pid, name in list_processes():
++        n = name.lower()
++        if any(word in n for word in lowered):
++            found.append((pid, name))
++    return found
++
++
++def terminate_process(pid: int) -> None:
++    os_name = platform.system().lower()
++    if os_name == "windows":
++        subprocess.check_call(["taskkill", "/PID", str(pid), "/F"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++        return
++    # Unix-like
++    signal_to_send = signal.SIGTERM
++    subprocess.check_call(["kill", "-15", str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++
++
++def run_analysis(path: Path, as_json: bool) -> int:
++    sample_rate, signal_values = read_wav_mono(path)
++    metrics = analyze_metrics(sample_rate, signal_values)
++    assessment = build_assessment(metrics)
++
++    payload: Dict[str, object] = {
++        "platform": {
++            "os": platform.system(),
++            "release": platform.release(),
++            "python": platform.python_version(),
++        },
++        "input": {"file": str(path), "samples": len(signal_values)},
++        "metrics": asdict(metrics),
++        "assessment": asdict(assessment),
++        "policy": "Excludes forces-of-evil explanations by design.",
++    }
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== Deep Gong Root Analyzer ==")
++    print(f"File: {path}")
++    print(f"Platform: {payload['platform']}")
++    print("\n-- Metrics --")
++    for k, v in payload["metrics"].items():
++        print(f"{k}: {v}")
++    print("\n-- Assessment --")
++    for k, v in payload["assessment"].items():
++        print(f"{k}: {v}")
++    print(f"\nPolicy: {payload['policy']}")
++    return 0
++
++
++def run_mitigation(keywords: Sequence[str], execute: bool, as_json: bool) -> int:
++    matches = find_combative_processes(keywords)
++    actions: List[Dict[str, object]] = []
++
++    for pid, name in matches:
++        action = {"pid": pid, "name": name, "action": "matched", "terminated": False, "error": None}
++        if execute:
++            try:
++                terminate_process(pid)
++                action["terminated"] = True
++            except Exception as exc:  # intentionally broad: process may vanish/deny permissions
++                action["error"] = str(exc)
++        actions.append(action)
++
++    payload = {
++        "mode": "deactivate_combative_programs",
++        "execute": execute,
++        "keywords": list(keywords),
++        "matches": actions,
++        "summary": {
++            "matched": len(actions),
++            "terminated": sum(1 for a in actions if a["terminated"]),
++            "failed": sum(1 for a in actions if a["error"]),
++        },
++    }
++
++    if as_json:
++        print(json.dumps(payload, indent=2))
++        return 0
++
++    print("== Combative Program Mitigation ==")
++    print(f"Mode: {'EXECUTE' if execute else 'DRY-RUN'}")
++    print(f"Keywords: {', '.join(keywords)}")
++    if not actions:
++        print("No matching processes found.")
++        return 0
++
++    for item in actions:
++        status = "terminated" if item["terminated"] else "matched"
++        if item["error"]:
++            status = f"error: {item['error']}"
++        print(f"PID {item['pid']:<7} {item['name']:<25} -> {status}")
++
++    if not execute:
++        print("\nDry-run only. Re-run with --execute to terminate matched processes.")
++    return 0
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description="Analyze gong-like audio and optionally deactivate combative programs.")
++    sub = parser.add_subparsers(dest="command", required=True)
++
++    analyze = sub.add_parser("analyze", help="Analyze a 16-bit PCM WAV file.")
++    analyze.add_argument("wav_file", type=Path, help="Path to a 16-bit PCM WAV file.")
++    analyze.add_argument("--json", action="store_true", help="Output JSON.")
++
++    deactivate = sub.add_parser("deactivate", help="Find/deactivate combative programs by process name.")
++    deactivate.add_argument("--match", nargs="+", default=DEFAULT_COMBATIVE_KEYWORDS, help="Keywords to match.")
++    deactivate.add_argument("--execute", action="store_true", help="Actually terminate matching processes.")
++    deactivate.add_argument("--json", action="store_true", help="Output JSON.")
++
++    return parser.parse_args()
++
++
++def main() -> int:
++    args = parse_args()
++    if args.command == "analyze":
++        return run_analysis(args.wav_file, as_json=args.json)
++    if args.command == "deactivate":
++        return run_mitigation(args.match, execute=args.execute, as_json=args.json)
++    return 2
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
