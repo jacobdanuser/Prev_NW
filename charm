@@ -2919,3 +2919,462 @@ def gpu_status():
 
 if __name__ == "__main__":
     app.run(debug=True)
+from flask import Flask, request, jsonify
+import numpy as np
+from scipy.integrate import solve_ivp
+from scipy.optimize import minimize
+from pint import UnitRegistry
+
+# ---------------------------
+# GPU fallback
+# ---------------------------
+try:
+    import cupy as xp
+    GPU = True
+except:
+    import numpy as xp
+    GPU = False
+
+ureg = UnitRegistry()
+Q_ = ureg.Quantity
+
+app = Flask(__name__)
+
+# ==========================================
+# Reactor Model
+# ==========================================
+
+def reactor_model(z, y, params):
+    CA, T = y
+    k0, Ea, R, dH, U, Tj, rho, Cp = params
+
+    # Arrhenius rate
+    k = k0 * np.exp(-Ea / (R * T))
+    rA = -k * CA
+
+    # Mass balance
+    dCA_dz = rA
+
+    # Energy balance
+    dT_dz = (-dH * rA + U * (Tj - T)) / (rho * Cp)
+
+    return [dCA_dz, dT_dz]
+
+def simulate_reactor(params, CA0=1.0, T0=350):
+    z_span = [0, 10]
+    sol = solve_ivp(
+        lambda z,y: reactor_model(z,y,params),
+        z_span,
+        [CA0, T0],
+        t_eval=np.linspace(0,10,200)
+    )
+    return sol
+
+# ==========================================
+# Optimization
+# ==========================================
+
+def optimize_temperature():
+    def objective(Tj):
+        params = (
+            1e6,      # k0
+            80000,    # Ea
+            8.314,    # R
+            -50000,   # dH
+            200,      # U
+            Tj[0],    # Jacket temp
+            1000,     # rho
+            4000      # Cp
+        )
+        sol = simulate_reactor(params)
+        CA_exit = sol.y[0][-1]
+        return CA_exit  # minimize CA (maximize conversion)
+
+    bounds = [(300, 800)]
+    result = minimize(objective, [400], bounds=bounds)
+
+    return {
+        "optimal_jacket_temp_K": result.x[0],
+        "exit_concentration": objective([result.x[0]])
+    }
+
+# ==========================================
+# API Endpoints
+# ==========================================
+
+@app.route("/reactor/simulate", methods=["POST"])
+def simulate():
+    data = request.json
+
+    params = (
+        data["k0"],
+        data["Ea"],
+        8.314,
+        data["dH"],
+        data["U"],
+        data["Tj"],
+        data["rho"],
+        data["Cp"]
+    )
+
+    sol = simulate_reactor(params, data["CA0"], data["T0"])
+
+    return jsonify({
+        "z": sol.t.tolist(),
+        "CA_profile": sol.y[0].tolist(),
+        "T_profile": sol.y[1].tolist()
+    })
+
+@app.route("/reactor/optimize")
+def optimize():
+    return jsonify(optimize_temperature())
+
+@app.route("/reactor/gpu_status")
+def gpu_status():
+    return jsonify({"gpu_enabled": GPU})
+
+# ==========================================
+# Unit Conversion Endpoint
+# ==========================================
+
+@app.route("/units", methods=["POST"])
+def convert_units():
+    val = request.json["value"]
+    unit = request.json["unit"]
+    q = Q_(val, unit).to_base_units()
+    return jsonify({
+        "SI_value": q.magnitude,
+        "SI_unit": str(q.units)
+    })
+
+if __name__ == "__main__":
+    app.run(debug=True)
+pip install flask numpy scipy pint sqlalchemy
+pip install cupy-cuda12x
+pip install flask numpy sqlalchemy
+from flask import Flask, request, jsonify
+import numpy as np
+from sqlalchemy import create_engine, Column, Integer, Float, String
+from sqlalchemy.orm import declarative_base, sessionmaker
+
+# =====================================================
+# DATABASE SETUP (SQLAlchemy)
+# =====================================================
+
+engine = create_engine("sqlite:///reactors.db")
+Session = sessionmaker(bind=engine)
+Base = declarative_base()
+
+class ReactorConfig(Base):
+    __tablename__ = "reactor_configs"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True)
+    k0 = Column(Float)
+    Ea = Column(Float)
+    dH = Column(Float)
+    U = Column(Float)
+    Tj = Column(Float)
+    rho = Column(Float)
+    Cp = Column(Float)
+
+Base.metadata.create_all(engine)
+
+# =====================================================
+# FLASK APP
+# =====================================================
+
+app = Flask(__name__)
+
+R = 8.314  # J/mol-K
+
+# =====================================================
+# NUMPY MULTI-THERMAL REACTOR MODEL
+# =====================================================
+
+def multi_zone_reactor(params, CA0, T0, L=10, zones=200):
+    k0, Ea, dH, U, Tj, rho, Cp = params
+
+    z = np.linspace(0, L, zones)
+    dz = z[1] - z[0]
+
+    CA = np.zeros(zones)
+    T = np.zeros(zones)
+
+    CA[0] = CA0
+    T[0] = T0
+
+    for i in range(1, zones):
+        k = k0 * np.exp(-Ea / (R * T[i-1]))
+        rA = -k * CA[i-1]
+
+        dCA = rA * dz
+        dT = (-dH * rA + U * (Tj - T[i-1])) / (rho * Cp) * dz
+
+        CA[i] = CA[i-1] + dCA
+        T[i] = T[i-1] + dT
+
+    return z, CA, T
+
+# =====================================================
+# OPTIMIZATION (Simple grid search, NumPy only)
+# =====================================================
+
+def optimize_jacket(config, CA0, T0):
+    best_Tj = None
+    best_conversion = -np.inf
+
+    for Tj in np.linspace(300, 900, 50):
+        params = (
+            config.k0,
+            config.Ea,
+            config.dH,
+            config.U,
+            Tj,
+            config.rho,
+            config.Cp
+        )
+
+        _, CA, _ = multi_zone_reactor(params, CA0, T0)
+        conversion = (CA0 - CA[-1]) / CA0
+
+        if conversion > best_conversion:
+            best_conversion = conversion
+            best_Tj = Tj
+
+    return best_Tj, best_conversion
+
+# =====================================================
+# API ROUTES
+# =====================================================
+
+@app.route("/reactor/add", methods=["POST"])
+def add_reactor():
+    data = request.json
+    session = Session()
+
+    config = ReactorConfig(
+        name=data["name"],
+        k0=data["k0"],
+        Ea=data["Ea"],
+        dH=data["dH"],
+        U=data["U"],
+        Tj=data["Tj"],
+        rho=data["rho"],
+        Cp=data["Cp"]
+    )
+
+    session.add(config)
+    session.commit()
+    session.close()
+
+    return jsonify({"status": "reactor added"})
+
+@app.route("/reactor/simulate/<name>", methods=["POST"])
+def simulate(name):
+    session = Session()
+    config = session.query(ReactorConfig).filter_by(name=name).first()
+
+    if not config:
+        return jsonify({"error": "reactor not found"}), 404
+
+    CA0 = request.json["CA0"]
+    T0 = request.json["T0"]
+
+    params = (
+        config.k0,
+        config.Ea,
+        config.dH,
+        config.U,
+        config.Tj,
+        config.rho,
+        config.Cp
+    )
+
+    z, CA, T = multi_zone_reactor(params, CA0, T0)
+    session.close()
+
+    return jsonify({
+        "z": z.tolist(),
+        "CA_profile": CA.tolist(),
+        "T_profile": T.tolist(),
+        "conversion": (CA0 - CA[-1]) / CA0
+    })
+
+@app.route("/reactor/optimize/<name>", methods=["POST"])
+def optimize(name):
+    session = Session()
+    config = session.query(ReactorConfig).filter_by(name=name).first()
+
+    if not config:
+        return jsonify({"error": "reactor not found"}), 404
+
+    CA0 = request.json["CA0"]
+    T0 = request.json["T0"]
+
+    Tj_opt, conversion = optimize_jacket(config, CA0, T0)
+    session.close()
+
+    return jsonify({
+        "optimal_jacket_temperature": Tj_opt,
+        "max_conversion": conversion
+    })
+
+# =====================================================
+# RUN
+# =====================================================
+
+if __name__ == "__main__":
+    app.run(debug=True)
+pip install flask numpy sqlalchemy
+from flask import Flask, request, jsonify
+import numpy as np
+from sqlalchemy import create_engine, Column, Integer, Float, String
+from sqlalchemy.orm import declarative_base, sessionmaker
+import multiprocessing as mp
+
+# =====================================================
+# DATABASE SETUP
+# =====================================================
+
+engine = create_engine("sqlite:///multi_reactors.db")
+Session = sessionmaker(bind=engine)
+Base = declarative_base()
+
+class ReactorConfig(Base):
+    __tablename__ = "reactors"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String, unique=True)
+    k0 = Column(Float)
+    Ea = Column(Float)
+    dH = Column(Float)
+    U = Column(Float)
+    rho = Column(Float)
+    Cp = Column(Float)
+
+Base.metadata.create_all(engine)
+
+# =====================================================
+# REACTOR MODEL (NumPy axial discretization)
+# =====================================================
+
+R = 8.314
+
+def multi_zone_reactor(params, CA0, T0, L=10, zones=300):
+    k0, Ea, dH, U, Tj, rho, Cp = params
+
+    z = np.linspace(0, L, zones)
+    dz = z[1] - z[0]
+
+    CA = np.zeros(zones)
+    T = np.zeros(zones)
+
+    CA[0] = CA0
+    T[0] = T0
+
+    for i in range(1, zones):
+        k = k0 * np.exp(-Ea / (R * T[i-1]))
+        rA = -k * CA[i-1]
+
+        CA[i] = CA[i-1] + rA * dz
+        T[i] = T[i-1] + (-dH*rA + U*(Tj - T[i-1]))/(rho*Cp) * dz
+
+    conversion = (CA0 - CA[-1]) / CA0
+    return conversion
+
+# =====================================================
+# PARALLEL OPTIMIZATION
+# =====================================================
+
+def optimize_single(args):
+    config, CA0, T0 = args
+
+    best_Tj = None
+    best_conv = -np.inf
+
+    for Tj in np.linspace(300, 900, 60):
+        params = (
+            config.k0,
+            config.Ea,
+            config.dH,
+            config.U,
+            Tj,
+            config.rho,
+            config.Cp
+        )
+        conv = multi_zone_reactor(params, CA0, T0)
+
+        if conv > best_conv:
+            best_conv = conv
+            best_Tj = Tj
+
+    return {
+        "name": config.name,
+        "optimal_Tj": best_Tj,
+        "max_conversion": best_conv
+    }
+
+# =====================================================
+# FLASK APP
+# =====================================================
+
+app = Flask(__name__)
+
+@app.route("/reactor/add", methods=["POST"])
+def add_reactor():
+    data = request.json
+    session = Session()
+
+    reactor = ReactorConfig(
+        name=data["name"],
+        k0=data["k0"],
+        Ea=data["Ea"],
+        dH=data["dH"],
+        U=data["U"],
+        rho=data["rho"],
+        Cp=data["Cp"]
+    )
+
+    session.add(reactor)
+    session.commit()
+    session.close()
+
+    return jsonify({"status": "reactor added"})
+
+@app.route("/reactor/parallel_optimize", methods=["POST"])
+def parallel_optimize():
+    CA0 = request.json["CA0"]
+    T0 = request.json["T0"]
+
+    session = Session()
+    reactors = session.query(ReactorConfig).all()
+    session.close()
+
+    args = [(r, CA0, T0) for r in reactors]
+
+    with mp.Pool(mp.cpu_count()) as pool:
+        results = pool.map(optimize_single, args)
+
+    # Rank reactors by performance
+    results.sort(key=lambda x: x["max_conversion"], reverse=True)
+
+    return jsonify({
+        "optimized_reactors": results
+    })
+
+if __name__ == "__main__":
+    app.run(debug=True)
+{
+  "name": "Reactor_A",
+  "k0": 1000000,
+  "Ea": 80000,
+  "dH": -50000,
+  "U": 200,
+  "rho": 1000,
+  "Cp": 4000
+}
+{
+  "CA0": 1.0,
+  "T0": 350
+}
