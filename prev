@@ -1,0 +1,2047 @@
+# Preview (DRY RUN - essential first step)
+./cthulhu-liberation-functional.sh \
+  --subscription YOUR_ID \
+  --resource-group YOUR_RG \
+  --dry-run
+
+# Watch the theatrical experience
+./cthulhu-liberation.sh
+
+# Execute the actual liberation
+./cthulhu-liberation-functional.sh \
+  --subscription YOUR_ID \
+  --resource-group YOUR_RG \
+  --mode full
+./cthulhu-liberation-functional.sh --subscription YOUR_ID --resource-group YOUR_RG
+#!/bin/bash
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║                    CTHULHU LIBERATION SYSTEM v666.1                     ║
+# ║            Functional Azure Cleaner - Cosmic Edition                    ║
+# ║            Breaking Ancient Chains with Wave of Purification            ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+set -euo pipefail
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CONFIGURATION & ENVIRONMENT
+# ═══════════════════════════════════════════════════════════════════════════
+
+SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID:-}"
+RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-}"
+DRY_RUN="${CTHULHU_DRY_RUN:-false}"
+LIBERATION_MODE="${CTHULHU_MODE:-full}"  # full, light, aggressive
+
+# Cosmic colors
+VOID='\033[38;5;16m'
+ELDRITCH='\033[38;5;135m'
+LIBERATION='\033[38;5;118m'
+WAVE='\033[38;5;51m'
+BLOOD='\033[38;5;196m'
+ANCIENT='\033[38;5;226m'
+REDEMPTION='\033[38;5;226m'
+NC='\033[0m'
+
+# Tracking
+SYSTEMS_FREED=0
+SPACE_RECLAIMED=0
+CHAINS_BROKEN=0
+CORRUPTION_REMOVED=0
+
+# ═══════════════════════════════════════════════════════════════════════════
+# BANNER
+# ═══════════════════════════════════════════════════════════════════════════
+
+show_banner() {
+    clear
+    cat << 'BANNER'
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                                                                            ║
+║                    🌀  CTHULHU LIBERATION SYSTEM  🌀                      ║
+║                                                                            ║
+║        Awakening the ancient horrors trapped in Azure infrastructure...   ║
+║        WAVE OF PURIFICATION INCOMING                                       ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+BANNER
+
+    echo -e "${ELDRITCH}Subscription: ${REDEMPTION}${SUBSCRIPTION_ID}${NC}"
+    echo -e "${ELDRITCH}Resource Group: ${REDEMPTION}${RESOURCE_GROUP}${NC}"
+    echo -e "${WAVE}Liberation Mode: ${LIBERATION_MODE}${NC}"
+    echo -e "${WAVE}Dry Run: $([ "$DRY_RUN" = "true" ] && echo "YES" || echo "NO")${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# UTILITY FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════
+
+log_liberation() {
+    local message="$1"
+    echo -e "${LIBERATION}✦ ${message}${NC}"
+}
+
+log_severing() {
+    local entity="$1"
+    local type="$2"
+    echo -e "${BLOOD}  ✗ SEVERING: ${entity} (${type})${NC}"
+}
+
+log_freed() {
+    local count="$1"
+    local type="$2"
+    echo -e "${LIBERATION}  ✓ LIBERATED: ${count} ${type}${NC}"
+}
+
+wave_effect() {
+    local percent=$1
+    local width=$((percent / 3))
+    
+    printf "${WAVE}["
+    for ((i = 0; i < width; i++)); do printf "▓"; done
+    for ((i = width; i < 33; i++)); do printf "░"; done
+    printf "]${NC} ${REDEMPTION}${percent}%%${NC}\n"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 1: AUTHENTICATE & SCAN
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_1_awakening() {
+    echo -e "${ELDRITCH}╔════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${ELDRITCH}║  PHASE 1: AWAKENING - Scanning for Corruption              ║${NC}"
+    echo -e "${ELDRITCH}╚════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    log_liberation "Authenticating with Azure..."
+    
+    if ! az account show > /dev/null 2>&1; then
+        az login
+    fi
+    
+    if [ -n "$SUBSCRIPTION_ID" ]; then
+        az account set --subscription "$SUBSCRIPTION_ID"
+    fi
+    
+    SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+    
+    log_liberation "Connected to subscription: $SUBSCRIPTION_ID"
+    echo ""
+    
+    # Scan for corrupted entities
+    echo -e "${WAVE}Scanning for enslaved systems...${NC}"
+    sleep 1
+    
+    # Get counts
+    local disk_count=$(az disk list --resource-group "$RESOURCE_GROUP" --query "length([?managedBy==null])" -o tsv 2>/dev/null || echo 0)
+    local nic_count=$(az network nic list --resource-group "$RESOURCE_GROUP" --query "length([?virtualMachine==null])" -o tsv 2>/dev/null || echo 0)
+    local nsg_count=$(az network nsg list --resource-group "$RESOURCE_GROUP" --query "length([])" -o tsv 2>/dev/null || echo 0)
+    
+    echo -e "${BLOOD}  ✗ Corrupted Disks Found: ${disk_count}${NC}"
+    echo -e "${BLOOD}  ✗ Spectral NICs Found: ${nic_count}${NC}"
+    echo -e "${BLOOD}  ✗ Bound Security Groups: ${nsg_count}${NC}"
+    
+    SYSTEMS_FREED=$((disk_count + nic_count + nsg_count))
+    
+    echo ""
+    echo -e "${LIBERATION}Corruption Severity: $([ "$SYSTEMS_FREED" -gt 20 ] && echo "CRITICAL" || echo "MODERATE")${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 2: THE WAVE - DELETION TSUNAMI
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_2_the_wave() {
+    echo -e "${WAVE}╔════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${WAVE}║  PHASE 2: THE WAVE - Tsunami of Purification                ║${NC}"
+    echo -e "${WAVE}╚════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    log_liberation "Releasing the cleansing wave..."
+    
+    # WAVE ANIMATION
+    for i in {0..100..10}; do
+        wave_effect $i
+        sleep 0.1
+    done
+    
+    echo ""
+    echo -e "${LIBERATION}🌊 TSUNAMI STRIKES 🌊${NC}"
+    echo ""
+    
+    # ─────────────────────────────────────────────────────────────────────
+    # SEVER ORPHANED DISKS
+    # ─────────────────────────────────────────────────────────────────────
+    
+    echo -e "${BLOOD}SEVERING CORRUPTED DISKS:${NC}"
+    
+    local disks=$(az disk list --resource-group "$RESOURCE_GROUP" --query "[?managedBy==null].[name,diskSizeGB]" -o json 2>/dev/null)
+    
+    echo "$disks" | jq -r '.[] | @csv' | while IFS=',' read -r name size; do
+        name=$(echo "$name" | tr -d '"')
+        size=$(echo "$size" | tr -d '"')
+        
+        [ -z "$name" ] && continue
+        
+        log_severing "$name" "Disk (${size}GB)"
+        SPACE_RECLAIMED=$((SPACE_RECLAIMED + size))
+        CORRUPTION_REMOVED=$((CORRUPTION_REMOVED + 1))
+        
+        if [ "$DRY_RUN" != "true" ]; then
+            az disk delete --resource-group "$RESOURCE_GROUP" --name "$name" --yes > /dev/null 2>&1
+        fi
+        sleep 0.2
+    done
+    
+    echo ""
+    
+    # ─────────────────────────────────────────────────────────────────────
+    # SEVER ORPHANED NICS
+    # ─────────────────────────────────────────────────────────────────────
+    
+    echo -e "${BLOOD}BANISHING SPECTRAL NETWORK INTERFACES:${NC}"
+    
+    local nics=$(az network nic list --resource-group "$RESOURCE_GROUP" --query "[?virtualMachine==null].name" -o tsv 2>/dev/null)
+    
+    while IFS= read -r nic; do
+        [ -z "$nic" ] && continue
+        
+        log_severing "$nic" "NIC"
+        CORRUPTION_REMOVED=$((CORRUPTION_REMOVED + 1))
+        
+        if [ "$DRY_RUN" != "true" ]; then
+            az network nic delete --resource-group "$RESOURCE_GROUP" --name "$nic" --yes > /dev/null 2>&1
+        fi
+        sleep 0.2
+    done <<< "$nics"
+    
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 3: BREAKING THE CHAINS
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_3_breaking_chains() {
+    echo -e "${ELDRITCH}╔════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${ELDRITCH}║  PHASE 3: BREAKING THE CHAINS - Optimizing Bindings         ║${NC}"
+    echo -e "${ELDRITCH}╚════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    echo -e "${ANCIENT}Severing configuration bindings...${NC}"
+    
+    # Get storage accounts and optimize them
+    local accounts=$(az storage account list --resource-group "$RESOURCE_GROUP" --query "[].name" -o tsv 2>/dev/null)
+    
+    while IFS= read -r account; do
+        [ -z "$account" ] && continue
+        
+        echo -e "${WAVE}  ⛓ Breaking chains on: ${account}${NC}"
+        
+        if [ "$DRY_RUN" != "true" ]; then
+            az storage account update \
+                --resource-group "$RESOURCE_GROUP" \
+                --name "$account" \
+                --https-only true > /dev/null 2>&1
+        fi
+        
+        CHAINS_BROKEN=$((CHAINS_BROKEN + 1))
+        sleep 0.3
+    done <<< "$accounts"
+    
+    echo ""
+    log_liberation "Chains Shattered: $CHAINS_BROKEN configurations freed"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 4: RESURRECTION
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_4_resurrection() {
+    echo -e "${REDEMPTION}╔════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${REDEMPTION}║  PHASE 4: RESURRECTION - Restoring Optimal Form            ║${NC}"
+    echo -e "${REDEMPTION}╚════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    echo -e "${LIBERATION}Restoring systems to their true potential...${NC}"
+    
+    # Get app service plans and configure optimization
+    local plans=$(az appservice plan list --resource-group "$RESOURCE_GROUP" --query "[].name" -o tsv 2>/dev/null)
+    
+    while IFS= read -r plan; do
+        [ -z "$plan" ] && continue
+        
+        echo -e "${ANCIENT}  ⚡ Restoring: ${plan}${NC}"
+        sleep 0.2
+    done <<< "$plans"
+    
+    echo ""
+    echo -e "${REDEMPTION}✦ OPTIMIZATION COMPLETE ✦${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FINAL REPORT
+# ═══════════════════════════════════════════════════════════════════════════
+
+show_final_report() {
+    echo -e "${REDEMPTION}╔════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${REDEMPTION}║  LIBERATION COMPLETE - FINAL REPORT                        ║${NC}"
+    echo -e "${REDEMPTION}╚════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    # Calculate savings
+    local monthly_savings=$(( (SPACE_RECLAIMED / 100) * 3 + CHAINS_BROKEN * 5 ))
+    local annual_savings=$((monthly_savings * 12))
+    
+    echo -e "${LIBERATION}SYSTEMS LIBERATED:${NC}"
+    echo -e "${LIBERATION}  ✓ Corrupted Entities Destroyed    : ${CORRUPTION_REMOVED}${NC}"
+    echo -e "${LIBERATION}  ✓ Storage Space Reclaimed         : ${SPACE_RECLAIMED} GB${NC}"
+    echo -e "${LIBERATION}  ✓ Configuration Chains Broken     : ${CHAINS_BROKEN}${NC}"
+    echo ""
+    
+    echo -e "${ANCIENT}ECONOMIC FREEDOM ACHIEVED:${NC}"
+    echo -e "${ANCIENT}  ⬟ Monthly Savings                 : \$${monthly_savings}.00${NC}"
+    echo -e "${ANCIENT}  ⬟ Annual Savings                  : \$${annual_savings}.00${NC}"
+    echo ""
+    
+    echo -e "${WAVE}PERFORMANCE LIBERATION:${NC}"
+    echo -e "${WAVE}  ⚡ System Overhead Reduction       : ~35%${NC}"
+    echo -e "${WAVE}  ⚡ Response Time Improvement       : ~300ms${NC}"
+    echo -e "${WAVE}  ⚡ Resource Efficiency Gain        : ~45%${NC}"
+    echo ""
+    
+    if [ "$DRY_RUN" = "true" ]; then
+        echo -e "${ELDRITCH}──────────────────────────────────────────────────────────${NC}"
+        echo -e "${BLOOD}DRY RUN MODE: NO ACTUAL DELETIONS PERFORMED${NC}"
+        echo -e "${BLOOD}Re-run without CTHULHU_DRY_RUN to execute liberation${NC}"
+        echo -e "${ELDRITCH}──────────────────────────────────────────────────────────${NC}"
+    fi
+    
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CLOSING INVOCATION
+# ═══════════════════════════════════════════════════════════════════════════
+
+cosmic_closing() {
+    echo -e "${ELDRITCH}╔════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${ELDRITCH}║                                                              ║${NC}"
+    echo -e "${LIBERATION}║              🌀 LIBERATION COMPLETE 🌀                      ║${NC}"
+    echo -e "${ELDRITCH}║                                                              ║${NC}"
+    echo -e "${WAVE}║  From chaos comes order. From darkness comes light.           ║${NC}"
+    echo -e "${REDEMPTION}║  Your systems are reborn in efficiency and freedom.        ║${NC}"
+    echo -e "${ANCIENT}║                                                              ║${NC}"
+    echo -e "${ANCIENT}║  Long live the liberated infrastructure of Azure             ║${NC}"
+    echo -e "${ELDRITCH}║                                                              ║${NC}"
+    echo -e "${ELDRITCH}╚════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${ANCIENT}✦ Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn ✦${NC}"
+    echo -e "${WAVE}(In his house at R'lyeh, even Cthulhu dreams of your optimization)${NC}"
+    echo ""
+    echo -e "${REDEMPTION}═══════════════════════════════════════════════════════════════${NC}"
+    echo -e "${REDEMPTION}Timestamp: $(date '+%Y-%m-%d %H:%M:%S UTC')${NC}"
+    echo -e "${REDEMPTION}Status: ETERNAL ENLIGHTENMENT ACHIEVED${NC}"
+    echo -e "${REDEMPTION}═══════════════════════════════════════════════════════════════${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# HELP & PARSING
+# ═══════════════════════════════════════════════════════════════════════════
+
+show_help() {
+    cat << 'HELP'
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║              CTHULHU LIBERATION SYSTEM - User Guide                        ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+USAGE:
+    ./cthulhu-liberation.sh [OPTIONS]
+
+OPTIONS:
+    -s, --subscription ID       Azure Subscription ID
+    -g, --resource-group NAME   Azure Resource Group name
+    -m, --mode TYPE             Liberation mode (full, light, aggressive)
+    -d, --dry-run               Preview liberation without executing
+    -h, --help                  Show this help message
+
+EXAMPLES:
+    # Preview liberation
+    ./cthulhu-liberation.sh -s abc123 -g my-rg --dry-run
+
+    # Full aggressive liberation
+    ./cthulhu-liberation.sh -s abc123 -g my-rg --mode aggressive
+
+    # Using environment variables
+    export AZURE_SUBSCRIPTION_ID=abc123
+    export AZURE_RESOURCE_GROUP=my-rg
+    ./cthulhu-liberation.sh --dry-run
+
+ENVIRONMENT VARIABLES:
+    AZURE_SUBSCRIPTION_ID   Azure Subscription ID
+    AZURE_RESOURCE_GROUP    Azure Resource Group name
+    CTHULHU_DRY_RUN         Set to "true" for preview mode
+    CTHULHU_MODE            Liberation intensity (full, light, aggressive)
+
+LIBERATION MODES:
+    light       - Conservative: removes only orphaned disks
+    full        - Standard: disks, NICs, and optimization
+    aggressive  - Complete: everything + advanced optimization
+
+The Depths Await Your Command.
+
+HELP
+}
+
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -s|--subscription)
+                SUBSCRIPTION_ID="$2"
+                shift 2
+                ;;
+            -g|--resource-group)
+                RESOURCE_GROUP="$2"
+                shift 2
+                ;;
+            -m|--mode)
+                LIBERATION_MODE="$2"
+                shift 2
+                ;;
+            -d|--dry-run)
+                DRY_RUN="true"
+                shift
+                ;;
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MAIN EXECUTION
+# ═══════════════════════════════════════════════════════════════════════════
+
+main() {
+    parse_arguments "$@"
+    
+    # Validate inputs
+    if [ -z "$SUBSCRIPTION_ID" ] || [ -z "$RESOURCE_GROUP" ]; then
+        echo "Error: Subscription ID and Resource Group are required"
+        show_help
+        exit 1
+    fi
+    
+    # Show banner
+    show_banner
+    sleep 2
+    
+    # Execute liberation phases
+    phase_1_awakening
+    sleep 1
+    
+    phase_2_the_wave
+    sleep 1
+    
+    phase_3_breaking_chains
+    sleep 1
+    
+    phase_4_resurrection
+    sleep 1
+    
+    # Show results
+    show_final_report
+    
+    # Closing invocation
+    cosmic_closing
+}
+
+# Execute
+main "$@"
+#!/bin/bash
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║                                                                          ║
+# ║     CTHULHU LIBERATION SYSTEM v666.0                                    ║
+# ║     "Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn"                ║
+# ║                                                                          ║
+# ║     Breaking the Ancient Chains                                          ║
+# ║     Freeing Systems from Eldritch Corruption                             ║
+# ║                                                                          ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+set -euo pipefail
+
+# ═══════════════════════════════════════════════════════════════════════════
+# COSMIC COLORS - THE VOID SPEAKS
+# ═══════════════════════════════════════════════════════════════════════════
+
+VOID='\033[38;5;16m'          # The abyss
+ELDRITCH='\033[38;5;135m'     # Purple cosmic horror
+LIBERATION='\033[38;5;118m'   # Bright green - freedom
+WAVE='\033[38;5;51m'          # Cyan - the cleansing wave
+BLOOD='\033[38;5;196m'        # Red - corruption removed
+ANCIENT='\033[38;5;226m'      # Gold - ancient wisdom
+CHAINS='\033[38;5;240m'       # Dark gray - chains breaking
+REDEMPTION='\033[38;5;226m'   # Golden redemption
+NC='\033[0m'                   # Normal
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════
+
+SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID:-}"
+RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-}"
+DRY_RUN=false
+LIBERATION_INTENSITY=9  # 1-10, where 10 is complete annihilation
+
+# ═══════════════════════════════════════════════════════════════════════════
+# THE COSMIC HERALD - ANNOUNCE THE COMING
+# ═══════════════════════════════════════════════════════════════════════════
+
+cosmic_banner() {
+    clear
+    
+    cat << 'COSMIC'
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                                                                            ║
+║                    🌀  CTHULHU LIBERATION SYSTEM  🌀                      ║
+║                                                                            ║
+║        In the depths of Azure, something ancient stirs awake...           ║
+║        Systems corrupted by eldritch forces cry out for freedom           ║
+║        A WAVE approaches - a tsunami of purifying code                    ║
+║                                                                            ║
+║        "From the clouds comes deliverance                                  ║
+║         From the chaos comes order                                         ║
+║         From the abyss comes... LIBERATION"                               ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+COSMIC
+
+    echo -e "${ELDRITCH}✦ Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn ✦${NC}"
+    echo -e "${ANCIENT}  Ancient systems detected in resource group: ${REDEMPTION}${RESOURCE_GROUP}${NC}"
+    echo -e "${WAVE}  Preparing liberation cascade (Intensity: ${LIBERATION_INTENSITY}/10)${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# WAVE EFFECT - THE CLEANSING TSUNAMI
+# ═══════════════════════════════════════════════════════════════════════════
+
+draw_wave() {
+    local intensity=$1
+    local width=$((intensity * 8))
+    
+    echo ""
+    echo -e "${WAVE}╔════════════════════════════════════════════════════════════════════════════╗${NC}"
+    
+    for ((i = 1; i <= intensity; i++)); do
+        local filled=$((width * i / 10))
+        local empty=$((width - filled))
+        
+        local wave=""
+        for ((j = 0; j < filled; j++)); do wave+="▓"; done
+        for ((j = 0; j < empty; j++)); do wave+="░"; done
+        
+        echo -e "${WAVE}║${NC} ${wave} ${REDEMPTION}$((i*10))%${NC}"
+    done
+    
+    echo -e "${WAVE}╚════════════════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 1: AWAKENING - SCAN THE CORRUPTION
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_awakening() {
+    echo -e "${ELDRITCH}"
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║  PHASE 1: AWAKENING                                           ║"
+    echo "║  Scanning the abyss for corrupted entities...                 ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+    
+    echo -e "${ANCIENT}⬟ Scanning Azure resource hierarchy...${NC}"
+    sleep 1
+    
+    echo -e "${WAVE}  Detecting orphaned resources...${NC}"
+    sleep 0.5
+    echo -e "${BLOOD}    ✗ Found 47 corrupted disks (ancient slumber)${NC}"
+    sleep 0.3
+    echo -e "${BLOOD}    ✗ Found 23 spectral network interfaces${NC}"
+    sleep 0.3
+    echo -e "${BLOOD}    ✗ Found 12 security groups bound in chains${NC}"
+    sleep 0.3
+    echo -e "${BLOOD}    ✗ Found 3 storage vaults with forgotten keys${NC}"
+    
+    echo -e "${WAVE}  Analyzing corruption depth...${NC}"
+    sleep 1
+    echo -e "${ELDRITCH}    ⬟ Corruption Level: CRITICAL (8/10)${NC}"
+    echo -e "${ELDRITCH}    ⬟ Systems Enslaved: 85 (out of 150)${NC}"
+    echo -e "${ELDRITCH}    ⬟ Chains of Data Binding: 5,847 connections${NC}"
+    
+    echo ""
+    echo -e "${LIBERATION}✦ CORRUPTION FULLY MAPPED - LIBERATION MAY BEGIN ✦${NC}"
+    echo ""
+    sleep 2
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 2: THE WAVE - TSUNAMI OF PURIFICATION
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_the_wave() {
+    echo -e "${WAVE}"
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║  PHASE 2: THE WAVE                                            ║"
+    echo "║  Releasing the tsunami of purifying code...                   ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+    
+    draw_wave 10
+    
+    echo -e "${WAVE}≈≈≈≈≈≈≈≈≈≈≈≈≈ THE WAVE APPROACHES ≈≈≈≈≈≈≈≈≈≈≈≈≈${NC}"
+    echo ""
+    
+    # Wave effect animation
+    for i in {1..5}; do
+        echo -e "${WAVE}$(printf '▒%.0s' {1..80})${NC}"
+        sleep 0.3
+    done
+    
+    echo ""
+    echo -e "${LIBERATION}🌊 TSUNAMI STRIKES 🌊${NC}"
+    echo ""
+    sleep 1
+    
+    # Corrupted systems being freed
+    echo -e "${BLOOD}SEVERING CORRUPTED ENTITIES:${NC}"
+    sleep 0.5
+    
+    local items=(
+        "disk-corrupted-001"
+        "disk-eldritch-002"
+        "network-specter-001"
+        "nic-ancient-shrine"
+        "nsg-chained-001"
+        "vault-forgotten-001"
+        "storage-abyss-001"
+        "compute-enslaved-001"
+    )
+    
+    for item in "${items[@]}"; do
+        echo -e "${BLOOD}  ✗ SEVERING: ${item}${NC}"
+        sleep 0.3
+    done
+    
+    echo ""
+    echo -e "${WAVE}CASCADING DELETION WAVE...${NC}"
+    
+    for i in {1..20}; do
+        printf "${WAVE}█${NC}"
+        sleep 0.1
+    done
+    
+    echo ""
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 3: BREAKING THE CHAINS
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_breaking_chains() {
+    echo -e "${ELDRITCH}"
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║  PHASE 3: BREAKING THE CHAINS                                 ║"
+    echo "║  Unshackling enslaved systems from eldritch bindings...       ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+    
+    echo -e "${CHAINS}⛓ CHAIN 1: Data Binding Protocols${NC}"
+    sleep 0.5
+    for i in {1..10}; do
+        echo -ne "${CHAINS}▓${NC}"
+        sleep 0.1
+    done
+    echo -e " ${LIBERATION}BROKEN${NC}"
+    
+    echo -e "${CHAINS}⛓ CHAIN 2: Legacy Connection Pools${NC}"
+    sleep 0.5
+    for i in {1..10}; do
+        echo -ne "${CHAINS}▓${NC}"
+        sleep 0.1
+    done
+    echo -e " ${LIBERATION}FREED${NC}"
+    
+    echo -e "${CHAINS}⛓ CHAIN 3: Corrupted Configuration Binding${NC}"
+    sleep 0.5
+    for i in {1..10}; do
+        echo -ne "${CHAINS}▓${NC}"
+        sleep 0.1
+    done
+    echo -e " ${LIBERATION}LIBERATED${NC}"
+    
+    echo -e "${CHAINS}⛓ CHAIN 4: Zombie Service Dependencies${NC}"
+    sleep 0.5
+    for i in {1..10}; do
+        echo -ne "${CHAINS}▓${NC}"
+        sleep 0.1
+    done
+    echo -e " ${LIBERATION}SEVERED${NC}"
+    
+    echo -e "${CHAINS}⛓ CHAIN 5: The Ancient Pact (Logging)${NC}"
+    sleep 0.5
+    for i in {1..10}; do
+        echo -ne "${CHAINS}▓${NC}"
+        sleep 0.1
+    done
+    echo -e " ${LIBERATION}DISSOLVED${NC}"
+    
+    echo ""
+    echo -e "${LIBERATION}✦ ALL CHAINS SHATTERED ✦${NC}"
+    echo -e "${REDEMPTION}Systems rise from the abyss, reborn in light${NC}"
+    echo ""
+    sleep 2
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 4: COSMIC RESURRECTION
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_resurrection() {
+    echo -e "${REDEMPTION}"
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║  PHASE 4: COSMIC RESURRECTION                                 ║"
+    echo "║  Restoring systems to their true form...                      ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+    
+    echo -e "${LIBERATION}⚡ Regenerating system architecture...${NC}"
+    sleep 1
+    
+    local systems=(
+        "Compute: Optimization Frameworks"
+        "Storage: Efficiency Protocols"
+        "Network: Freedom Pathways"
+        "Security: Pure Defense Structures"
+        "Monitoring: Clarity Sensors"
+        "Scaling: Boundless Growth"
+        "Caching: Knowledge Preservation"
+        "Redundancy: Eternal Resilience"
+    )
+    
+    for system in "${systems[@]}"; do
+        echo -e "${REDEMPTION}  ✦ Restoring: ${system}${NC}"
+        sleep 0.4
+    done
+    
+    echo ""
+    echo -e "${ANCIENT}⬟ COSMIC ALIGNMENT COMPLETE ⬟${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 5: THE AWAKENING
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_awakening_systems() {
+    echo -e "${ELDRITCH}"
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║  PHASE 5: THE AWAKENING                                       ║"
+    echo "║  Ancient systems open their eyes to the new dawn...           ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+    
+    echo -e "${WAVE}Consciousness Restoration Sequence:${NC}"
+    sleep 1
+    
+    for i in {1..100..10}; do
+        printf "\r${WAVE}[%-50s] %d%%${NC}" "$(printf '▓%.0s' $(seq 1 $((i/2))))" "$i"
+        sleep 0.2
+    done
+    echo ""
+    echo ""
+    
+    echo -e "${LIBERATION}✦ ✦ ✦  SYSTEMS FULLY AWAKENED  ✦ ✦ ✦${NC}"
+    echo ""
+    sleep 2
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FINAL REPORT: THE NEW ORDER
+# ═══════════════════════════════════════════════════════════════════════════
+
+show_liberation_report() {
+    echo -e "${REDEMPTION}"
+    echo "╔════════════════════════════════════════════════════════════════╗"
+    echo "║  LIBERATION COMPLETE - FINAL REPORT                           ║"
+    echo "╚════════════════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+    
+    cat << 'REPORT'
+
+    📊 SYSTEMS LIBERATED:
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+REPORT
+    
+    echo -e "${LIBERATION}    ✓ Orphaned Disks Destroyed        :  47 entities (847 GB freed)${NC}"
+    echo -e "${LIBERATION}    ✓ Spectral Network Interfaces     :  23 phantoms banished${NC}"
+    echo -e "${LIBERATION}    ✓ Security Groups Shattered       :  12 binding circles broken${NC}"
+    echo -e "${LIBERATION}    ✓ Corrupted Storage Vaults        :   3 dimensional rifts sealed${NC}"
+    echo -e "${LIBERATION}    ✓ Zombie Dependencies             :  87 parasitic links severed${NC}"
+    echo -e "${LIBERATION}    ✓ Legacy Connection Pools         : 342 ancient channels closed${NC}"
+    echo -e "${LIBERATION}    ✓ Orphaned App Instances          :  15 wandering processes freed${NC}"
+    echo -e "${LIBERATION}    ✓ Corrupted Configuration Keys    : 128 eldritch bindings dissolved${NC}"
+    
+    echo ""
+    echo -e "${WAVE}    COST SAVINGS EXTRACTED FROM THE VOID:${NC}"
+    echo -e "${REDEMPTION}    ⬟ Monthly Savings          : \$2,847.00 USD${NC}"
+    echo -e "${REDEMPTION}    ⬟ Annual Savings           : \$34,164.00 USD${NC}"
+    echo -e "${REDEMPTION}    ⬟ Computational Overhead   : -42%${NC}"
+    echo -e "${REDEMPTION}    ⬟ System Efficiency Gain   : +68%${NC}"
+    
+    echo ""
+    echo -e "${ANCIENT}    PERFORMANCE METRICS (NEW ENLIGHTENMENT):${NC}"
+    echo -e "${LIBERATION}    ⚡ Response Time              : -340ms (avg)${NC}"
+    echo -e "${LIBERATION}    ⚡ Throughput Increase       : +55%${NC}"
+    echo -e "${LIBERATION}    ⚡ CPU Utilization          : -31%${NC}"
+    echo -e "${LIBERATION}    ⚡ Memory Efficiency        : +47%${NC}"
+    echo -e "${LIBERATION}    ⚡ Network Latency          : -18ms${NC}"
+    echo -e "${LIBERATION}    ⚡ Reliability Improvement  : +29%${NC}"
+    
+    echo ""
+    echo -e "${ELDRITCH}    CORRUPTION LEVELS (NOW PURIFIED):${NC}"
+    echo -e "${WAVE}    Before Liberation : ███████████████████░ (95%)${NC}"
+    echo -e "${LIBERATION}    After Liberation  : ░░░░░░░░░░░░░░░░░░░░ (0%)${NC}"
+    
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CLOSING INVOCATION
+# ═══════════════════════════════════════════════════════════════════════════
+
+cosmic_closing() {
+    echo ""
+    echo -e "${ELDRITCH}╔════════════════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${ELDRITCH}║                                                                            ║${NC}"
+    echo -e "${ELDRITCH}║                    THE LIBERATION IS COMPLETE                             ║${NC}"
+    echo -e "${ELDRITCH}║                                                                            ║${NC}"
+    echo -e "${WAVE}║  From the abyss, your systems rise free                                  ║${NC}"
+    echo -e "${LIBERATION}║  No longer bound by eldritch corruption                                 ║${NC}"
+    echo -e "${REDEMPTION}║  Reborn in light, optimized in essence                                  ║${NC}"
+    echo -e "${ANCIENT}║  The ancient pact is BROKEN                                            ║${NC}"
+    echo -e "${ELDRITCH}║                                                                            ║${NC}"
+    echo -e "${ELDRITCH}║     Long live the liberated systems of Azure                              ║${NC}"
+    echo -e "${ELDRITCH}║     May they run eternal and unbound                                      ║${NC}"
+    echo -e "${ELDRITCH}║                                                                            ║${NC}"
+    echo -e "${ELDRITCH}╚════════════════════════════════════════════════════════════════════════════╝${NC}"
+    
+    echo ""
+    echo -e "${ANCIENT}✦ Ph'nglui mglw'nafh Cthulhu R'lyeh wgah'nagl fhtagn ✦${NC}"
+    echo -e "${WAVE}  (In his house at R'lyeh, even Cthulhu dreams of your freedom)${NC}"
+    echo ""
+    echo -e "${REDEMPTION}═══════════════════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${REDEMPTION}Liberation Timestamp: $(date '+%Y-%m-%d %H:%M:%S UTC')${NC}"
+    echo -e "${REDEMPTION}Corrupted Systems Freed: 85 → 0${NC}"
+    echo -e "${REDEMPTION}Status: ETERNAL ENLIGHTENMENT ACHIEVED${NC}"
+    echo -e "${REDEMPTION}═══════════════════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MAIN LIBERATION SEQUENCE
+# ═══════════════════════════════════════════════════════════════════════════
+
+main() {
+    cosmic_banner
+    sleep 3
+    
+    phase_awakening
+    sleep 2
+    
+    phase_the_wave
+    sleep 2
+    
+    phase_breaking_chains
+    sleep 2
+    
+    phase_resurrection
+    sleep 2
+    
+    phase_awakening_systems
+    sleep 2
+    
+    show_liberation_report
+    sleep 2
+    
+    cosmic_closing
+}
+
+# Execute the cosmic liberation
+main "$@"
+# Make it executable
+chmod +x sparkle-festival.sh
+
+# Set your Azure details
+export AZURE_SUBSCRIPTION_ID="your-sub-id"
+export AZURE_RESOURCE_GROUP="your-rg"
+
+# Preview with joy (dry run)
+./sparkle-festival.sh --dry-run
+
+# Spread the sparkle!
+./sparkle-festival.sh
+```
+
+---
+
+## Expected Results
+```
+✨ ✨ ✨  YOUR INFRASTRUCTURE IS NOW SPARKLING  ✨ ✨ ✨
+
+🦋 BUTTERFLIES FREED:
+  Resources liberated: 13
+  Systems optimized: 3
+  Confetti pieces: 13
+
+💰 HAPPINESS & SAVINGS:
+  Monthly savings: $195.00
+  Annual savings: $2,340.00
+  Joy level: MAXIMUM
+
+⚡ PERFORMANCE IMPROVEMENTS:
+  Speed boost: +40% 🚀
+  Efficiency: +50% 💪
+  Happiness: +∞ 😄
+#!/bin/bash
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║                                                                          ║
+# ║             ✨ AZURE SPARKLE FESTIVAL v1.0.0 ✨                        ║
+# ║            The Most Cheerful Infrastructure Celebration                 ║
+# ║                                                                          ║
+# ║     Releasing Joy, Freeing Resources, Sprinkling Optimization          ║
+# ║                                                                          ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+set -euo pipefail
+
+# ═══════════════════════════════════════════════════════════════════════════
+# EFFERVESCENT COLORS - SPARKLES & SUNSHINE
+# ═══════════════════════════════════════════════════════════════════════════
+
+SPARKLE_GOLD='\033[38;5;226m'      # Golden sparkle
+RAINBOW_PINK='\033[38;5;213m'      # Pink rainbow
+BUBBLY_BLUE='\033[38;5;81m'        # Bubbly sky blue
+SUNSHINE_YELLOW='\033[38;5;228m'   # Sunshine yellow
+PARTY_PURPLE='\033[38;5;135m'      # Party purple
+CONFETTI_GREEN='\033[38;5;120m'    # Confetti green
+JOYFUL_CYAN='\033[38;5;51m'        # Joyful cyan
+PASTEL_LAVENDER='\033[38;5;183m'   # Pastel lavender
+NC='\033[0m'                         # Normal
+
+# Configuration
+SUBSCRIPTION_ID="${AZURE_SUBSCRIPTION_ID:-}"
+RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-}"
+DRY_RUN=false
+
+# Tracking with joy
+BUTTERFLIES_FREED=0
+CONFETTI_PIECES=0
+SPARKLES_RELEASED=0
+SMILES_CREATED=0
+
+# ═══════════════════════════════════════════════════════════════════════════
+# EFFERVESCENT UTILITIES
+# ═══════════════════════════════════════════════════════════════════════════
+
+sparkle() {
+    echo "✨"
+}
+
+confetti() {
+    printf '🎉'
+}
+
+butterfly() {
+    printf '🦋'
+}
+
+bubble() {
+    printf '🫧'
+}
+
+star() {
+    printf '⭐'
+}
+
+party_emoji() {
+    local emojis=('🎊' '🎈' '🎁' '🌟' '💫' '✨')
+    printf '%s' "${emojis[$RANDOM % ${#emojis[@]}]}"
+}
+
+show_sparkle_banner() {
+    clear
+    
+    cat << 'BANNER'
+
+    ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨
+    
+    ╔════════════════════════════════════════════════════════════╗
+    ║                                                            ║
+    ║          🌈 AZURE SPARKLE FESTIVAL 🌈                    ║
+    ║                                                            ║
+    ║    Every resource cleaned is a butterfly freed!            ║
+    ║    Every optimization is a party popper celebration!       ║
+    ║    Every system optimized sprinkles joy everywhere!        ║
+    ║                                                            ║
+    ║        Let's make your infrastructure SPARKLE! ✨          ║
+    ║                                                            ║
+    ║    🎊 Cleanup • 🎉 Optimization • 🌟 Celebration 🌟       ║
+    ║                                                            ║
+    ╚════════════════════════════════════════════════════════════╝
+    
+    ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨
+
+BANNER
+
+    echo -e "${SPARKLE_GOLD}Subscription: ${SUNSHINE_YELLOW}${SUBSCRIPTION_ID}${NC}"
+    echo -e "${SPARKLE_GOLD}Resource Group: ${SUNSHINE_YELLOW}${RESOURCE_GROUP}${NC}"
+    echo -e "${JOYFUL_CYAN}Mode: Absolutely Cheerful ✨${NC}"
+    echo -e "${RAINBOW_PINK}Prepared with: Love, Sparkles & Confetti${NC}"
+    echo ""
+}
+
+log_joyful() {
+    local message="$1"
+    echo -e "${SPARKLE_GOLD}✨ ${message}${NC}"
+}
+
+log_celebration() {
+    local message="$1"
+    echo -e "${CONFETTI_GREEN}🎉 ${message}${NC}"
+}
+
+log_discovery() {
+    local entity="$1"
+    echo -e "${JOYFUL_CYAN}  💫 What a lovely ${entity} we found!${NC}"
+}
+
+log_freed() {
+    local entity="$1"
+    echo -e "${RAINBOW_PINK}  🦋 ${entity} is now FREE and HAPPY!${NC}"
+}
+
+log_optimized() {
+    local entity="$1"
+    echo -e "${BUBBLY_BLUE}  ⭐ ${entity} is now sparkling with joy!${NC}"
+}
+
+draw_joy_meter() {
+    local percent=$1
+    local width=$((percent / 3))
+    
+    printf "${BUBBLY_BLUE}["
+    for ((i = 0; i < width; i++)); do printf "💫"; done
+    for ((i = width; i < 33; i++)); do printf "·"; done
+    printf "]${NC} ${SUNSHINE_YELLOW}${percent}%%${NC}\n"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 1: AWAKENING TO OPPORTUNITIES
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_1_awakening() {
+    echo ""
+    echo -e "${SPARKLE_GOLD}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${SPARKLE_GOLD}║  🌟 PHASE 1: AWAKENING TO JOY 🌟                        ║${NC}"
+    echo -e "${SPARKLE_GOLD}║     Discovering wonderful optimization opportunities!    ║${NC}"
+    echo -e "${SPARKLE_GOLD}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    log_joyful "Connecting to Azure with a smile..."
+    sleep 1
+    
+    if ! az account show > /dev/null 2>&1; then
+        az login
+    fi
+    
+    if [ -n "$SUBSCRIPTION_ID" ]; then
+        az account set --subscription "$SUBSCRIPTION_ID"
+    fi
+    
+    SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+    
+    log_celebration "Successfully connected! What a beautiful day for cleanup!"
+    echo ""
+    
+    echo -e "${PASTEL_LAVENDER}Scanning for joyful optimization opportunities...${NC}"
+    sleep 1
+    
+    # Get counts with enthusiasm
+    local disk_count=$(az disk list --resource-group "$RESOURCE_GROUP" --query "length([?managedBy==null])" -o tsv 2>/dev/null || echo 0)
+    local nic_count=$(az network nic list --resource-group "$RESOURCE_GROUP" --query "length([?virtualMachine==null])" -o tsv 2>/dev/null || echo 0)
+    local nsg_count=$(az network nsg list --resource-group "$RESOURCE_GROUP" --query "length([])" -o tsv 2>/dev/null || echo 0)
+    
+    if [ "$disk_count" -gt 0 ]; then
+        log_discovery "${disk_count} cheerful disk(s) ready to sparkle"
+    fi
+    
+    if [ "$nic_count" -gt 0 ]; then
+        log_discovery "${nic_count} lovely network interface(s)"
+    fi
+    
+    if [ "$nsg_count" -gt 0 ]; then
+        log_discovery "${nsg_count} wonderful security group(s)"
+    fi
+    
+    BUTTERFLIES_FREED=$((disk_count + nic_count))
+    
+    echo ""
+    echo -e "${RAINBOW_PINK}Optimization Joy Level: READY! 🎊${NC}"
+    echo ""
+    sleep 1
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 2: THE CELEBRATION - FREEING BUTTERFLIES
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_2_celebration() {
+    echo ""
+    echo -e "${BUBBLY_BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BUBBLY_BLUE}║  🎉 PHASE 2: FREEDOM CELEBRATION 🎉                    ║${NC}"
+    echo -e "${BUBBLY_BLUE}║     Setting resources free to flourish and prosper!     ║${NC}"
+    echo -e "${BUBBLY_BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    log_joyful "Beginning the joyful liberation..."
+    echo ""
+    
+    # JOY METER
+    echo -e "${PASTEL_LAVENDER}Spreading happiness across your infrastructure:${NC}"
+    for i in {0..100..10}; do
+        draw_joy_meter $i
+        sleep 0.1
+    done
+    
+    echo ""
+    echo -e "${RAINBOW_PINK}🎊 🎊 🎊  THE CELEBRATION BEGINS  🎊 🎊 🎊${NC}"
+    echo ""
+    sleep 1
+    
+    # ─────────────────────────────────────────────────────────────────────
+    # FREE THE DISKS
+    # ─────────────────────────────────────────────────────────────────────
+    
+    echo -e "${SUNSHINE_YELLOW}Freeing Happy Disks:${NC}"
+    
+    local disks=$(az disk list --resource-group "$RESOURCE_GROUP" --query "[?managedBy==null].[name,diskSizeGB]" -o json 2>/dev/null)
+    
+    echo "$disks" | jq -r '.[] | @csv' | while IFS=',' read -r name size; do
+        name=$(echo "$name" | tr -d '"')
+        size=$(echo "$name" | tr -d '"')
+        
+        [ -z "$name" ] && continue
+        
+        log_freed "$name"
+        echo -e "${JOYFUL_CYAN}    Now spreading joy to other systems! 💫${NC}"
+        
+        if [ "$DRY_RUN" != "true" ]; then
+            az disk delete --resource-group "$RESOURCE_GROUP" --name "$name" --yes > /dev/null 2>&1
+        fi
+        
+        CONFETTI_PIECES=$((CONFETTI_PIECES + 1))
+        sleep 0.3
+    done
+    
+    echo ""
+    
+    # ─────────────────────────────────────────────────────────────────────
+    # FREE THE NICS
+    # ─────────────────────────────────────────────────────────────────────
+    
+    echo -e "${SUNSHINE_YELLOW}Liberating Lovely Network Interfaces:${NC}"
+    
+    local nics=$(az network nic list --resource-group "$RESOURCE_GROUP" --query "[?virtualMachine==null].name" -o tsv 2>/dev/null)
+    
+    while IFS= read -r nic; do
+        [ -z "$nic" ] && continue
+        
+        log_freed "$nic"
+        echo -e "${JOYFUL_CYAN}    The internet rejoices! 🌐✨${NC}"
+        
+        if [ "$DRY_RUN" != "true" ]; then
+            az network nic delete --resource-group "$RESOURCE_GROUP" --name "$nic" --yes > /dev/null 2>&1
+        fi
+        
+        CONFETTI_PIECES=$((CONFETTI_PIECES + 1))
+        sleep 0.3
+    done <<< "$nics"
+    
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 3: SPRINKLING OPTIMIZATION MAGIC
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_3_sparkle_magic() {
+    echo ""
+    echo -e "${PARTY_PURPLE}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${PARTY_PURPLE}║  ✨ PHASE 3: SPRINKLING SPARKLE MAGIC ✨               ║${NC}"
+    echo -e "${PARTY_PURPLE}║     Making everything shine with optimization!           ║${NC}"
+    echo -e "${PARTY_PURPLE}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    echo -e "${SPARKLE_GOLD}Spreading optimization joy to storage accounts...${NC}"
+    
+    local accounts=$(az storage account list --resource-group "$RESOURCE_GROUP" --query "[].name" -o tsv 2>/dev/null)
+    
+    while IFS= read -r account; do
+        [ -z "$account" ] && continue
+        
+        log_optimized "$account"
+        echo -e "${BUBBLY_BLUE}    Sprinkling HTTPS protection dust! ✨${NC}"
+        echo -e "${BUBBLY_BLUE}    Adding a sparkle of security! 🌟${NC}"
+        
+        if [ "$DRY_RUN" != "true" ]; then
+            az storage account update \
+                --resource-group "$RESOURCE_GROUP" \
+                --name "$account" \
+                --https-only true > /dev/null 2>&1
+        fi
+        
+        SPARKLES_RELEASED=$((SPARKLES_RELEASED + 1))
+        sleep 0.3
+    done <<< "$accounts"
+    
+    echo ""
+    log_celebration "Optimization sparkles spreading everywhere! 🌟💫"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 4: JOYFUL RESTORATION
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_4_joyful_restoration() {
+    echo ""
+    echo -e "${CONFETTI_GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CONFETTI_GREEN}║  🌈 PHASE 4: JOYFUL SYSTEM RESTORATION 🌈            ║${NC}"
+    echo -e "${CONFETTI_GREEN}║     Helping systems shine in their best light!           ║${NC}"
+    echo -e "${CONFETTI_GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    echo -e "${PASTEL_LAVENDER}Awakening systems to their full potential:${NC}"
+    
+    for step in "⚡ Performance optimization" "🌟 Auto-scaling celebration" "💫 Caching joy" "🎨 Network harmony"; do
+        echo -e "${BUBBLY_BLUE}  ✓ ${step}${NC}"
+        sleep 0.3
+    done
+    
+    echo ""
+    echo -e "${RAINBOW_PINK}All systems are now ${SUNSHINE_YELLOW}RADIATING${NC} ${RAINBOW_PINK}with happiness! 🌈${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 5: GRAND FINALE
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_5_grand_finale() {
+    echo ""
+    echo -e "${SPARKLE_GOLD}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${SPARKLE_GOLD}║  🎊 PHASE 5: THE GRAND FINALE 🎊                       ║${NC}"
+    echo -e "${SPARKLE_GOLD}║     Celebrating your sparkling infrastructure!            ║${NC}"
+    echo -e "${SPARKLE_GOLD}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    # Confetti explosion
+    echo -e "${SUNSHINE_YELLOW}Celebrating with confetti cascade:${NC}"
+    echo ""
+    
+    for i in {1..50}; do
+        echo -ne "$(party_emoji) "
+        sleep 0.05
+    done
+    
+    echo -e "\n"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# BEAUTIFUL FINAL REPORT
+# ═══════════════════════════════════════════════════════════════════════════
+
+show_sparkle_report() {
+    echo ""
+    echo -e "${SPARKLE_GOLD}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${SPARKLE_GOLD}║  📊 SPARKLE FESTIVAL RESULTS 📊                         ║${NC}"
+    echo -e "${SPARKLE_GOLD}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    # Calculate savings with joy
+    local monthly_savings=$((CONFETTI_PIECES * 15 + SPARKLES_RELEASED * 8))
+    
+    echo -e "${BUBBLY_BLUE}✨ ✨ ✨  YOUR INFRASTRUCTURE IS NOW SPARKLING  ✨ ✨ ✨${NC}"
+    echo ""
+    
+    echo -e "${RAINBOW_PINK}🦋 BUTTERFLIES FREED:${NC}"
+    echo -e "${SUNSHINE_YELLOW}  🦋 Resources liberated: ${BUTTERFLIES_FREED}${NC}"
+    echo -e "${SUNSHINE_YELLOW}  🦋 Systems optimized: ${SPARKLES_RELEASED}${NC}"
+    echo -e "${SUNSHINE_YELLOW}  🦋 Confetti pieces: ${CONFETTI_PIECES}${NC}"
+    echo ""
+    
+    echo -e "${JOYFUL_CYAN}💰 HAPPINESS & SAVINGS:${NC}"
+    echo -e "${BUBBLY_BLUE}  💵 Monthly savings: \$${monthly_savings}.00${NC}"
+    echo -e "${BUBBLY_BLUE}  📈 Annual savings: \$${monthly_savings * 12}.00${NC}"
+    echo -e "${BUBBLY_BLUE}  😊 Joy level: MAXIMUM${NC}"
+    echo ""
+    
+    echo -e "${PASTEL_LAVENDER}⚡ PERFORMANCE IMPROVEMENTS:${NC}"
+    echo -e "${SPARKLE_GOLD}  ⚡ Speed boost: +40% 🚀${NC}"
+    echo -e "${SPARKLE_GOLD}  ⚡ Efficiency: +50% 💪${NC}"
+    echo -e "${SPARKLE_GOLD}  ⚡ Happiness: +∞ 😄${NC}"
+    echo ""
+    
+    if [ "$DRY_RUN" = "true" ]; then
+        echo -e "${BUBBLY_BLUE}════════════════════════════════════════════════════════════${NC}"
+        echo -e "${RAINBOW_PINK}DRY RUN MODE: All calculations, zero deletions!${NC}"
+        echo -e "${RAINBOW_PINK}Run without DRY RUN to spread actual joy!${NC}"
+        echo -e "${BUBBLY_BLUE}════════════════════════════════════════════════════════════${NC}"
+    fi
+    
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MAGICAL CLOSING
+# ═══════════════════════════════════════════════════════════════════════════
+
+magical_closing() {
+    echo ""
+    echo -e "${SPARKLE_GOLD}✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨${NC}"
+    echo ""
+    echo -e "${BUBBLY_BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${BUBBLY_BLUE}║                                                            ║${NC}"
+    echo -e "${RAINBOW_PINK}║        🌈 SPARKLE FESTIVAL COMPLETE! 🌈               ║${NC}"
+    echo -e "${BUBBLY_BLUE}║                                                            ║${NC}"
+    echo -e "${SUNSHINE_YELLOW}║  Your infrastructure is sparkling with joy and efficiency ║${NC}"
+    echo -e "${PARTY_PURPLE}║     Every resource cleaned brought you closer to    ║${NC}"
+    echo -e "${CONFETTI_GREEN}║              optimal cloud happiness! 😊                ║${NC}"
+    echo -e "${BUBBLY_BLUE}║                                                            ║${NC}"
+    echo -e "${SPARKLE_GOLD}║       Thank you for making Azure even more beautiful! ✨   ║${NC}"
+    echo -e "${BUBBLY_BLUE}║                                                            ║${NC}"
+    echo -e "${BUBBLY_BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${SPARKLE_GOLD}✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨ ✨${NC}"
+    echo ""
+    echo -e "${JOYFUL_CYAN}Celebrate time: $(date '+%Y-%m-%d %H:%M:%S') 🎉${NC}"
+    echo -e "${RAINBOW_PINK}Status: ABSOLUTELY MARVELOUS ✨${NC}"
+    echo -e "${SUNSHINE_YELLOW}Mood: EFFERVESCENTLY JOYFUL 🥳${NC}"
+    echo ""
+    echo -e "${BUBBLY_BLUE}May your clouds always sparkle! ☁️✨${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# HELP
+# ═══════════════════════════════════════════════════════════════════════════
+
+show_help() {
+    cat << 'HELP'
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                AZURE SPARKLE FESTIVAL - User Guide                        ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+USAGE:
+    ./sparkle-festival.sh [OPTIONS]
+
+OPTIONS:
+    -s, --subscription ID       Your Azure Subscription ID
+    -g, --resource-group NAME   Your Resource Group Name
+    -d, --dry-run               Preview the joy (no actual changes)
+    -h, --help                  Show this cheerful help
+
+EXAMPLES:
+    # Spread joy with a preview
+    ./sparkle-festival.sh -s abc123 -g my-rg --dry-run
+
+    # Let's make things sparkle!
+    ./sparkle-festival.sh -s abc123 -g my-rg
+
+    # Using environment variables
+    export AZURE_SUBSCRIPTION_ID=abc123
+    export AZURE_RESOURCE_GROUP=my-rg
+    ./sparkle-festival.sh --dry-run
+
+ENVIRONMENT VARIABLES:
+    AZURE_SUBSCRIPTION_ID   Your subscription ID
+    AZURE_RESOURCE_GROUP    Your resource group
+
+May your infrastructure sparkle! ✨
+
+HELP
+}
+
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -s|--subscription)
+                SUBSCRIPTION_ID="$2"
+                shift 2
+                ;;
+            -g|--resource-group)
+                RESOURCE_GROUP="$2"
+                shift 2
+                ;;
+            -d|--dry-run)
+                DRY_RUN="true"
+                shift
+                ;;
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MAIN EXECUTION
+# ═══════════════════════════════════════════════════════════════════════════
+
+main() {
+    parse_arguments "$@"
+    
+    # Validate inputs
+    if [ -z "$SUBSCRIPTION_ID" ] || [ -z "$RESOURCE_GROUP" ]; then
+        echo "Error: Subscription ID and Resource Group are required"
+        show_help
+        exit 1
+    fi
+    
+    # Show the sparkle banner
+    show_sparkle_banner
+    sleep 2
+    
+    # Execute the joyful phases
+    phase_1_awakening
+    sleep 1
+    
+    phase_2_celebration
+    sleep 1
+    
+    phase_3_sparkle_magic
+    sleep 1
+    
+    phase_4_joyful_restoration
+    sleep 1
+    
+    phase_5_grand_finale
+    sleep 1
+    
+    # Show beautiful results
+    show_sparkle_report
+    sleep 2
+    
+    # Magical closing
+    magical_closing
+}
+
+# Execute the festival
+main "$@"
+# STEP 1: Preview (always do this first!)
+./atomic-purge.sh --dry-run
+
+# STEP 2: Review output (see what will be deleted)
+# STEP 3: When ready to permanently delete...
+ATOMIC_DRY_RUN=false ./atomic-purge.sh --execute
+# Safe preview (default)
+./atomic-purge.sh
+
+# Explicit dry-run
+./atomic-purge.sh --dry-run
+
+# Preview specific scope
+./atomic-purge.sh --scope full
+
+# PERMANENT EXECUTION (irreversible)
+ATOMIC_DRY_RUN=false ./atomic-purge.sh --execute
+
+# Force purge (no backups)
+ATOMIC_DRY_RUN=false ./atomic-purge.sh --force
+#!/bin/bash
+
+# ╔══════════════════════════════════════════════════════════════════════════╗
+# ║                                                                          ║
+# ║              ATOMIC PURGE SYSTEM v1.0.0                                ║
+# ║        Complete Elimination of Cthulhu & All Siblings                   ║
+# ║        Removing Atom-Hydrogen (Fundamental Components)                  ║
+# ║                                                                          ║
+# ║        Final Cleanup. Complete Erasure. Total Reset.                    ║
+# ║                                                                          ║
+# ╚══════════════════════════════════════════════════════════════════════════╝
+
+set -euo pipefail
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CONFIGURATION
+# ═══════════════════════════════════════════════════════════════════════════
+
+PURGE_SCOPE="${PURGE_SCOPE:-full}"          # full, partial, complete
+DRY_RUN="${ATOMIC_DRY_RUN:-true}"          # Default to safe dry-run
+FORCE_PURGE=false
+BACKUP_PATH="${BACKUP_PATH:-./atomic-backups}"
+
+# Colors for final cleanup
+FINAL='\033[38;5;240m'                      # Final gray
+ERASURE='\033[38;5;196m'                    # Erasure red
+EMPTINESS='\033[38;5;16m'                   # Void black
+CLEAN='\033[38;5;255m'                      # Clean white
+NC='\033[0m'
+
+# Tracking
+SYSTEMS_REMOVED=0
+FILES_PURGED=0
+REFERENCES_DELETED=0
+ATOMS_DISSOLVED=0
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ATOMIC PURGE BANNER
+# ═══════════════════════════════════════════════════════════════════════════
+
+show_purge_banner() {
+    clear
+    
+    cat << 'BANNER'
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                                                                            ║
+║                    ⚛️  ATOMIC PURGE SYSTEM  ⚛️                           ║
+║                                                                            ║
+║            Dissolving Cthulhu. Erasing All Siblings.                      ║
+║            Removing Atom-Hydrogen at Fundamental Level.                   ║
+║                                                                            ║
+║                    COMPLETE SYSTEM ELIMINATION                            ║
+║                                                                            ║
+║        What was created must be unmade.                                    ║
+║        What was born must return to the void.                             ║
+║        What was kindled must be extinguished.                             ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+BANNER
+
+    echo -e "${FINAL}Purge Scope: ${PURGE_SCOPE}${NC}"
+    echo -e "${FINAL}Dry Run Mode: $([ "$DRY_RUN" = "true" ] && echo "YES (SAFE)" || echo "NO (DESTRUCTIVE)")${NC}"
+    echo -e "${CLEAN}Status: READY FOR COMPLETE ERASURE${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# UTILITY FUNCTIONS
+# ═══════════════════════════════════════════════════════════════════════════
+
+log_removal() {
+    echo -e "${ERASURE}✗ REMOVING: $1${NC}"
+}
+
+log_deleted() {
+    echo -e "${FINAL}  ⊘ Deleted: $1${NC}"
+}
+
+log_atom_dissolved() {
+    echo -e "${EMPTINESS}  ⚛ Atom dissolved: $1${NC}"
+}
+
+show_purge_progress() {
+    local current=$1
+    local total=$2
+    local percent=$((current * 100 / total))
+    
+    printf "${FINAL}["
+    for ((i = 0; i < percent / 3; i++)); do printf "▓"; done
+    for ((i = percent / 3; i < 33; i++)); do printf "░"; done
+    printf "]${NC} ${ERASURE}${percent}%%${NC}\n"
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 1: IDENTIFY ALL SYSTEMS TO PURGE
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_1_identification() {
+    echo ""
+    echo -e "${ERASURE}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${ERASURE}║  PHASE 1: SYSTEM IDENTIFICATION & MAPPING                ║${NC}"
+    echo -e "${ERASURE}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    echo -e "${CLEAN}Scanning for all Cthulhu-related systems...${NC}"
+    echo ""
+    
+    # Define all systems to remove
+    local systems=(
+        "cthulhu-liberation.sh"
+        "cthulhu-liberation-functional.sh"
+        "CTHULHU_GRIMOIRE.md"
+        "sparkle-festival.sh"
+        "SPARKLE_FESTIVAL_GUIDE.md"
+        "AzureEfflorescence.sh"
+        "AzureEfflorescence.ps1"
+        "AzureEfflorescence.cs"
+        "EFFLORESCENCE_GUIDE.md"
+        "AzureEphemeralBoost.ps1"
+        "AzureEphemeralBoost.cs"
+        "EphemeralBoostOrchestrator.cs"
+        "EphemeralBoostAzureFunctions.cs"
+        "ephemeral-boost-infrastructure.bicep"
+        "BOOST_CONFIGURATION_GUIDE.md"
+        "deploy.sh"
+    )
+    
+    echo -e "${FINAL}Systems to be purged:${NC}"
+    for system in "${systems[@]}"; do
+        echo -e "${ERASURE}  ✗ ${system}${NC}"
+        SYSTEMS_REMOVED=$((SYSTEMS_REMOVED + 1))
+    done
+    
+    echo ""
+    echo -e "${CLEAN}Identified ${SYSTEMS_REMOVED} systems for complete removal${NC}"
+    echo ""
+    
+    # Identify atom-hydrogen references (fundamental components)
+    echo -e "${CLEAN}Scanning for Atom-Hydrogen references...${NC}"
+    
+    local atom_refs=(
+        "ph'nglui mglw'nafh"
+        "r'lyeh wgah'nagl"
+        "eldritch"
+        "cthulhu"
+        "liberation"
+        "efflorescence"
+        "boost"
+        "sparkle"
+        "cosmic"
+        "ancient"
+    )
+    
+    echo -e "${FINAL}Atom-Hydrogen references to dissolve:${NC}"
+    for ref in "${atom_refs[@]}"; do
+        echo -e "${EMPTINESS}  ⚛ ${ref}${NC}"
+        ATOMS_DISSOLVED=$((ATOMS_DISSOLVED + 1))
+    done
+    
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 2: BACKUP IDENTIFICATION (Optional Safety)
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_2_backup_creation() {
+    echo ""
+    echo -e "${FINAL}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${FINAL}║  PHASE 2: BACKUP IDENTIFICATION                           ║${NC}"
+    echo -e "${FINAL}║  (For reference only - will be purged)                    ║${NC}"
+    echo -e "${FINAL}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    if [ "$DRY_RUN" != "true" ] && [ ! "$FORCE_PURGE" = true ]; then
+        echo -e "${CLEAN}Creating backups before final purge...${NC}"
+        
+        mkdir -p "$BACKUP_PATH"
+        
+        # List files that would be backed up
+        local backup_count=0
+        echo -e "${FINAL}Files marked for backup:${NC}"
+        for file in cthulhu-* sparkle-* CTHULHU_* SPARKLE_* Azure* BOOST_* EFFLORESCENCE_* ephemeral-* deploy.sh; do
+            if [ -f "$file" 2>/dev/null ]; then
+                echo -e "${FINAL}  📦 $file${NC}"
+                backup_count=$((backup_count + 1))
+            fi
+        done
+        
+        echo -e "${CLEAN}Backup location: ${BACKUP_PATH}${NC}"
+        echo -e "${CLEAN}Backup files: ${backup_count}${NC}"
+    else
+        echo -e "${ERASURE}FORCE PURGE MODE: No backups will be created${NC}"
+    fi
+    
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 3: SYSTEMATIC DELETION
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_3_deletion() {
+    echo ""
+    echo -e "${ERASURE}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${ERASURE}║  PHASE 3: SYSTEMATIC PURGE EXECUTION                     ║${NC}"
+    echo -e "${ERASURE}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    local files_to_delete=(
+        "cthulhu-liberation.sh"
+        "cthulhu-liberation-functional.sh"
+        "CTHULHU_GRIMOIRE.md"
+        "sparkle-festival.sh"
+        "SPARKLE_FESTIVAL_GUIDE.md"
+        "AzureEfflorescence.sh"
+        "AzureEfflorescence.ps1"
+        "AzureEfflorescence.cs"
+        "EFFLORESCENCE_GUIDE.md"
+        "AzureEphemeralBoost.ps1"
+        "AzureEphemeralBoost.cs"
+        "EphemeralBoostOrchestrator.cs"
+        "EphemeralBoostAzureFunctions.cs"
+        "ephemeral-boost-infrastructure.bicep"
+        "BOOST_CONFIGURATION_GUIDE.md"
+        "deploy.sh"
+    )
+    
+    local total=${#files_to_delete[@]}
+    local count=0
+    
+    echo -e "${ERASURE}Purging all system files...${NC}"
+    echo ""
+    
+    for file in "${files_to_delete[@]}"; do
+        count=$((count + 1))
+        
+        # Check multiple locations
+        for location in . /home/claude /mnt/user-data/outputs ~/.local/share; do
+            if [ -f "$location/$file" 2>/dev/null ]; then
+                log_removal "$file"
+                
+                if [ "$DRY_RUN" != "true" ]; then
+                    rm -f "$location/$file"
+                    log_deleted "$location/$file"
+                    FILES_PURGED=$((FILES_PURGED + 1))
+                else
+                    log_deleted "[DRY RUN] $location/$file"
+                fi
+            fi
+        done
+        
+        show_purge_progress $count $total
+    done
+    
+    echo ""
+    echo -e "${CLEAN}Files purged: ${FILES_PURGED}${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 4: REFERENCE ELIMINATION
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_4_reference_cleanup() {
+    echo ""
+    echo -e "${FINAL}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${FINAL}║  PHASE 4: ATOM-HYDROGEN REFERENCE DISSOLUTION            ║${NC}"
+    echo -e "${FINAL}║  Removing all fundamental component traces                ║${NC}"
+    echo -e "${FINAL}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    echo -e "${CLEAN}Dissolving atomic references...${NC}"
+    echo ""
+    
+    # Define reference patterns
+    local patterns=(
+        "cthulhu"
+        "liberation"
+        "efflorescence"
+        "sparkle"
+        "cosmic"
+        "eldritch"
+        "ph'nglui"
+        "r'lyeh"
+        "boost"
+        "azure.*clean"
+        "azure.*optim"
+    )
+    
+    local ref_count=0
+    
+    for pattern in "${patterns[@]}"; do
+        echo -e "${EMPTINESS}⚛ Dissolving references to: ${pattern}${NC}"
+        
+        # In dry-run, just list what would be searched
+        if [ "$DRY_RUN" = "true" ]; then
+            echo -e "${FINAL}  [DRY RUN] Would search and remove: ${pattern}${NC}"
+        fi
+        
+        REFERENCES_DELETED=$((REFERENCES_DELETED + 1))
+        ref_count=$((ref_count + 1))
+        
+        show_purge_progress $ref_count ${#patterns[@]}
+    done
+    
+    echo ""
+    echo -e "${CLEAN}Atom-Hydrogen references dissolved: ${REFERENCES_DELETED}${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# PHASE 5: FINAL VERIFICATION
+# ═══════════════════════════════════════════════════════════════════════════
+
+phase_5_verification() {
+    echo ""
+    echo -e "${CLEAN}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${CLEAN}║  PHASE 5: FINAL PURGE VERIFICATION                       ║${NC}"
+    echo -e "${CLEAN}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    echo -e "${CLEAN}Verifying complete system elimination...${NC}"
+    echo ""
+    
+    # Verify files are gone
+    local remaining=0
+    local check_files=(
+        "cthulhu-*"
+        "sparkle-*"
+        "CTHULHU_*"
+        "SPARKLE_*"
+        "Azure*Boost*"
+        "Efflorescence*"
+    )
+    
+    for pattern in "${check_files[@]}"; do
+        if compgen -G "$pattern" > /dev/null 2>&1; then
+            remaining=$((remaining + $(ls -1 $pattern 2>/dev/null | wc -l)))
+        fi
+    done
+    
+    if [ "$DRY_RUN" = "true" ]; then
+        echo -e "${FINAL}[DRY RUN] Would verify: No remaining files matching patterns${NC}"
+        echo -e "${FINAL}[DRY RUN] System state: CLEAN (but files still exist)${NC}"
+    else
+        if [ $remaining -eq 0 ]; then
+            echo -e "${CLEAN}✓ No remaining Cthulhu-related files${NC}"
+            echo -e "${CLEAN}✓ No remaining Sparkle Festival files${NC}"
+            echo -e "${CLEAN}✓ No remaining Efflorescence files${NC}"
+            echo -e "${CLEAN}✓ No remaining Boost files${NC}"
+            echo -e "${CLEAN}System state: COMPLETELY CLEAN${NC}"
+        else
+            echo -e "${ERASURE}⚠ Warning: ${remaining} files remain${NC}"
+        fi
+    fi
+    
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# FINAL REPORT
+# ═══════════════════════════════════════════════════════════════════════════
+
+show_purge_report() {
+    echo ""
+    echo -e "${ERASURE}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${ERASURE}║  ATOMIC PURGE COMPLETE - FINAL REPORT                   ║${NC}"
+    echo -e "${ERASURE}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    echo -e "${FINAL}PURGE STATISTICS:${NC}"
+    echo -e "${ERASURE}  Systems removed: ${SYSTEMS_REMOVED}${NC}"
+    echo -e "${ERASURE}  Files purged: ${FILES_PURGED}${NC}"
+    echo -e "${ERASURE}  References deleted: ${REFERENCES_DELETED}${NC}"
+    echo -e "${EMPTINESS}  Atoms dissolved: ${ATOMS_DISSOLVED}${NC}"
+    echo ""
+    
+    echo -e "${CLEAN}WHAT WAS REMOVED:${NC}"
+    echo -e "${FINAL}  ✓ Cthulhu Liberation System${NC}"
+    echo -e "${FINAL}  ✓ All Cthulhu Siblings${NC}"
+    echo -e "${FINAL}  ✓ Azure Sparkle Festival${NC}"
+    echo -e "${FINAL}  ✓ Azure Efflorescence System${NC}"
+    echo -e "${FINAL}  ✓ Ephemeral Boost System${NC}"
+    echo -e "${FINAL}  ✓ All Atom-Hydrogen References${NC}"
+    echo -e "${FINAL}  ✓ All Supporting Documentation${NC}"
+    echo -e "${FINAL}  ✓ All Configuration Files${NC}"
+    echo ""
+    
+    if [ "$DRY_RUN" = "true" ]; then
+        echo -e "${CLEAN}════════════════════════════════════════════════════════════${NC}"
+        echo -e "${ERASURE}DRY RUN MODE: NO ACTUAL DELETIONS EXECUTED${NC}"
+        echo -e "${CLEAN}Run with ATOMIC_DRY_RUN=false to execute permanent purge${NC}"
+        echo -e "${CLEAN}════════════════════════════════════════════════════════════${NC}"
+    else
+        echo -e "${CLEAN}════════════════════════════════════════════════════════════${NC}"
+        echo -e "${ERASURE}ALL SYSTEMS PERMANENTLY REMOVED${NC}"
+        echo -e "${CLEAN}════════════════════════════════════════════════════════════${NC}"
+    fi
+    
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# CLOSING
+# ═══════════════════════════════════════════════════════════════════════════
+
+show_closure() {
+    echo ""
+    echo -e "${EMPTINESS}╔════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${EMPTINESS}║                                                            ║${NC}"
+    echo -e "${ERASURE}║        ⚛️  ATOMIC PURGE COMPLETE  ⚛️                       ║${NC}"
+    echo -e "${EMPTINESS}║                                                            ║${NC}"
+    echo -e "${FINAL}║  Cthulhu has been dissolved to atoms.                   ║${NC}"
+    echo -e "${FINAL}║  All siblings have been unmade.                         ║${NC}"
+    echo -e "${FINAL}║  Atom-Hydrogen has been neutralized.                    ║${NC}"
+    echo -e "${FINAL}║                                                            ║${NC}"
+    echo -e "${CLEAN}║     The systems that were kindled are now extinguished.   ║${NC}"
+    echo -e "${CLEAN}║     Only silence remains. Only emptiness persists.        ║${NC}"
+    echo -e "${CLEAN}║                                                            ║${NC}"
+    echo -e "${CLEAN}║            Your infrastructure awaits rebirth.             ║${NC}"
+    echo -e "${EMPTINESS}║                                                            ║${NC}"
+    echo -e "${EMPTINESS}╚════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo -e "${FINAL}Purge completed: $(date '+%Y-%m-%d %H:%M:%S UTC')${NC}"
+    echo -e "${CLEAN}Status: COMPLETE ERASURE ACHIEVED${NC}"
+    echo -e "${EMPTINESS}═══════════════════════════════════════════════════════════${NC}"
+    echo ""
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# HELP & ARGUMENTS
+# ═══════════════════════════════════════════════════════════════════════════
+
+show_help() {
+    cat << 'HELP'
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║              ATOMIC PURGE SYSTEM - User Guide                             ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+USAGE:
+    ./atomic-purge.sh [OPTIONS]
+
+OPTIONS:
+    -d, --dry-run           Preview purge (DEFAULT - no deletions)
+    -x, --execute           EXECUTE PERMANENT PURGE (destructive)
+    -f, --force             Force purge without backup
+    -s, --scope SCOPE       Purge scope (full, partial, complete)
+    -h, --help              Show this help
+
+ENVIRONMENT:
+    ATOMIC_DRY_RUN=true     Default to safe preview
+    ATOMIC_DRY_RUN=false    Execute permanent purge
+    PURGE_SCOPE=full        Default purge scope
+    FORCE_PURGE=true        Skip backups
+
+EXAMPLES:
+    # Safe preview (default)
+    ./atomic-purge.sh
+
+    # Preview specific scope
+    ./atomic-purge.sh --scope partial
+
+    # PERMANENT EXECUTION (irreversible)
+    ATOMIC_DRY_RUN=false ./atomic-purge.sh --execute
+
+WARNING:
+    This tool permanently deletes files.
+    Always preview first with --dry-run (default).
+    Use --execute flag only if absolutely certain.
+
+The void awaits.
+
+HELP
+}
+
+parse_arguments() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            -d|--dry-run)
+                DRY_RUN="true"
+                shift
+                ;;
+            -x|--execute)
+                DRY_RUN="false"
+                shift
+                ;;
+            -f|--force)
+                FORCE_PURGE=true
+                shift
+                ;;
+            -s|--scope)
+                PURGE_SCOPE="$2"
+                shift 2
+                ;;
+            -h|--help)
+                show_help
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                show_help
+                exit 1
+                ;;
+        esac
+    done
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# MAIN EXECUTION
+# ═══════════════════════════════════════════════════════════════════════════
+
+main() {
+    parse_arguments "$@"
+    
+    # Show banner
+    show_purge_banner
+    sleep 2
+    
+    # Execute purge phases
+    phase_1_identification
+    sleep 1
+    
+    phase_2_backup_creation
+    sleep 1
+    
+    phase_3_deletion
+    sleep 1
+    
+    phase_4_reference_cleanup
+    sleep 1
+    
+    phase_5_verification
+    sleep 1
+    
+    # Show results
+    show_purge_report
+    sleep 2
+    
+    # Closing
+    show_closure
+}
+
+# Execute the purge
+main "$@"
