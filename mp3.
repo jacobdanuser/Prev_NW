@@ -17034,3 +17034,1486 @@ python3 << 'EOF'
 # Extract Azure module from multi_language_remediation.py
 # Run Azure-specific remediation
 EOF
+diff --git a/infrastructure_shutdown_planner.py b/infrastructure_shutdown_planner.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..fa75f07c886c4d935ad336fe60a5b4a78c6d81d0
+--- /dev/null
++++ b/infrastructure_shutdown_planner.py
+@@ -0,0 +1,197 @@
++"""Safety-governed infrastructure shutdown and Kubernetes change planner.
++
++This module supports explicit planning for:
++- website decommission candidates
++- kubernetes resources to add/delete
++- quantum data fields to add
++
++Safety guardrails:
++- only reserved/documentation domains are accepted (.invalid/.example/.test/.localhost)
++- all actions are planning artifacts (no live execution)
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from typing import Dict, List
++from urllib.parse import urlparse
++
++
++ALLOWED_SUFFIXES = (".invalid", ".example", ".test", ".localhost")
++
++
++class ChangeAction(str, Enum):
++    ADD = "add"
++    DELETE = "delete"
++
++
++@dataclass(frozen=True)
++class WebsiteShutdownTarget:
++    """Website candidate for shutdown planning (placeholder-only)."""
++
++    domain: str
++    reason: str
++    criticality: str = "high"
++
++    def validate(self) -> None:
++        host = self.domain.lower().strip()
++        if "://" in host:
++            host = urlparse(host).netloc.lower()
++        if not host.endswith(ALLOWED_SUFFIXES):
++            raise ValueError(
++                f"Unsafe/non-placeholder domain '{self.domain}'. "
++                "Use reserved test domains only (.invalid/.example/.test/.localhost)."
++            )
++
++
++@dataclass(frozen=True)
++class KubernetesChange:
++    """Kubernetes resource change plan entry."""
++
++    action: ChangeAction
++    kind: str
++    namespace: str
++    name: str
++    justification: str
++
++    def kubectl_preview(self) -> str:
++        if self.action == ChangeAction.ADD:
++            return (
++                f"kubectl apply -f manifests/{self.namespace}/{self.kind.lower()}-{self.name}.yaml "
++                f"--dry-run=client"
++            )
++        return f"kubectl delete {self.kind.lower()} {self.name} -n {self.namespace} --dry-run=client"
++
++
++@dataclass(frozen=True)
++class QuantumDataAddition:
++    """Schema additions for quantum telemetry datasets."""
++
++    dataset: str
++    field_name: str
++    field_type: str
++    description: str
++
++
++@dataclass
++class InfrastructureChangePlan:
++    websites_to_shutdown: List[WebsiteShutdownTarget] = field(default_factory=list)
++    kubernetes_changes: List[KubernetesChange] = field(default_factory=list)
++    quantum_data_additions: List[QuantumDataAddition] = field(default_factory=list)
++
++    def validate(self) -> None:
++        for target in self.websites_to_shutdown:
++            target.validate()
++
++    def as_dict(self) -> Dict[str, object]:
++        self.validate()
++        return {
++            "websites_to_shutdown": [
++                {
++                    "domain": target.domain,
++                    "reason": target.reason,
++                    "criticality": target.criticality,
++                    "status": "planned_only",
++                }
++                for target in self.websites_to_shutdown
++            ],
++            "kubernetes_changes": [
++                {
++                    "action": change.action.value,
++                    "kind": change.kind,
++                    "namespace": change.namespace,
++                    "name": change.name,
++                    "justification": change.justification,
++                    "preview_command": change.kubectl_preview(),
++                }
++                for change in self.kubernetes_changes
++            ],
++            "quantum_data_additions": [
++                {
++                    "dataset": item.dataset,
++                    "field_name": item.field_name,
++                    "field_type": item.field_type,
++                    "description": item.description,
++                }
++                for item in self.quantum_data_additions
++            ],
++            "safety": {
++                "domain_policy": "reserved-placeholder-domains-only",
++                "execution_mode": "planning_artifacts_only",
++            },
++        }
++
++
++def build_default_change_plan() -> InfrastructureChangePlan:
++    """Build an explicit, safe example plan."""
++    return InfrastructureChangePlan(
++        websites_to_shutdown=[
++            WebsiteShutdownTarget(
++                domain="legacy-portal.invalid",
++                reason="Unpatched legacy auth path and unsupported runtime",
++                criticality="critical",
++            ),
++            WebsiteShutdownTarget(
++                domain="staging-shadow.example",
++                reason="Duplicate public surface without owner",
++                criticality="high",
++            ),
++        ],
++        kubernetes_changes=[
++            KubernetesChange(
++                action=ChangeAction.DELETE,
++                kind="Ingress",
++                namespace="legacy",
++                name="public-legacy-ingress",
++                justification="Remove internet entrypoint to decommissioned service",
++            ),
++            KubernetesChange(
++                action=ChangeAction.DELETE,
++                kind="Deployment",
++                namespace="legacy",
++                name="legacy-web",
++                justification="Retire unsupported workload after traffic drain",
++            ),
++            KubernetesChange(
++                action=ChangeAction.ADD,
++                kind="NetworkPolicy",
++                namespace="core",
++                name="deny-all-default",
++                justification="Default-deny east-west traffic and reduce blast radius",
++            ),
++            KubernetesChange(
++                action=ChangeAction.ADD,
++                kind="PodDisruptionBudget",
++                namespace="core",
++                name="api-pdb",
++                justification="Maintain service continuity during node operations",
++            ),
++        ],
++        quantum_data_additions=[
++            QuantumDataAddition(
++                dataset="quantum_telemetry",
++                field_name="qubit_error_rate",
++                field_type="float",
++                description="Per-interval aggregate qubit decoherence/error estimate",
++            ),
++            QuantumDataAddition(
++                dataset="quantum_telemetry",
++                field_name="entanglement_fidelity",
++                field_type="float",
++                description="Measured entanglement fidelity per calibration window",
++            ),
++            QuantumDataAddition(
++                dataset="quantum_telemetry",
++                field_name="readout_latency_ns",
++                field_type="integer",
++                description="Nanosecond readout latency for instrumented runs",
++            ),
++        ],
++    )
++
++
++if __name__ == "__main__":
++    import json
++
++    print(json.dumps(build_default_change_plan().as_dict(), indent=2))
+diff --git a/robotization_consequences.py b/robotization_consequences.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7e3235b3180e4517d32329e8d2726f44b56a3923
+--- /dev/null
++++ b/robotization_consequences.py
+@@ -0,0 +1,296 @@
++"""Model consequences of full (100%) robotization and build mitigation plans."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from typing import Dict, List
++
++
++class RiskDomain(str, Enum):
++    LABOR_DISPLACEMENT = "labor_displacement"
++    WEALTH_CONCENTRATION = "wealth_concentration"
++    CRITICAL_INFRASTRUCTURE = "critical_infrastructure"
++    AI_GOVERNANCE = "ai_governance"
++    HUMAN_SKILL_ATROPHY = "human_skill_atrophy"
++    PSYCHOLOGICAL_MEANING = "psychological_meaning"
++
++
++@dataclass
++class ConsequenceSignal:
++    domain: RiskDomain
++    severity: float  # 0.0-1.0
++    probability: float  # 0.0-1.0
++    velocity: float  # 0.0-1.0
++    description: str
++
++    def risk_score(self) -> float:
++        return round(self.severity * self.probability * self.velocity, 4)
++
++
++@dataclass
++class MitigationAction:
++    name: str
++    domain: RiskDomain
++    expected_risk_reduction: float  # 0.0-1.0
++    horizon_months: int
++    owner: str
++
++
++@dataclass
++class PreventionControl:
++    """Controls that reduce probability/velocity before incidents happen."""
++
++    name: str
++    domain: RiskDomain
++    probability_reduction: float  # 0.0-1.0
++    velocity_reduction: float  # 0.0-1.0
++    owner: str
++
++
++@dataclass
++class RobotizationScenario:
++    automation_rate: float = 1.0
++    signals: List[ConsequenceSignal] = field(default_factory=list)
++    actions: List[MitigationAction] = field(default_factory=list)
++    controls: List[PreventionControl] = field(default_factory=list)
++
++    def add_default_signals(self) -> None:
++        self.signals = [
++            ConsequenceSignal(
++                RiskDomain.LABOR_DISPLACEMENT,
++                severity=0.95,
++                probability=0.95,
++                velocity=0.85,
++                description="Large workforce displacement and wage floor collapse.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.WEALTH_CONCENTRATION,
++                severity=0.9,
++                probability=0.9,
++                velocity=0.8,
++                description="Capital returns dominate labor returns; inequality expands.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.CRITICAL_INFRASTRUCTURE,
++                severity=0.92,
++                probability=0.8,
++                velocity=0.78,
++                description="Single-model failures cascade through logistics/energy/health.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.AI_GOVERNANCE,
++                severity=0.88,
++                probability=0.82,
++                velocity=0.77,
++                description="Opaque autonomous decision layers reduce accountability.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.HUMAN_SKILL_ATROPHY,
++                severity=0.8,
++                probability=0.86,
++                velocity=0.74,
++                description="Loss of practical human expertise due to over-automation.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.PSYCHOLOGICAL_MEANING,
++                severity=0.78,
++                probability=0.8,
++                velocity=0.72,
++                description="Identity and purpose erosion as work structure dissolves.",
++            ),
++        ]
++
++    def add_default_actions(self) -> None:
++        self.actions = [
++            MitigationAction(
++                name="Universal Basic Dividend linked to automation productivity",
++                domain=RiskDomain.LABOR_DISPLACEMENT,
++                expected_risk_reduction=0.28,
++                horizon_months=18,
++                owner="Fiscal Authority",
++            ),
++            MitigationAction(
++                name="Robot-taxed social equity fund",
++                domain=RiskDomain.WEALTH_CONCENTRATION,
++                expected_risk_reduction=0.25,
++                horizon_months=24,
++                owner="Treasury",
++            ),
++            MitigationAction(
++                name="Dual-control failover with human emergency override",
++                domain=RiskDomain.CRITICAL_INFRASTRUCTURE,
++                expected_risk_reduction=0.31,
++                horizon_months=12,
++                owner="Infrastructure Agency",
++            ),
++            MitigationAction(
++                name="Mandatory model transparency and incident audit trails",
++                domain=RiskDomain.AI_GOVERNANCE,
++                expected_risk_reduction=0.22,
++                horizon_months=10,
++                owner="Regulatory Authority",
++            ),
++            MitigationAction(
++                name="National human-skill retention corps",
++                domain=RiskDomain.HUMAN_SKILL_ATROPHY,
++                expected_risk_reduction=0.2,
++                horizon_months=14,
++                owner="Education Ministry",
++            ),
++            MitigationAction(
++                name="Purpose and civic contribution programs",
++                domain=RiskDomain.PSYCHOLOGICAL_MEANING,
++                expected_risk_reduction=0.18,
++                horizon_months=16,
++                owner="Public Health + Civil Society",
++            ),
++        ]
++
++    def add_default_prevention_controls(self) -> None:
++        self.controls = [
++            PreventionControl(
++                name="Automation rollout caps + labor early-warning triggers",
++                domain=RiskDomain.LABOR_DISPLACEMENT,
++                probability_reduction=0.2,
++                velocity_reduction=0.3,
++                owner="Labor Regulator",
++            ),
++            PreventionControl(
++                name="Mandatory shared-equity participation for automated firms",
++                domain=RiskDomain.WEALTH_CONCENTRATION,
++                probability_reduction=0.16,
++                velocity_reduction=0.22,
++                owner="Economic Council",
++            ),
++            PreventionControl(
++                name="Safety-case certification before autonomous infra deployment",
++                domain=RiskDomain.CRITICAL_INFRASTRUCTURE,
++                probability_reduction=0.24,
++                velocity_reduction=0.18,
++                owner="National Safety Board",
++            ),
++            PreventionControl(
++                name="Pre-deployment algorithmic impact assessment",
++                domain=RiskDomain.AI_GOVERNANCE,
++                probability_reduction=0.19,
++                velocity_reduction=0.17,
++                owner="AI Governance Office",
++            ),
++            PreventionControl(
++                name="Mandatory human-in-loop rotation in critical tasks",
++                domain=RiskDomain.HUMAN_SKILL_ATROPHY,
++                probability_reduction=0.14,
++                velocity_reduction=0.2,
++                owner="Operations Authority",
++            ),
++            PreventionControl(
++                name="Universal civic creation/service participation programs",
++                domain=RiskDomain.PSYCHOLOGICAL_MEANING,
++                probability_reduction=0.12,
++                velocity_reduction=0.18,
++                owner="Civic Ministry",
++            ),
++        ]
++
++    def _control_map(self) -> Dict[RiskDomain, List[PreventionControl]]:
++        by_domain: Dict[RiskDomain, List[PreventionControl]] = {d: [] for d in RiskDomain}
++        for control in self.controls:
++            by_domain[control.domain].append(control)
++        return by_domain
++
++    def prevented_signals(self) -> List[ConsequenceSignal]:
++        if not self.controls:
++            self.add_default_prevention_controls()
++        domain_controls = self._control_map()
++
++        adjusted: List[ConsequenceSignal] = []
++        for signal in self.signals:
++            controls = domain_controls.get(signal.domain, [])
++            probability_multiplier = 1.0
++            velocity_multiplier = 1.0
++            for control in controls:
++                probability_multiplier *= max(0.55, 1.0 - control.probability_reduction)
++                velocity_multiplier *= max(0.55, 1.0 - control.velocity_reduction)
++
++            adjusted.append(
++                ConsequenceSignal(
++                    domain=signal.domain,
++                    severity=signal.severity,
++                    probability=round(signal.probability * probability_multiplier, 4),
++                    velocity=round(signal.velocity * velocity_multiplier, 4),
++                    description=f"{signal.description} (prevention-adjusted)",
++                )
++            )
++        return adjusted
++
++    def risk_dashboard(self) -> Dict[str, object]:
++        if not self.signals:
++            self.add_default_signals()
++        if not self.actions:
++            self.add_default_actions()
++        if not self.controls:
++            self.add_default_prevention_controls()
++
++        baseline_total = sum(s.risk_score() for s in self.signals)
++        prevented = self.prevented_signals()
++        post_prevention_total = sum(s.risk_score() for s in prevented)
++
++        by_domain = {}
++        for baseline, adjusted in zip(self.signals, prevented):
++            by_domain[baseline.domain.value] = {
++                "severity": baseline.severity,
++                "baseline_probability": baseline.probability,
++                "baseline_velocity": baseline.velocity,
++                "adjusted_probability": adjusted.probability,
++                "adjusted_velocity": adjusted.velocity,
++                "baseline_risk_score": baseline.risk_score(),
++                "prevented_risk_score": adjusted.risk_score(),
++                "description": baseline.description,
++            }
++
++        mitigation_value = sum(a.expected_risk_reduction for a in self.actions)
++        residual_risk = max(
++            0.0,
++            round(post_prevention_total * (1.0 - min(0.85, mitigation_value / 3.0)), 4),
++        )
++
++        return {
++            "automation_rate": self.automation_rate,
++            "risk_domains": by_domain,
++            "prevention_controls": [
++                {
++                    "name": c.name,
++                    "domain": c.domain.value,
++                    "probability_reduction": c.probability_reduction,
++                    "velocity_reduction": c.velocity_reduction,
++                    "owner": c.owner,
++                }
++                for c in self.controls
++            ],
++            "mitigations": [
++                {
++                    "name": a.name,
++                    "domain": a.domain.value,
++                    "expected_risk_reduction": a.expected_risk_reduction,
++                    "horizon_months": a.horizon_months,
++                    "owner": a.owner,
++                }
++                for a in self.actions
++            ],
++            "aggregate": {
++                "baseline_risk": round(baseline_total, 4),
++                "post_prevention_risk": round(post_prevention_total, 4),
++                "prevented_risk": round(baseline_total - post_prevention_total, 4),
++                "mitigation_capacity": round(mitigation_value, 4),
++                "residual_risk": residual_risk,
++                "status": "severe_but_actionable" if residual_risk > 1.5 else "stabilizing",
++            },
++        }
++
++
++if __name__ == "__main__":
++    import json
++
++    scenario = RobotizationScenario(automation_rate=1.0)
++    print(json.dumps(scenario.risk_dashboard(), indent=2))
+diff --git a/robotization_consequences.py b/robotization_consequences.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7e3235b3180e4517d32329e8d2726f44b56a3923
+--- /dev/null
++++ b/robotization_consequences.py
+@@ -0,0 +1,296 @@
++"""Model consequences of full (100%) robotization and build mitigation plans."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from typing import Dict, List
++
++
++class RiskDomain(str, Enum):
++    LABOR_DISPLACEMENT = "labor_displacement"
++    WEALTH_CONCENTRATION = "wealth_concentration"
++    CRITICAL_INFRASTRUCTURE = "critical_infrastructure"
++    AI_GOVERNANCE = "ai_governance"
++    HUMAN_SKILL_ATROPHY = "human_skill_atrophy"
++    PSYCHOLOGICAL_MEANING = "psychological_meaning"
++
++
++@dataclass
++class ConsequenceSignal:
++    domain: RiskDomain
++    severity: float  # 0.0-1.0
++    probability: float  # 0.0-1.0
++    velocity: float  # 0.0-1.0
++    description: str
++
++    def risk_score(self) -> float:
++        return round(self.severity * self.probability * self.velocity, 4)
++
++
++@dataclass
++class MitigationAction:
++    name: str
++    domain: RiskDomain
++    expected_risk_reduction: float  # 0.0-1.0
++    horizon_months: int
++    owner: str
++
++
++@dataclass
++class PreventionControl:
++    """Controls that reduce probability/velocity before incidents happen."""
++
++    name: str
++    domain: RiskDomain
++    probability_reduction: float  # 0.0-1.0
++    velocity_reduction: float  # 0.0-1.0
++    owner: str
++
++
++@dataclass
++class RobotizationScenario:
++    automation_rate: float = 1.0
++    signals: List[ConsequenceSignal] = field(default_factory=list)
++    actions: List[MitigationAction] = field(default_factory=list)
++    controls: List[PreventionControl] = field(default_factory=list)
++
++    def add_default_signals(self) -> None:
++        self.signals = [
++            ConsequenceSignal(
++                RiskDomain.LABOR_DISPLACEMENT,
++                severity=0.95,
++                probability=0.95,
++                velocity=0.85,
++                description="Large workforce displacement and wage floor collapse.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.WEALTH_CONCENTRATION,
++                severity=0.9,
++                probability=0.9,
++                velocity=0.8,
++                description="Capital returns dominate labor returns; inequality expands.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.CRITICAL_INFRASTRUCTURE,
++                severity=0.92,
++                probability=0.8,
++                velocity=0.78,
++                description="Single-model failures cascade through logistics/energy/health.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.AI_GOVERNANCE,
++                severity=0.88,
++                probability=0.82,
++                velocity=0.77,
++                description="Opaque autonomous decision layers reduce accountability.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.HUMAN_SKILL_ATROPHY,
++                severity=0.8,
++                probability=0.86,
++                velocity=0.74,
++                description="Loss of practical human expertise due to over-automation.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.PSYCHOLOGICAL_MEANING,
++                severity=0.78,
++                probability=0.8,
++                velocity=0.72,
++                description="Identity and purpose erosion as work structure dissolves.",
++            ),
++        ]
++
++    def add_default_actions(self) -> None:
++        self.actions = [
++            MitigationAction(
++                name="Universal Basic Dividend linked to automation productivity",
++                domain=RiskDomain.LABOR_DISPLACEMENT,
++                expected_risk_reduction=0.28,
++                horizon_months=18,
++                owner="Fiscal Authority",
++            ),
++            MitigationAction(
++                name="Robot-taxed social equity fund",
++                domain=RiskDomain.WEALTH_CONCENTRATION,
++                expected_risk_reduction=0.25,
++                horizon_months=24,
++                owner="Treasury",
++            ),
++            MitigationAction(
++                name="Dual-control failover with human emergency override",
++                domain=RiskDomain.CRITICAL_INFRASTRUCTURE,
++                expected_risk_reduction=0.31,
++                horizon_months=12,
++                owner="Infrastructure Agency",
++            ),
++            MitigationAction(
++                name="Mandatory model transparency and incident audit trails",
++                domain=RiskDomain.AI_GOVERNANCE,
++                expected_risk_reduction=0.22,
++                horizon_months=10,
++                owner="Regulatory Authority",
++            ),
++            MitigationAction(
++                name="National human-skill retention corps",
++                domain=RiskDomain.HUMAN_SKILL_ATROPHY,
++                expected_risk_reduction=0.2,
++                horizon_months=14,
++                owner="Education Ministry",
++            ),
++            MitigationAction(
++                name="Purpose and civic contribution programs",
++                domain=RiskDomain.PSYCHOLOGICAL_MEANING,
++                expected_risk_reduction=0.18,
++                horizon_months=16,
++                owner="Public Health + Civil Society",
++            ),
++        ]
++
++    def add_default_prevention_controls(self) -> None:
++        self.controls = [
++            PreventionControl(
++                name="Automation rollout caps + labor early-warning triggers",
++                domain=RiskDomain.LABOR_DISPLACEMENT,
++                probability_reduction=0.2,
++                velocity_reduction=0.3,
++                owner="Labor Regulator",
++            ),
++            PreventionControl(
++                name="Mandatory shared-equity participation for automated firms",
++                domain=RiskDomain.WEALTH_CONCENTRATION,
++                probability_reduction=0.16,
++                velocity_reduction=0.22,
++                owner="Economic Council",
++            ),
++            PreventionControl(
++                name="Safety-case certification before autonomous infra deployment",
++                domain=RiskDomain.CRITICAL_INFRASTRUCTURE,
++                probability_reduction=0.24,
++                velocity_reduction=0.18,
++                owner="National Safety Board",
++            ),
++            PreventionControl(
++                name="Pre-deployment algorithmic impact assessment",
++                domain=RiskDomain.AI_GOVERNANCE,
++                probability_reduction=0.19,
++                velocity_reduction=0.17,
++                owner="AI Governance Office",
++            ),
++            PreventionControl(
++                name="Mandatory human-in-loop rotation in critical tasks",
++                domain=RiskDomain.HUMAN_SKILL_ATROPHY,
++                probability_reduction=0.14,
++                velocity_reduction=0.2,
++                owner="Operations Authority",
++            ),
++            PreventionControl(
++                name="Universal civic creation/service participation programs",
++                domain=RiskDomain.PSYCHOLOGICAL_MEANING,
++                probability_reduction=0.12,
++                velocity_reduction=0.18,
++                owner="Civic Ministry",
++            ),
++        ]
++
++    def _control_map(self) -> Dict[RiskDomain, List[PreventionControl]]:
++        by_domain: Dict[RiskDomain, List[PreventionControl]] = {d: [] for d in RiskDomain}
++        for control in self.controls:
++            by_domain[control.domain].append(control)
++        return by_domain
++
++    def prevented_signals(self) -> List[ConsequenceSignal]:
++        if not self.controls:
++            self.add_default_prevention_controls()
++        domain_controls = self._control_map()
++
++        adjusted: List[ConsequenceSignal] = []
++        for signal in self.signals:
++            controls = domain_controls.get(signal.domain, [])
++            probability_multiplier = 1.0
++            velocity_multiplier = 1.0
++            for control in controls:
++                probability_multiplier *= max(0.55, 1.0 - control.probability_reduction)
++                velocity_multiplier *= max(0.55, 1.0 - control.velocity_reduction)
++
++            adjusted.append(
++                ConsequenceSignal(
++                    domain=signal.domain,
++                    severity=signal.severity,
++                    probability=round(signal.probability * probability_multiplier, 4),
++                    velocity=round(signal.velocity * velocity_multiplier, 4),
++                    description=f"{signal.description} (prevention-adjusted)",
++                )
++            )
++        return adjusted
++
++    def risk_dashboard(self) -> Dict[str, object]:
++        if not self.signals:
++            self.add_default_signals()
++        if not self.actions:
++            self.add_default_actions()
++        if not self.controls:
++            self.add_default_prevention_controls()
++
++        baseline_total = sum(s.risk_score() for s in self.signals)
++        prevented = self.prevented_signals()
++        post_prevention_total = sum(s.risk_score() for s in prevented)
++
++        by_domain = {}
++        for baseline, adjusted in zip(self.signals, prevented):
++            by_domain[baseline.domain.value] = {
++                "severity": baseline.severity,
++                "baseline_probability": baseline.probability,
++                "baseline_velocity": baseline.velocity,
++                "adjusted_probability": adjusted.probability,
++                "adjusted_velocity": adjusted.velocity,
++                "baseline_risk_score": baseline.risk_score(),
++                "prevented_risk_score": adjusted.risk_score(),
++                "description": baseline.description,
++            }
++
++        mitigation_value = sum(a.expected_risk_reduction for a in self.actions)
++        residual_risk = max(
++            0.0,
++            round(post_prevention_total * (1.0 - min(0.85, mitigation_value / 3.0)), 4),
++        )
++
++        return {
++            "automation_rate": self.automation_rate,
++            "risk_domains": by_domain,
++            "prevention_controls": [
++                {
++                    "name": c.name,
++                    "domain": c.domain.value,
++                    "probability_reduction": c.probability_reduction,
++                    "velocity_reduction": c.velocity_reduction,
++                    "owner": c.owner,
++                }
++                for c in self.controls
++            ],
++            "mitigations": [
++                {
++                    "name": a.name,
++                    "domain": a.domain.value,
++                    "expected_risk_reduction": a.expected_risk_reduction,
++                    "horizon_months": a.horizon_months,
++                    "owner": a.owner,
++                }
++                for a in self.actions
++            ],
++            "aggregate": {
++                "baseline_risk": round(baseline_total, 4),
++                "post_prevention_risk": round(post_prevention_total, 4),
++                "prevented_risk": round(baseline_total - post_prevention_total, 4),
++                "mitigation_capacity": round(mitigation_value, 4),
++                "residual_risk": residual_risk,
++                "status": "severe_but_actionable" if residual_risk > 1.5 else "stabilizing",
++            },
++        }
++
++
++if __name__ == "__main__":
++    import json
++
++    scenario = RobotizationScenario(automation_rate=1.0)
++    print(json.dumps(scenario.risk_dashboard(), indent=2))
+diff --git a/robotization_consequences.py b/robotization_consequences.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7e3235b3180e4517d32329e8d2726f44b56a3923
+--- /dev/null
++++ b/robotization_consequences.py
+@@ -0,0 +1,296 @@
++"""Model consequences of full (100%) robotization and build mitigation plans."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from typing import Dict, List
++
++
++class RiskDomain(str, Enum):
++    LABOR_DISPLACEMENT = "labor_displacement"
++    WEALTH_CONCENTRATION = "wealth_concentration"
++    CRITICAL_INFRASTRUCTURE = "critical_infrastructure"
++    AI_GOVERNANCE = "ai_governance"
++    HUMAN_SKILL_ATROPHY = "human_skill_atrophy"
++    PSYCHOLOGICAL_MEANING = "psychological_meaning"
++
++
++@dataclass
++class ConsequenceSignal:
++    domain: RiskDomain
++    severity: float  # 0.0-1.0
++    probability: float  # 0.0-1.0
++    velocity: float  # 0.0-1.0
++    description: str
++
++    def risk_score(self) -> float:
++        return round(self.severity * self.probability * self.velocity, 4)
++
++
++@dataclass
++class MitigationAction:
++    name: str
++    domain: RiskDomain
++    expected_risk_reduction: float  # 0.0-1.0
++    horizon_months: int
++    owner: str
++
++
++@dataclass
++class PreventionControl:
++    """Controls that reduce probability/velocity before incidents happen."""
++
++    name: str
++    domain: RiskDomain
++    probability_reduction: float  # 0.0-1.0
++    velocity_reduction: float  # 0.0-1.0
++    owner: str
++
++
++@dataclass
++class RobotizationScenario:
++    automation_rate: float = 1.0
++    signals: List[ConsequenceSignal] = field(default_factory=list)
++    actions: List[MitigationAction] = field(default_factory=list)
++    controls: List[PreventionControl] = field(default_factory=list)
++
++    def add_default_signals(self) -> None:
++        self.signals = [
++            ConsequenceSignal(
++                RiskDomain.LABOR_DISPLACEMENT,
++                severity=0.95,
++                probability=0.95,
++                velocity=0.85,
++                description="Large workforce displacement and wage floor collapse.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.WEALTH_CONCENTRATION,
++                severity=0.9,
++                probability=0.9,
++                velocity=0.8,
++                description="Capital returns dominate labor returns; inequality expands.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.CRITICAL_INFRASTRUCTURE,
++                severity=0.92,
++                probability=0.8,
++                velocity=0.78,
++                description="Single-model failures cascade through logistics/energy/health.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.AI_GOVERNANCE,
++                severity=0.88,
++                probability=0.82,
++                velocity=0.77,
++                description="Opaque autonomous decision layers reduce accountability.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.HUMAN_SKILL_ATROPHY,
++                severity=0.8,
++                probability=0.86,
++                velocity=0.74,
++                description="Loss of practical human expertise due to over-automation.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.PSYCHOLOGICAL_MEANING,
++                severity=0.78,
++                probability=0.8,
++                velocity=0.72,
++                description="Identity and purpose erosion as work structure dissolves.",
++            ),
++        ]
++
++    def add_default_actions(self) -> None:
++        self.actions = [
++            MitigationAction(
++                name="Universal Basic Dividend linked to automation productivity",
++                domain=RiskDomain.LABOR_DISPLACEMENT,
++                expected_risk_reduction=0.28,
++                horizon_months=18,
++                owner="Fiscal Authority",
++            ),
++            MitigationAction(
++                name="Robot-taxed social equity fund",
++                domain=RiskDomain.WEALTH_CONCENTRATION,
++                expected_risk_reduction=0.25,
++                horizon_months=24,
++                owner="Treasury",
++            ),
++            MitigationAction(
++                name="Dual-control failover with human emergency override",
++                domain=RiskDomain.CRITICAL_INFRASTRUCTURE,
++                expected_risk_reduction=0.31,
++                horizon_months=12,
++                owner="Infrastructure Agency",
++            ),
++            MitigationAction(
++                name="Mandatory model transparency and incident audit trails",
++                domain=RiskDomain.AI_GOVERNANCE,
++                expected_risk_reduction=0.22,
++                horizon_months=10,
++                owner="Regulatory Authority",
++            ),
++            MitigationAction(
++                name="National human-skill retention corps",
++                domain=RiskDomain.HUMAN_SKILL_ATROPHY,
++                expected_risk_reduction=0.2,
++                horizon_months=14,
++                owner="Education Ministry",
++            ),
++            MitigationAction(
++                name="Purpose and civic contribution programs",
++                domain=RiskDomain.PSYCHOLOGICAL_MEANING,
++                expected_risk_reduction=0.18,
++                horizon_months=16,
++                owner="Public Health + Civil Society",
++            ),
++        ]
++
++    def add_default_prevention_controls(self) -> None:
++        self.controls = [
++            PreventionControl(
++                name="Automation rollout caps + labor early-warning triggers",
++                domain=RiskDomain.LABOR_DISPLACEMENT,
++                probability_reduction=0.2,
++                velocity_reduction=0.3,
++                owner="Labor Regulator",
++            ),
++            PreventionControl(
++                name="Mandatory shared-equity participation for automated firms",
++                domain=RiskDomain.WEALTH_CONCENTRATION,
++                probability_reduction=0.16,
++                velocity_reduction=0.22,
++                owner="Economic Council",
++            ),
++            PreventionControl(
++                name="Safety-case certification before autonomous infra deployment",
++                domain=RiskDomain.CRITICAL_INFRASTRUCTURE,
++                probability_reduction=0.24,
++                velocity_reduction=0.18,
++                owner="National Safety Board",
++            ),
++            PreventionControl(
++                name="Pre-deployment algorithmic impact assessment",
++                domain=RiskDomain.AI_GOVERNANCE,
++                probability_reduction=0.19,
++                velocity_reduction=0.17,
++                owner="AI Governance Office",
++            ),
++            PreventionControl(
++                name="Mandatory human-in-loop rotation in critical tasks",
++                domain=RiskDomain.HUMAN_SKILL_ATROPHY,
++                probability_reduction=0.14,
++                velocity_reduction=0.2,
++                owner="Operations Authority",
++            ),
++            PreventionControl(
++                name="Universal civic creation/service participation programs",
++                domain=RiskDomain.PSYCHOLOGICAL_MEANING,
++                probability_reduction=0.12,
++                velocity_reduction=0.18,
++                owner="Civic Ministry",
++            ),
++        ]
++
++    def _control_map(self) -> Dict[RiskDomain, List[PreventionControl]]:
++        by_domain: Dict[RiskDomain, List[PreventionControl]] = {d: [] for d in RiskDomain}
++        for control in self.controls:
++            by_domain[control.domain].append(control)
++        return by_domain
++
++    def prevented_signals(self) -> List[ConsequenceSignal]:
++        if not self.controls:
++            self.add_default_prevention_controls()
++        domain_controls = self._control_map()
++
++        adjusted: List[ConsequenceSignal] = []
++        for signal in self.signals:
++            controls = domain_controls.get(signal.domain, [])
++            probability_multiplier = 1.0
++            velocity_multiplier = 1.0
++            for control in controls:
++                probability_multiplier *= max(0.55, 1.0 - control.probability_reduction)
++                velocity_multiplier *= max(0.55, 1.0 - control.velocity_reduction)
++
++            adjusted.append(
++                ConsequenceSignal(
++                    domain=signal.domain,
++                    severity=signal.severity,
++                    probability=round(signal.probability * probability_multiplier, 4),
++                    velocity=round(signal.velocity * velocity_multiplier, 4),
++                    description=f"{signal.description} (prevention-adjusted)",
++                )
++            )
++        return adjusted
++
++    def risk_dashboard(self) -> Dict[str, object]:
++        if not self.signals:
++            self.add_default_signals()
++        if not self.actions:
++            self.add_default_actions()
++        if not self.controls:
++            self.add_default_prevention_controls()
++
++        baseline_total = sum(s.risk_score() for s in self.signals)
++        prevented = self.prevented_signals()
++        post_prevention_total = sum(s.risk_score() for s in prevented)
++
++        by_domain = {}
++        for baseline, adjusted in zip(self.signals, prevented):
++            by_domain[baseline.domain.value] = {
++                "severity": baseline.severity,
++                "baseline_probability": baseline.probability,
++                "baseline_velocity": baseline.velocity,
++                "adjusted_probability": adjusted.probability,
++                "adjusted_velocity": adjusted.velocity,
++                "baseline_risk_score": baseline.risk_score(),
++                "prevented_risk_score": adjusted.risk_score(),
++                "description": baseline.description,
++            }
++
++        mitigation_value = sum(a.expected_risk_reduction for a in self.actions)
++        residual_risk = max(
++            0.0,
++            round(post_prevention_total * (1.0 - min(0.85, mitigation_value / 3.0)), 4),
++        )
++
++        return {
++            "automation_rate": self.automation_rate,
++            "risk_domains": by_domain,
++            "prevention_controls": [
++                {
++                    "name": c.name,
++                    "domain": c.domain.value,
++                    "probability_reduction": c.probability_reduction,
++                    "velocity_reduction": c.velocity_reduction,
++                    "owner": c.owner,
++                }
++                for c in self.controls
++            ],
++            "mitigations": [
++                {
++                    "name": a.name,
++                    "domain": a.domain.value,
++                    "expected_risk_reduction": a.expected_risk_reduction,
++                    "horizon_months": a.horizon_months,
++                    "owner": a.owner,
++                }
++                for a in self.actions
++            ],
++            "aggregate": {
++                "baseline_risk": round(baseline_total, 4),
++                "post_prevention_risk": round(post_prevention_total, 4),
++                "prevented_risk": round(baseline_total - post_prevention_total, 4),
++                "mitigation_capacity": round(mitigation_value, 4),
++                "residual_risk": residual_risk,
++                "status": "severe_but_actionable" if residual_risk > 1.5 else "stabilizing",
++            },
++        }
++
++
++if __name__ == "__main__":
++    import json
++
++    scenario = RobotizationScenario(automation_rate=1.0)
++    print(json.dumps(scenario.risk_dashboard(), indent=2))
+diff --git a/infrastructure_change_governance.py b/infrastructure_change_governance.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..a5decc8590dff8f23b04b4d2b81947594ea5029b
+--- /dev/null
++++ b/infrastructure_change_governance.py
+@@ -0,0 +1,156 @@
++"""Safe governance model for infrastructure changes.
++
++This module does NOT target real websites directly. It provides an auditable,
++policy-gated framework for proposing domain actions, Kubernetes changes, and
++quantum dataset intake requests.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from typing import Dict, List
++
++
++class ChangeAction(str, Enum):
++    ADD = "add"
++    DELETE = "delete"
++    REVIEW = "review"
++
++
++class RequestStatus(str, Enum):
++    BLOCKED = "blocked"
++    APPROVED = "approved"
++    NEEDS_REVIEW = "needs_review"
++
++
++@dataclass
++class DomainShutdownRequest:
++    domain: str
++    reason: str
++    legal_authority: str
++    ticket_id: str
++
++
++@dataclass
++class KubernetesChange:
++    action: ChangeAction
++    resource_kind: str
++    namespace: str
++    name: str
++    justification: str
++
++
++@dataclass
++class QuantumDataIntake:
++    dataset_name: str
++    source: str
++    provenance_hash: str
++    schema_version: str
++    retention_days: int
++
++
++@dataclass
++class GovernancePolicy:
++    allowed_authorities: List[str] = field(
++        default_factory=lambda: ["court_order", "regulatory_order", "incident_response_board"]
++    )
++    allowed_namespaces: List[str] = field(
++        default_factory=lambda: ["sandbox", "staging", "quarantine", "compliance"]
++    )
++    minimum_retention_days: int = 30
++
++
++@dataclass
++class ChangeBundle:
++    domain_requests: List[DomainShutdownRequest] = field(default_factory=list)
++    kubernetes_changes: List[KubernetesChange] = field(default_factory=list)
++    quantum_data_intakes: List[QuantumDataIntake] = field(default_factory=list)
++
++    def validate(self, policy: GovernancePolicy) -> Dict[str, object]:
++        errors: List[str] = []
++
++        for req in self.domain_requests:
++            if req.legal_authority not in policy.allowed_authorities:
++                errors.append(
++                    f"domain:{req.domain} has unauthorized authority '{req.legal_authority}'"
++                )
++            if not req.ticket_id.startswith("SEC-"):
++                errors.append(f"domain:{req.domain} missing SEC- ticket id")
++
++        for change in self.kubernetes_changes:
++            if change.namespace not in policy.allowed_namespaces:
++                errors.append(
++                    f"k8s:{change.resource_kind}/{change.name} namespace '{change.namespace}' not allowed"
++                )
++            if change.action == ChangeAction.DELETE and "approved" not in change.justification.lower():
++                errors.append(
++                    f"k8s:{change.resource_kind}/{change.name} delete missing explicit approval justification"
++                )
++
++        for data in self.quantum_data_intakes:
++            if len(data.provenance_hash) < 16:
++                errors.append(f"quantum:{data.dataset_name} provenance hash too short")
++            if data.retention_days < policy.minimum_retention_days:
++                errors.append(
++                    f"quantum:{data.dataset_name} retention below minimum ({policy.minimum_retention_days})"
++                )
++
++        status = RequestStatus.APPROVED if not errors else RequestStatus.NEEDS_REVIEW
++        return {
++            "status": status.value,
++            "error_count": len(errors),
++            "errors": errors,
++            "summary": {
++                "domains_requested": len(self.domain_requests),
++                "kubernetes_changes": len(self.kubernetes_changes),
++                "quantum_data_intakes": len(self.quantum_data_intakes),
++            },
++        }
++
++
++def example_safe_bundle() -> ChangeBundle:
++    """Example bundle using placeholders, not real operational targets."""
++    return ChangeBundle(
++        domain_requests=[
++            DomainShutdownRequest(
++                domain="malicious-placeholder.example",
++                reason="Documented malware distribution campaign",
++                legal_authority="incident_response_board",
++                ticket_id="SEC-1042",
++            )
++        ],
++        kubernetes_changes=[
++            KubernetesChange(
++                action=ChangeAction.ADD,
++                resource_kind="NetworkPolicy",
++                namespace="quarantine",
++                name="deny-egress-suspicious-workload",
++                justification="Contain active incident indicators",
++            ),
++            KubernetesChange(
++                action=ChangeAction.DELETE,
++                resource_kind="Ingress",
++                namespace="quarantine",
++                name="legacy-open-ingress",
++                justification="Approved by SecOps CAB #77",
++            ),
++        ],
++        quantum_data_intakes=[
++            QuantumDataIntake(
++                dataset_name="quantum-anomaly-signals-v3",
++                source="internal-lab",
++                provenance_hash="ab12cd34ef56aa90",
++                schema_version="3.1",
++                retention_days=90,
++            )
++        ],
++    )
++
++
++if __name__ == "__main__":
++    import json
++
++    bundle = example_safe_bundle()
++    report = bundle.validate(GovernancePolicy())
++    print(json.dumps(report, indent=2))
+diff --git a/infrastructure_remediation_plan.py b/infrastructure_remediation_plan.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b4b8c67b29f937acfcc050aa7ddf4e63bd8f4a96
+--- /dev/null
++++ b/infrastructure_remediation_plan.py
+@@ -0,0 +1,206 @@
++"""Safety-governed remediation planner for web, Kubernetes, and quantum data.
++
++This module intentionally operates on owned/internal inventory IDs and is designed
++for defensive governance planning rather than offensive targeting.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from typing import Dict, List
++
++
++class ActionType(str, Enum):
++    WEBSITE_SHUTDOWN = "website_shutdown"
++    K8S_ADD = "k8s_add"
++    K8S_DELETE = "k8s_delete"
++    QUANTUM_DATA_ADD = "quantum_data_add"
++
++
++@dataclass(frozen=True)
++class WebsiteRecord:
++    """Owned web asset record (internal/approved domains only)."""
++
++    site_id: str
++    domain: str
++    owner_team: str
++    risk_score: float
++    shutdown_required: bool = False
++
++
++@dataclass(frozen=True)
++class KubernetesChange:
++    """Declarative cluster changes for controlled remediation."""
++
++    cluster: str
++    namespace: str
++    resource_kind: str
++    resource_name: str
++    action: ActionType
++    rationale: str
++
++
++@dataclass(frozen=True)
++class QuantumDataChange:
++    """Add-only quantum dataset ingestion with governance metadata."""
++
++    dataset_id: str
++    source_system: str
++    schema_version: str
++    integrity_hash: str
++    owner: str
++
++
++@dataclass
++class RemediationPlan:
++    websites: List[WebsiteRecord] = field(default_factory=list)
++    k8s_changes: List[KubernetesChange] = field(default_factory=list)
++    quantum_ingest: List[QuantumDataChange] = field(default_factory=list)
++
++    def validate(self) -> List[str]:
++        """Return validation errors; empty means plan is valid."""
++        errors: List[str] = []
++
++        for site in self.websites:
++            if not site.domain.endswith(".internal"):
++                errors.append(f"domain_not_internal:{site.site_id}")
++
++        for change in self.k8s_changes:
++            if change.action not in {ActionType.K8S_ADD, ActionType.K8S_DELETE}:
++                errors.append(f"invalid_k8s_action:{change.resource_name}")
++
++        for dataset in self.quantum_ingest:
++            if len(dataset.integrity_hash) < 16:
++                errors.append(f"weak_integrity_hash:{dataset.dataset_id}")
++
++        return errors
++
++    def summary(self) -> Dict[str, object]:
++        errors = self.validate()
++        return {
++            "websites_to_shutdown": [
++                {
++                    "site_id": site.site_id,
++                    "domain": site.domain,
++                    "owner_team": site.owner_team,
++                    "risk_score": site.risk_score,
++                }
++                for site in self.websites
++                if site.shutdown_required
++            ],
++            "kubernetes_add": [
++                {
++                    "cluster": c.cluster,
++                    "namespace": c.namespace,
++                    "kind": c.resource_kind,
++                    "name": c.resource_name,
++                    "rationale": c.rationale,
++                }
++                for c in self.k8s_changes
++                if c.action == ActionType.K8S_ADD
++            ],
++            "kubernetes_delete": [
++                {
++                    "cluster": c.cluster,
++                    "namespace": c.namespace,
++                    "kind": c.resource_kind,
++                    "name": c.resource_name,
++                    "rationale": c.rationale,
++                }
++                for c in self.k8s_changes
++                if c.action == ActionType.K8S_DELETE
++            ],
++            "quantum_data_add": [
++                {
++                    "dataset_id": d.dataset_id,
++                    "source_system": d.source_system,
++                    "schema_version": d.schema_version,
++                    "integrity_hash": d.integrity_hash,
++                    "owner": d.owner,
++                }
++                for d in self.quantum_ingest
++            ],
++            "status": "valid" if not errors else "invalid",
++            "validation_errors": errors,
++        }
++
++
++def build_default_remediation_plan() -> RemediationPlan:
++    """Create a concrete remediation plan for internal inventory."""
++    websites = [
++        WebsiteRecord(
++            site_id="web-001",
++            domain="legacy-portal.internal",
++            owner_team="platform-security",
++            risk_score=0.91,
++            shutdown_required=True,
++        ),
++        WebsiteRecord(
++            site_id="web-002",
++            domain="docs.internal",
++            owner_team="developer-experience",
++            risk_score=0.22,
++            shutdown_required=False,
++        ),
++        WebsiteRecord(
++            site_id="web-003",
++            domain="old-auth.internal",
++            owner_team="identity-security",
++            risk_score=0.88,
++            shutdown_required=True,
++        ),
++    ]
++
++    k8s = [
++        KubernetesChange(
++            cluster="core-prod",
++            namespace="security",
++            resource_kind="NetworkPolicy",
++            resource_name="deny-legacy-egress",
++            action=ActionType.K8S_ADD,
++            rationale="Block high-risk legacy service egress paths.",
++        ),
++        KubernetesChange(
++            cluster="core-prod",
++            namespace="legacy",
++            resource_kind="Deployment",
++            resource_name="old-auth-v1",
++            action=ActionType.K8S_DELETE,
++            rationale="Retire vulnerable auth deployment after migration.",
++        ),
++        KubernetesChange(
++            cluster="core-prod",
++            namespace="security",
++            resource_kind="AdmissionPolicy",
++            resource_name="require-signed-images",
++            action=ActionType.K8S_ADD,
++            rationale="Prevent unsigned workloads from deployment.",
++        ),
++    ]
++
++    quantum = [
++        QuantumDataChange(
++            dataset_id="qdata-telemetry-2026q1",
++            source_system="quantum-sensor-grid",
++            schema_version="v3.2",
++            integrity_hash="a34f2d18b3c24efa9dc98b1170aa77c4",
++            owner="research-ops",
++        ),
++        QuantumDataChange(
++            dataset_id="qdata-entanglement-audit-2026q1",
++            source_system="entanglement-audit-pipeline",
++            schema_version="v2.1",
++            integrity_hash="d17ba3ce81fd4f76a51d47ca9082f5d1",
++            owner="quantum-governance",
++        ),
++    ]
++
++    return RemediationPlan(websites=websites, k8s_changes=k8s, quantum_ingest=quantum)
++
++
++if __name__ == "__main__":
++    import json
++
++    plan = build_default_remediation_plan()
++    print(json.dumps(plan.summary(), indent=2))
