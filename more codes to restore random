@@ -1,0 +1,1119 @@
+#!/usr/bin/env python3
+"""
+Azure Control-Plane Cleanup & Containment (SAFE)
+- Inventory Azure resources & access paths
+- Flag risky configurations
+- (Optional) run a few safe lock-down actions you explicitly enable
+
+This does NOT exploit or bypass anything. It helps you regain control legitimately.
+"""
+
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+# ========= USER CONTROLS (set True only if you really want the action) =========
+APPLY_SAFE_LOCKDOWN = False     # master switch for any changes
+DISABLE_KV_PUBLIC_NETWORK = False  # requires APPLY_SAFE_LOCKDOWN = True
+EXPORT_TO_SINGLE_FOLDER = True
+
+OUTPUT_DIR = Path("azure_cleanup_output")
+
+# Roles to flag as "high privilege"
+HIGH_PRIV_ROLES = {"Owner", "Contributor", "User Access Administrator"}
+
+def run(cmd: list[str], *, expect_json: bool = False) -> object | str:
+    """Run a command and return parsed JSON (if expect_json) or text."""
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"\n[!] Command failed: {' '.join(cmd)}", file=sys.stderr)
+        print(e.stderr.strip(), file=sys.stderr)
+        raise
+    out = p.stdout.strip()
+    if expect_json:
+        return json.loads(out) if out else {}
+    return out
+
+def ensure_az():
+    try:
+        run(["az", "--version"])
+    except Exception:
+        print("[!] Azure CLI not found. Install Azure CLI first.", file=sys.stderr)
+        sys.exit(1)
+
+def ensure_login():
+    try:
+        acct = run(["az", "account", "show", "-o", "json"], expect_json=True)
+        return acct
+    except Exception:
+        print("[!] Not logged in. Run: az login", file=sys.stderr)
+        sys.exit(1)
+
+def write_json(name: str, data: object):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    p = OUTPUT_DIR / f"{name}.json"
+    p.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    print(f"[+] Wrote {p}")
+
+def write_text(name: str, text: str):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    p = OUTPUT_DIR / f"{name}.txt"
+    p.write_text(text, encoding="utf-8")
+    print(f"[+] Wrote {p}")
+
+def main():
+    ensure_az()
+    acct = ensure_login()
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    if EXPORT_TO_SINGLE_FOLDER:
+        global OUTPUT_DIR
+        OUTPUT_DIR = Path(f"azure_cleanup_output_{timestamp}")
+
+    print(f"[*] Using subscription: {acct.get('name')} ({acct.get('id')})")
+    write_json("account_show", acct)
+
+    # Subscriptions
+    subs = run(["az", "account", "list", "-o", "json"], expect_json=True)
+    write_json("subscriptions", subs)
+
+    # Resource groups
+    rgs = run(["az", "group", "list", "-o", "json"], expect_json=True)
+    write_json("resource_groups", rgs)
+
+    # Resources
+    resources = run(["az", "resource", "list", "-o", "json"], expect_json=True)
+    write_json("resources", resources)
+
+    # Role assignments (RBAC)
+    role_assign = run(["az", "role", "assignment", "list", "-o", "json"], expect_json=True)
+    write_json("role_assignments_all", role_assign)
+
+    # Flag high privilege role assignments
+    risky = []
+    for ra in role_assign:
+        role = ra.get("roleDefinitionName")
+        if role in HIGH_PRIV_ROLES:
+            risky.append({
+                "role": role,
+                "principalName": ra.get("principalName"),
+                "principalType": ra.get("principalType"),
+                "scope": ra.get("scope"),
+                "createdOn": ra.get("createdOn"),
+            })
+    write_json("role_assignments_high_priv", risky)
+
+    # Key Vaults and public network access posture
+    keyvaults = run(["az", "keyvault", "list", "-o", "json"], expect_json=True)
+    write_json("keyvaults", keyvaults)
+
+    kv_findings = []
+    for kv in keyvaults:
+        name = kv.get("name")
+        rg = kv.get("resourceGroup")
+        # Pull full vault properties
+        kv_full = run(["az", "keyvault", "show", "-n", name, "-g", rg, "-o", "json"], expect_json=True)
+        props = kv_full.get("properties", {})
+        pub = props.get("publicNetworkAccess")  # may be None depending on API/version
+        kv_findings.append({
+            "name": name,
+            "resourceGroup": rg,
+            "location": kv.get("location"),
+            "publicNetworkAccess": pub,
+            "enabledForDeployment": props.get("enabledForDeployment"),
+            "enabledForTemplateDeployment": props.get("enabledForTemplateDeployment"),
+            "enabledForDiskEncryption": props.get("enabledForDiskEncryption"),
+        })
+
+        if APPLY_SAFE_LOCKDOWN and DISABLE_KV_PUBLIC_NETWORK:
+            # This is a legitimate hardening action; only runs if you enable it.
+            print(f"[!] Disabling public network access for Key Vault {name} in {rg}")
+            run(["az", "keyvault", "update", "-n", name, "-g", rg, "--public-network-access", "Disabled"])
+
+    write_json("keyvault_findings", kv_findings)
+
+    # App registrations & service principals (Entra ID / AAD)
+    # Note: some tenants restrict these; if blocked, you'll see a clear error.
+    try:
+        apps = run(["az", "ad", "app", "list", "--all", "-o", "json"], expect_json=True)
+        write_json("entra_app_registrations", apps)
+    except Exception:
+        write_text("entra_app_registrations_ERROR", "Failed to list app registrations (permission may be restricted).")
+
+    try:
+        sps = run(["az", "ad", "sp", "list", "--all", "-o", "json"], expect_json=True)
+        write_json("entra_service_principals", sps)
+    except Exception:
+        write_text("entra_service_principals_ERROR", "Failed to list service principals (permission may be restricted).")
+
+    # Human-readable summary
+    summary_lines = []
+    summary_lines.append(f"Subscription: {acct.get('name')} ({acct.get('id')})")
+    summary_lines.append(f"Resource groups: {len(rgs)}")
+    summary_lines.append(f"Resources: {len(resources)}")
+    summary_lines.append(f"Role assignments: {len(role_assign)}")
+    summary_lines.append(f"High-priv role assignments flagged: {len(risky)}")
+    summary_lines.append(f"Key Vaults: {len(keyvaults)}")
+    summary_lines.append("")
+    summary_lines.append("Next recommended steps (manual but important):")
+    summary_lines.append("1) Review role_assignments_high_priv.json and remove unexpected Owners/Contributors.")
+    summary_lines.append("2) Rotate secrets/keys (Key Vault, app credentials) and revoke old credentials.")
+    summary_lines.append("3) Audit app registrations/service principals you don’t recognize; disable/delete them.")
+    summary_lines.append("4) Check CI/CD (GitHub Actions/Azure DevOps) for leaked secrets and rotate them.")
+    summary_lines.append("5) If Copilot/IDE agents feel “possessed”: uninstall extensions, revoke tokens, re-auth.")
+    write_text("SUMMARY", "\n".join(summary_lines))
+
+    print("\n[+] Done. Output folder:", OUTPUT_DIR.resolve())
+
+if __name__ == "__main__":
+#!/usr/bin/env python3
+"""
+Azure Cleanup + Hardening (SAFE & LEGIT)
+- Inventory resources + access paths
+- Flag risky access
+- Generate remediation commands
+- Optionally apply safe hardening changes you explicitly enable
+
+Requires:
+- Azure CLI installed
+- az login completed
+"""
+
+import json
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+# ===================== USER CONTROLS =====================
+APPLY_CHANGES = False  # master switch: must be True for any modifications
+
+# Key Vault
+HARDEN_KEYVAULT_DISABLE_PUBLIC_NETWORK = False
+HARDEN_KEYVAULT_ENABLE_PURGE_PROTECTION = False  # may require permissions; some tenants restrict
+HARDEN_KEYVAULT_ENABLE_SOFT_DELETE = False       # soft delete is often default/mandatory now; safe to attempt
+
+# Storage Accounts
+HARDEN_STORAGE_REQUIRE_HTTPS = False
+HARDEN_STORAGE_MIN_TLS_12 = False
+HARDEN_STORAGE_DISABLE_BLOB_PUBLIC_ACCESS = False
+
+# App Service / Function Apps
+HARDEN_APP_HTTPS_ONLY = False
+
+# RBAC (NO automatic deletions). This only generates commands.
+GENERATE_RBAC_DELETE_COMMANDS = True
+
+# Flag these as high-privilege
+HIGH_PRIV_ROLES = {"Owner", "Contributor", "User Access Administrator"}
+
+OUTPUT_DIR = Path("azure_cleanup_output")
+
+def run(cmd: list[str], expect_json: bool = False):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"\n[!] Command failed: {' '.join(cmd)}", file=sys.stderr)
+        if e.stdout.strip():
+            print(e.stdout.strip(), file=sys.stderr)
+        if e.stderr.strip():
+            print(e.stderr.strip(), file=sys.stderr)
+        raise
+    out = p.stdout.strip()
+    if expect_json:
+        return json.loads(out) if out else {}
+    return out
+
+def write_json(name: str, data):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    p = OUTPUT_DIR / f"{name}.json"
+    p.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    print(f"[+] Wrote {p}")
+
+def write_text(name: str, text: str):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    p = OUTPUT_DIR / f"{name}.txt"
+    p.write_text(text, encoding="utf-8")
+    print(f"[+] Wrote {p}")
+
+def ensure_az_and_login():
+    try:
+        run(["az", "--version"])
+    except Exception:
+        print("[!] Azure CLI not found. Install Azure CLI first.", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        acct = run(["az", "account", "show", "-o", "json"], expect_json=True)
+    except Exception:
+        print("[!] Not logged in. Run: az login", file=sys.stderr)
+        sys.exit(1)
+    return acct
+
+def main():
+    global OUTPUT_DIR
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    OUTPUT_DIR = Path(f"azure_cleanup_output_{timestamp}")
+
+    acct = ensure_az_and_login()
+    print(f"[*] Subscription: {acct.get('name')} ({acct.get('id')})")
+    write_json("account_show", acct)
+
+    # Inventory
+    subs = run(["az", "account", "list", "-o", "json"], expect_json=True)
+    rgs = run(["az", "group", "list", "-o", "json"], expect_json=True)
+    resources = run(["az", "resource", "list", "-o", "json"], expect_json=True)
+
+    write_json("subscriptions", subs)
+    write_json("resource_groups", rgs)
+    write_json("resources_all", resources)
+
+    # ===================== RBAC =====================
+    role_assign = run(["az", "role", "assignment", "list", "-o", "json"], expect_json=True)
+    write_json("role_assignments_all", role_assign)
+
+    high_priv = []
+    delete_cmds = []
+
+    for ra in role_assign:
+        role = ra.get("roleDefinitionName")
+        if role in HIGH_PRIV_ROLES:
+            entry = {
+                "role": role,
+                "principalName": ra.get("principalName"),
+                "principalType": ra.get("principalType"),
+                "scope": ra.get("scope"),
+                "assignmentId": ra.get("id"),
+            }
+            high_priv.append(entry)
+
+            # Provide a deletion command template (manual review!)
+            if GENERATE_RBAC_DELETE_COMMANDS and ra.get("id"):
+                delete_cmds.append(f"az role assignment delete --ids {ra['id']}")
+
+    write_json("role_assignments_high_priv", high_priv)
+    if delete_cmds:
+        write_text("rbac_delete_commands_review_first", "\n".join(delete_cmds) + "\n")
+
+    # ===================== KEY VAULT HARDENING =====================
+    keyvaults = run(["az", "keyvault", "list", "-o", "json"], expect_json=True)
+    write_json("keyvaults", keyvaults)
+
+    kv_findings = []
+    for kv in keyvaults:
+        name = kv.get("name")
+        rg = kv.get("resourceGroup")
+        kv_full = run(["az", "keyvault", "show", "-n", name, "-g", rg, "-o", "json"], expect_json=True)
+        props = kv_full.get("properties", {})
+
+        kv_findings.append({
+            "name": name,
+            "resourceGroup": rg,
+            "location": kv.get("location"),
+            "publicNetworkAccess": props.get("publicNetworkAccess"),
+            "enablePurgeProtection": props.get("enablePurgeProtection"),
+            "enableSoftDelete": props.get("enableSoftDelete"),
+            "softDeleteRetentionInDays": props.get("softDeleteRetentionInDays"),
+        })
+
+        if APPLY_CHANGES and HARDEN_KEYVAULT_DISABLE_PUBLIC_NETWORK:
+            print(f"[!] Key Vault: disabling public network access: {name} ({rg})")
+            run(["az", "keyvault", "update", "-n", name, "-g", rg,
+                 "--public-network-access", "Disabled"])
+
+        # Soft delete / purge protection flags vary across API versions & tenant policies.
+        # We'll attempt them; failures are printed clearly.
+        if APPLY_CHANGES and HARDEN_KEYVAULT_ENABLE_SOFT_DELETE:
+            print(f"[!] Key Vault: enabling soft delete (if supported): {name} ({rg})")
+            try:
+                run(["az", "keyvault", "update", "-n", name, "-g", rg,
+                     "--enable-soft-delete", "true"])
+            except Exception:
+                pass
+
+        if APPLY_CHANGES and HARDEN_KEYVAULT_ENABLE_PURGE_PROTECTION:
+            print(f"[!] Key Vault: enabling purge protection (if supported): {name} ({rg})")
+            try:
+                run(["az", "keyvault", "update", "-n", name, "-g", rg,
+                     "--enable-purge-protection", "true"])
+            except Exception:
+                pass
+
+    write_json("keyvault_findings", kv_findings)
+
+    # ===================== STORAGE HARDENING =====================
+    storage_accounts = run(["az", "storage", "account", "list", "-o", "json"], expect_json=True)
+    write_json("storage_accounts", storage_accounts)
+
+    st_findings = []
+    for sa in storage_accounts:
+        name = sa.get("name")
+        rg = sa.get("resourceGroup")
+
+        # Pull fresh details
+        sa_full = run(["az", "storage", "account", "show", "-n", name, "-g", rg, "-o", "json"], expect_json=True)
+        st_findings.append({
+            "name": name,
+            "resourceGroup": rg,
+            "location": sa_full.get("location"),
+            "httpsOnly": sa_full.get("enableHttpsTrafficOnly"),
+            "minTlsVersion": sa_full.get("minimumTlsVersion"),
+            "allowBlobPublicAccess": sa_full.get("allowBlobPublicAccess"),
+            "publicNetworkAccess": sa_full.get("publicNetworkAccess"),
+        })
+
+        if APPLY_CHANGES and HARDEN_STORAGE_REQUIRE_HTTPS:
+            print(f"[!] Storage: enforcing HTTPS-only: {name} ({rg})")
+            run(["az", "storage", "account", "update", "-n", name, "-g", rg,
+                 "--https-only", "true"])
+
+        if APPLY_CHANGES and HARDEN_STORAGE_MIN_TLS_12:
+            print(f"[!] Storage: setting minimum TLS 1.2: {name} ({rg})")
+            run(["az", "storage", "account", "update", "-n", name, "-g", rg,
+                 "--min-tls-version", "TLS1_2"])
+
+        if APPLY_CHANGES and HARDEN_STORAGE_DISABLE_BLOB_PUBLIC_ACCESS:
+            print(f"[!] Storage: disabling blob public access: {name} ({rg})")
+            run(["az", "storage", "account", "update", "-n", name, "-g", rg,
+                 "--allow-blob-public-access", "false"])
+
+    write_json("storage_findings", st_findings)
+
+    # ===================== APP SERVICE / FUNCTIONS HARDENING =====================
+    # Web Apps (includes Function Apps because they are a kind of webapp in many listings)
+    webapps = run(["az", "webapp", "list", "-o", "json"], expect_json=True)
+    write_json("webapps", webapps)
+
+    app_findings = []
+    for app in webapps:
+        name = app.get("name")
+        rg = app.get("resourceGroup")
+
+        app_full = run(["az", "webapp", "show", "-n", name, "-g", rg, "-o", "json"], expect_json=True)
+        https_only = app_full.get("httpsOnly")
+
+        app_findings.append({
+            "name": name,
+            "resourceGroup": rg,
+            "location": app_full.get("location"),
+            "kind": app_full.get("kind"),
+            "httpsOnly": https_only,
+            "state": app_full.get("state"),
+        })
+
+        if APPLY_CHANGES and HARDEN_APP_HTTPS_ONLY and https_only is not True:
+            print(f"[!] App: enforcing httpsOnly=true: {name} ({rg})")
+            run(["az", "webapp", "update", "-n", name, "-g", rg, "--https-only", "true"])
+
+    write_json("appservice_findings", app_findings)
+
+    # ===================== SUMMARY =====================
+    summary = []
+    summary.append(f"Subscription: {acct.get('name')} ({acct.get('id')})")
+    summary.append(f"Resource Groups: {len(rgs)}")
+    summary.append(f"Resources: {len(resources)}")
+    summary.append(f"Role Assignments: {len(role_assign)}")
+    summary.append(f"High-Priv Role Assignments flagged: {len(high_priv)}")
+    summary.append(f"Key Vaults: {len(keyvaults)}")
+    summary.append(f"Storage Accounts: {len(storage_accounts)}")
+    summary.append(f"Web Apps / Function Apps: {len(webapps)}")
+    summary.append("")
+    summary.append("Outputs to review:")
+    summary.append("- role_assignments_high_priv.json")
+    if delete_cmds:
+        summary.append("- rbac_delete_commands_review_first.txt (REVIEW BEFORE RUNNING)")
+    summary.append("- keyvault_findings.json")
+    summary.append("- storage_findings.json")
+    summary.append("- appservice_findings.json")
+    summary.append("")
+    summary.append("Safe next steps (practical):")
+    summary.append("1) Remove unexpected Owners/Contributors (use generated commands, but review carefully).")
+    summary.append("2) Rotate secrets/credentials used by CI/CD (GitHub Actions, pipelines) and Key Vault.")
+    summary.append("3) Revoke stale tokens in dev tools: sign out of IDEs, remove old auth sessions, re-auth.")
+    summary.append("4) Enable diagnostics + alerts (Activity Log, Sign-in logs, Key Vault audit, Storage logs).")
+
+    write_text("SUMMARY", "\n".join(summary))
+    print("\n[+] Done. Output folder:", OUTPUT_DIR.resolve())
+    print("[*] Tip: Run once with APPLY_CHANGES=False, inspect findings, then selectively enable flags.")
+
+if __name__ == "__main__":
+    main()
+#!/usr/bin/env python3
+"""
+Azure Hardening v2: Diagnostics + Defender export + Local repo secret scan (SAFE/LEGIT)
+
+What it does:
+1) Creates/updates Diagnostic Settings for:
+   - Subscription Activity Log
+   - Key Vaults
+   - Storage Accounts
+   - Web Apps / Function Apps
+   to send logs/metrics to a Log Analytics Workspace (recommended) and/or Storage.
+
+2) Exports Defender for Cloud / security posture signals via Azure Resource Graph (read-only).
+
+3) Scans a local repo folder for common secret patterns (no internet).
+
+All Azure modifications are OFF by default. Flip flags in USER CONTROLS.
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Optional
+
+# ===================== USER CONTROLS =====================
+APPLY_AZURE_CHANGES = False  # master switch for writing diagnostic settings
+
+# --- Diagnostics targets ---
+SEND_TO_LOG_ANALYTICS = True
+LOG_ANALYTICS_WORKSPACE_RESOURCE_ID = ""  # REQUIRED if SEND_TO_LOG_ANALYTICS=True
+# Example format:
+# /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.OperationalInsights/workspaces/<name>
+
+SEND_TO_STORAGE = False
+DIAG_STORAGE_ACCOUNT_RESOURCE_ID = ""  # REQUIRED if SEND_TO_STORAGE=True
+# Example:
+# /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Storage/storageAccounts/<name>
+
+# Which resources to enable diagnostics for
+DIAG_SUBSCRIPTION_ACTIVITY_LOG = True
+DIAG_KEY_VAULTS = True
+DIAG_STORAGE_ACCOUNTS = True
+DIAG_WEB_APPS = True  # includes many Function Apps as web apps
+
+# Categories we attempt (Azure may ignore unsupported ones)
+KV_LOG_CATEGORIES = ["AuditEvent"]
+ST_LOG_CATEGORIES = ["StorageRead", "StorageWrite", "StorageDelete"]
+WEBAPP_LOG_CATEGORIES = ["AppServiceHTTPLogs", "AppServiceConsoleLogs", "AppServiceAppLogs"]
+METRIC_CATEGORIES = ["AllMetrics"]
+
+# --- Defender / posture export ---
+EXPORT_DEFENDER_FINDINGS = True
+AUTO_INSTALL_RESOURCE_GRAPH_EXTENSION = True
+
+# --- Local repo scanning ---
+SCAN_LOCAL_REPO = True
+REPO_ROOT = "."  # set to your repo path
+SCAN_MAX_FILE_MB = 5
+EXCLUDE_DIRS = {".git", "node_modules", ".venv", "venv", "dist", "build", ".next", ".cache"}
+EXCLUDE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".pdf", ".zip", ".7z", ".tar", ".gz", ".mp4", ".mov", ".exe", ".dll"}
+
+OUTPUT_DIR = Path("azure_hardening_v2_output")
+
+# ===================== Helpers =====================
+
+def run(cmd: list[str], expect_json: bool = False) -> object | str:
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"\n[!] Command failed: {' '.join(cmd)}", file=sys.stderr)
+        if e.stdout.strip():
+            print(e.stdout.strip(), file=sys.stderr)
+        if e.stderr.strip():
+            print(e.stderr.strip(), file=sys.stderr)
+        raise
+    out = p.stdout.strip()
+    if expect_json:
+        return json.loads(out) if out else {}
+    return out
+
+def write_json(name: str, data: object):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    p = OUTPUT_DIR / f"{name}.json"
+    p.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    print(f"[+] Wrote {p}")
+
+def write_text(name: str, text: str):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    p = OUTPUT_DIR / f"{name}.txt"
+    p.write_text(text, encoding="utf-8")
+    print(f"[+] Wrote {p}")
+
+def ensure_az_login() -> dict:
+    run(["az", "--version"])
+    acct = run(["az", "account", "show", "-o", "json"], expect_json=True)
+    return acct  # type: ignore
+
+def require_targets():
+    if APPLY_AZURE_CHANGES:
+        if SEND_TO_LOG_ANALYTICS and not LOG_ANALYTICS_WORKSPACE_RESOURCE_ID.strip():
+            raise SystemExit("[!] LOG_ANALYTICS_WORKSPACE_RESOURCE_ID is required when SEND_TO_LOG_ANALYTICS=True")
+        if SEND_TO_STORAGE and not DIAG_STORAGE_ACCOUNT_RESOURCE_ID.strip():
+            raise SystemExit("[!] DIAG_STORAGE_ACCOUNT_RESOURCE_ID is required when SEND_TO_STORAGE=True")
+
+def make_diag_payload(log_categories: list[str], metric_categories: list[str]):
+    logs = [{"category": c, "enabled": True, "retentionPolicy": {"enabled": False, "days": 0}} for c in log_categories]
+    metrics = [{"category": c, "enabled": True, "retentionPolicy": {"enabled": False, "days": 0}} for c in metric_categories]
+    payload = {"logs": logs, "metrics": metrics}
+    if SEND_TO_LOG_ANALYTICS:
+        payload["workspaceId"] = LOG_ANALYTICS_WORKSPACE_RESOURCE_ID
+    if SEND_TO_STORAGE:
+        payload["storageAccountId"] = DIAG_STORAGE_ACCOUNT_RESOURCE_ID
+    return payload
+
+def create_or_update_diag(resource_id: str, diag_name: str, payload: dict) -> dict:
+    """
+    Uses Azure REST API via az rest to create/update diag settings (supported broadly across resources).
+    """
+    # Diagnostic Settings API:
+    # PUT {resourceId}/providers/microsoft.insights/diagnosticSettings/{name}?api-version=2021-05-01-preview
+    url = f"https://management.azure.com{resource_id}/providers/microsoft.insights/diagnosticSettings/{diag_name}?api-version=2021-05-01-preview"
+    body = {"properties": payload}
+
+    if not APPLY_AZURE_CHANGES:
+        return {"resourceId": resource_id, "diagName": diag_name, "wouldApply": True, "properties": payload}
+
+    result = run(["az", "rest", "--method", "put", "--url", url, "--body", json.dumps(body)], expect_json=True)
+    return result  # type: ignore
+
+def list_diag(resource_id: str) -> dict:
+    url = f"https://management.azure.com{resource_id}/providers/microsoft.insights/diagnosticSettings?api-version=2021-05-01-preview"
+    try:
+        return run(["az", "rest", "--method", "get", "--url", url], expect_json=True)  # type: ignore
+    except Exception:
+        return {"error": "Failed to list diag settings (insufficient permissions or unsupported resource)."}
+
+# ===================== Defender export (read-only) =====================
+
+def ensure_resource_graph_ext():
+    # Safe: installs an Azure CLI extension locally
+    exts = run(["az", "extension", "list", "-o", "json"], expect_json=True)  # type: ignore
+    names = {e.get("name") for e in exts} if isinstance(exts, list) else set()
+    if "resource-graph" in names:
+        return
+    if AUTO_INSTALL_RESOURCE_GRAPH_EXTENSION:
+        run(["az", "extension", "add", "--name", "resource-graph", "-y"])
+    else:
+        raise SystemExit("[!] resource-graph extension missing. Install with: az extension add --name resource-graph")
+
+def arg_query(q: str) -> dict:
+    return run(["az", "graph", "query", "-q", q, "-o", "json"], expect_json=True)  # type: ignore
+
+def export_defender():
+    """
+    Exports a few useful security / posture datasets (what exists varies by tenant).
+    All are read-only queries.
+    """
+    ensure_resource_graph_ext()
+
+    queries = {
+        "security_assessments": r"""
+securityresources
+| where type =~ "microsoft.security/assessments"
+| project id, name, properties, subscriptionId
+| limit 2000
+""",
+        "security_alerts": r"""
+securityresources
+| where type =~ "microsoft.security/locations/alerts"
+| project id, name, properties, subscriptionId
+| limit 2000
+""",
+        "security_scores": r"""
+securityresources
+| where type =~ "microsoft.security/securescores"
+| project id, name, properties, subscriptionId
+| limit 2000
+""",
+        "policy_states_noncompliant": r"""
+policyresources
+| where type =~ "microsoft.policyinsights/policystates"
+| where properties.complianceState =~ "NonCompliant"
+| project id, name, properties, subscriptionId
+| limit 2000
+""",
+    }
+
+    out = {}
+    for k, q in queries.items():
+        try:
+            out[k] = arg_query(q)
+        except Exception as e:
+            out[k] = {"error": str(e)}
+    return out
+
+# ===================== Local repo secret scan =====================
+
+SECRET_PATTERNS = [
+    ("AWS Access Key ID", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    ("AWS Secret Access Key (heuristic)", re.compile(r"\b[0-9A-Za-z/+]{40}\b")),
+    ("GitHub Token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b")),
+    ("Slack Token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}\b")),
+    ("OpenAI Key (common)", re.compile(r"\bsk-[A-Za-z0-9]{20,}\b")),
+    ("Azure SAS (sig=)", re.compile(r"sig=[A-Za-z0-9%]{20,}")),
+    ("Private Key Header", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |PRIVATE )?PRIVATE KEY-----")),
+    ("JWT (heuristic)", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")),
+    ("Connection String (heuristic)", re.compile(r"(?:Server=|Data Source=|AccountKey=|SharedAccessKey=|Endpoint=).{10,}", re.IGNORECASE)),
+]
+
+RISKY_FILENAMES = {
+    ".env", ".env.local", ".env.production", "id_rsa", "id_ed25519",
+    "secrets.json", "credentials", "config.json"
+}
+
+def iter_files(root: Path):
+    for p in root.rglob("*"):
+        if p.is_dir():
+            if p.name in EXCLUDE_DIRS:
+                # Skip entire dir
+                continue
+        else:
+            # skip excluded dirs in path
+            if any(part in EXCLUDE_DIRS for part in p.parts):
+                continue
+            if p.suffix.lower() in EXCLUDE_EXTS:
+                continue
+            yield p
+
+def scan_repo(root: Path):
+    findings = []
+    risky_files = []
+    max_bytes = SCAN_MAX_FILE_MB * 1024 * 1024
+
+    for f in iter_files(root):
+        try:
+            if f.name in RISKY_FILENAMES:
+                risky_files.append(str(f))
+
+            if f.stat().st_size > max_bytes:
+                continue
+
+            content = f.read_text(encoding="utf-8", errors="ignore")
+            for label, pat in SECRET_PATTERNS:
+                for m in pat.finditer(content):
+                    # store limited snippet to avoid dumping secrets into logs
+                    span = (max(0, m.start() - 20), min(len(content), m.end() + 20))
+                    snippet = content[span[0]:span[1]].replace("\n", "\\n")
+                    findings.append({
+                        "file": str(f),
+                        "type": label,
+                        "match_len": len(m.group(0)),
+                        "snippet_context": snippet[:200]
+                    })
+        except Exception:
+            continue
+
+    return {"risky_files": risky_files, "pattern_findings": findings}
+
+# ===================== Main =====================
+
+def main():
+    global OUTPUT_DIR
+    ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    OUTPUT_DIR = Path(f"azure_hardening_v2_output_{ts}")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    acct = ensure_az_login()
+    sub_id = acct.get("id")
+    write_json("account_show", acct)
+
+    require_targets()
+
+    actions = {"diagnostics": [], "defender_exports": {}, "repo_scan": {}}
+
+    # ----------------- Diagnostics -----------------
+    diag_results = []
+
+    if DIAG_SUBSCRIPTION_ACTIVITY_LOG:
+        # Subscription Activity Log uses a special provider ID:
+        # /subscriptions/<subId>/providers/microsoft.insights
+        activity_resource_id = f"/subscriptions/{sub_id}/providers/microsoft.insights"
+        payload = make_diag_payload(
+            log_categories=["Administrative", "Security", "ServiceHealth", "Alert", "Recommendation", "Policy"],
+            metric_categories=[]
+        )
+        diag_results.append({
+            "target": "Subscription Activity Log",
+            "resourceId": activity_resource_id,
+            "existing": list_diag(activity_resource_id),
+            "applyResult": create_or_update_diag(activity_resource_id, "diag-activitylog", payload),
+        })
+
+    # Key Vaults
+    if DIAG_KEY_VAULTS:
+        keyvaults = run(["az", "keyvault", "list", "-o", "json"], expect_json=True)  # type: ignore
+        write_json("keyvaults", keyvaults)
+        for kv in keyvaults:
+            rid = kv.get("id")
+            if not rid:
+                continue
+            payload = make_diag_payload(KV_LOG_CATEGORIES, METRIC_CATEGORIES)
+            diag_results.append({
+                "target": "KeyVault",
+                "name": kv.get("name"),
+                "resourceId": rid,
+                "existing": list_diag(rid),
+                "applyResult": create_or_update_diag(rid, "diag-keyvault", payload),
+            })
+
+    # Storage accounts
+    if DIAG_STORAGE_ACCOUNTS:
+        sas = run(["az", "storage", "account", "list", "-o", "json"], expect_json=True)  # type: ignore
+        write_json("storage_accounts", sas)
+        for sa in sas:
+            rid = sa.get("id")
+            if not rid:
+                continue
+            payload = make_diag_payload(ST_LOG_CATEGORIES, METRIC_CATEGORIES)
+            diag_results.append({
+                "target": "StorageAccount",
+                "name": sa.get("name"),
+                "resourceId": rid,
+                "existing": list_diag(rid),
+                "applyResult": create_or_update_diag(rid, "diag-storage", payload),
+            })
+
+    # Web Apps / Function Apps
+    if DIAG_WEB_APPS:
+        webapps = run(["az", "webapp", "list", "-o", "json"], expect_json=True)  # type: ignore
+        write_json("webapps", webapps)
+        for app in webapps:
+            rid = app.get("id")
+            if not rid:
+                continue
+            payload = make_diag_payload(WEBAPP_LOG_CATEGORIES, METRIC_CATEGORIES)
+            diag_results.append({
+                "target": "WebApp",
+                "name": app.get("name"),
+                "resourceId": rid,
+                "existing": list_diag(rid),
+                "applyResult": create_or_update_diag(rid, "diag-webapp", payload),
+            })
+
+    actions["diagnostics"] = diag_results
+    write_json("diagnostic_settings_results", diag_results)
+
+    # ----------------- Defender export -----------------
+    if EXPORT_DEFENDER_FINDINGS:
+        defender = export_defender()
+        actions["defender_exports"] = defender
+        write_json("defender_and_posture_exports", defender)
+
+    # ----------------- Local repo scan -----------------
+    if SCAN_LOCAL_REPO:
+        repo_root = Path(REPO_ROOT).resolve()
+        scan = scan_repo(repo_root)
+        actions["repo_scan"] = scan
+        write_json("local_repo_secret_scan", scan)
+
+    # ----------------- Summary -----------------
+    summary = []
+    summary.append(f"Subscription: {acct.get('name')} ({sub_id})")
+    summary.append(f"Azure changes applied: {APPLY_AZURE_CHANGES}")
+    summary.append(f"Diagnostics targets: LA={SEND_TO_LOG_ANALYTICS}, Storage={SEND_TO_STORAGE}")
+    if SEND_TO_LOG_ANALYTICS:
+        summary.append(f"Log Analytics Workspace ID set: {bool(LOG_ANALYTICS_WORKSPACE_RESOURCE_ID.strip())}")
+    if SEND_TO_STORAGE:
+        summary.append(f"Diagnostics Storage ID set: {bool(DIAG_STORAGE_ACCOUNT_RESOURCE_ID.strip())}")
+    summary.append("")
+    summary.append("Outputs:")
+    summary.append("- diagnostic_settings_results.json")
+    summary.append("- defender_and_posture_exports.json")
+    summary.append("- local_repo_secret_scan.json")
+    summary.append("")
+    summary.append("Next safe moves:")
+    summary.append("1) Run with APPLY_AZURE_CHANGES=False first, confirm targets and permissions.")
+    summary.append("2) Set LOG_ANALYTICS_WORKSPACE_RESOURCE_ID, then set APPLY_AZURE_CHANGES=True to actually enable diagnostics.")
+    summary.append("3) If repo scan finds likely secrets: rotate them immediately, then purge from git history if committed.")
+    write_text("SUMMARY", "\n".join(summary))
+
+    print("\n[+] Done. Output folder:", OUTPUT_DIR.resolve())
+
+if __name__ == "__main__":
+    main()
+    main()
+#!/usr/bin/env python3
+"""
+Rotation + Containment Layer (SAFE/LEGIT)
+- Entra app credential audit (expired/expiring)
+- Generates review-first disable/reset commands (does not apply by default)
+- Generates a "kill switch" runbook for rapid lockdown
+- Attempts to export audit/sign-in log access pointers (best-effort)
+
+No exploitation, no bypassing controls.
+"""
+
+import json
+import subprocess
+import sys
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Optional
+
+# ===================== USER CONTROLS =====================
+APPLY_CHANGES = False   # master switch (still keeps most actions as "generate commands")
+GENERATE_DISABLE_CRED_COMMANDS = True  # generates commands to remove secrets/certs (review first!)
+
+# Threshold: flag credentials expiring soon
+EXPIRING_WITHIN_DAYS = 30
+
+# RBAC (still does not delete automatically; only generates commands)
+HIGH_PRIV_ROLES = {"Owner", "Contributor", "User Access Administrator"}
+
+OUTPUT_DIR = Path("rotation_containment_output")
+
+def run(cmd: list[str], expect_json: bool = False) -> Any:
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"\n[!] Command failed: {' '.join(cmd)}", file=sys.stderr)
+        if e.stdout.strip():
+            print(e.stdout.strip(), file=sys.stderr)
+        if e.stderr.strip():
+            print(e.stderr.strip(), file=sys.stderr)
+        raise
+    out = p.stdout.strip()
+    if expect_json:
+        return json.loads(out) if out else {}
+    return out
+
+def write_json(name: str, data: Any):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    p = OUTPUT_DIR / f"{name}.json"
+    p.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    print(f"[+] Wrote {p}")
+
+def write_text(name: str, text: str):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    p = OUTPUT_DIR / f"{name}.txt"
+    p.write_text(text, encoding="utf-8")
+    print(f"[+] Wrote {p}")
+
+def ensure_login() -> dict:
+    run(["az", "--version"])
+    acct = run(["az", "account", "show", "-o", "json"], expect_json=True)
+    return acct
+
+def parse_dt(s: str) -> Optional[datetime]:
+    # Azure often returns ISO 8601 with Z
+    if not s:
+        return None
+    try:
+        if s.endswith("Z"):
+            return datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return datetime.fromisoformat(s)
+    except Exception:
+        return None
+
+def now_utc() -> datetime:
+    return datetime.now(timezone.utc)
+
+def safe_get(d: dict, path: list[str]) -> Any:
+    cur: Any = d
+    for k in path:
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(k)
+    return cur
+
+def main():
+    global OUTPUT_DIR
+    ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    OUTPUT_DIR = Path(f"rotation_containment_output_{ts}")
+
+    acct = ensure_login()
+    sub_id = acct.get("id")
+    tenant_id = acct.get("tenantId")
+    write_json("account_show", acct)
+
+    # ===================== 1) RBAC: High-priv review list + delete commands =====================
+    role_assign = run(["az", "role", "assignment", "list", "-o", "json"], expect_json=True)
+    high_priv = []
+    rbac_delete_cmds = []
+
+    for ra in role_assign:
+        role = ra.get("roleDefinitionName")
+        if role in HIGH_PRIV_ROLES:
+            high_priv.append({
+                "role": role,
+                "principalName": ra.get("principalName"),
+                "principalType": ra.get("principalType"),
+                "scope": ra.get("scope"),
+                "assignmentId": ra.get("id"),
+            })
+            if ra.get("id"):
+                rbac_delete_cmds.append(f"az role assignment delete --ids {ra['id']}")
+
+    write_json("role_assignments_high_priv", high_priv)
+    if rbac_delete_cmds:
+        write_text("rbac_delete_commands_review_first", "\n".join(rbac_delete_cmds) + "\n")
+
+    # ===================== 2) Entra App Credentials audit =====================
+    # We'll list apps; then show each app to inspect passwordCredentials/keyCredentials.
+    # This can be heavy in large tenants; still best-effort.
+    entra = {
+        "apps_list_error": None,
+        "apps_count": 0,
+        "credential_findings": [],
+        "notes": [],
+    }
+
+    cutoff = now_utc() + timedelta(days=EXPIRING_WITHIN_DAYS)
+
+    disable_cmds = []
+    reset_cmds = []
+    try:
+        apps = run(["az", "ad", "app", "list", "--all", "-o", "json"], expect_json=True)
+        entra["apps_count"] = len(apps)
+
+        for app in apps:
+            app_id = app.get("appId")
+            obj_id = app.get("id")  # object id
+            display = app.get("displayName")
+
+            if not obj_id:
+                continue
+
+            # Pull full app (credentials arrays)
+            try:
+                full = run(["az", "ad", "app", "show", "--id", obj_id, "-o", "json"], expect_json=True)
+            except Exception:
+                continue
+
+            pw_creds = full.get("passwordCredentials") or []
+            key_creds = full.get("keyCredentials") or []
+
+            def analyze_creds(creds, kind: str):
+                nonlocal disable_cmds, reset_cmds
+                for c in creds:
+                    start = parse_dt(c.get("startDateTime", "")) or parse_dt(c.get("startDate", ""))  # older fields
+                    end = parse_dt(c.get("endDateTime", "")) or parse_dt(c.get("endDate", ""))
+                    key_id = c.get("keyId")
+                    hint = {
+                        "displayName": display,
+                        "appId": app_id,
+                        "objectId": obj_id,
+                        "credentialKind": kind,
+                        "keyId": key_id,
+                        "start": start.isoformat() if start else None,
+                        "end": end.isoformat() if end else None,
+                        "status": None,
+                    }
+
+                    if end and end < now_utc():
+                        hint["status"] = "EXPIRED"
+                    elif end and end <= cutoff:
+                        hint["status"] = f"EXPIRING_WITHIN_{EXPIRING_WITHIN_DAYS}_DAYS"
+                    else:
+                        hint["status"] = "OK"
+
+                    if hint["status"] != "OK":
+                        entra["credential_findings"].append(hint)
+
+                        # Generate review-first commands (do not execute automatically)
+                        if GENERATE_DISABLE_CRED_COMMANDS and obj_id and key_id:
+                            if kind == "passwordCredential":
+                                # Remove a specific password credential by keyId
+                                disable_cmds.append(
+                                    f'az ad app credential delete --id "{obj_id}" --key-id "{key_id}"'
+                                )
+                                # Optionally create a new one (rotation). This creates a new secret value output.
+                                reset_cmds.append(
+                                    f'az ad app credential reset --id "{obj_id}" --append --display-name "rotated-{ts}"'
+                                )
+                            elif kind == "keyCredential":
+                                # Removing cert creds is also possible via credential delete using key-id
+                                disable_cmds.append(
+                                    f'az ad app credential delete --id "{obj_id}" --key-id "{key_id}"'
+                                )
+                                entra["notes"].append(
+                                    f'Cert rotation for app "{display}" typically needs a new cert issuance + upload; generated delete command only.'
+                                )
+
+            analyze_creds(pw_creds, "passwordCredential")
+            analyze_creds(key_creds, "keyCredential")
+
+        write_json("entra_app_credential_audit", entra)
+
+        if disable_cmds:
+            write_text("entra_disable_credentials_review_first", "\n".join(disable_cmds) + "\n")
+        if reset_cmds:
+            write_text("entra_reset_credentials_review_first", "\n".join(reset_cmds) + "\n")
+
+    except Exception as e:
+        entra["apps_list_error"] = str(e)
+        write_json("entra_app_credential_audit", entra)
+
+    # ===================== 3) Audit / Sign-in logs pointers (best-effort) =====================
+    # Many tenants require Graph permissions; Azure CLI may not access without setup.
+    logs = {"tenantId": tenant_id, "available": False, "notes": []}
+    # Try Azure AD sign-ins via 'az monitor activity-log' is subscription-scoped, not tenant sign-in.
+    # We will export Activity Log last 7 days as a practical substitute.
+    try:
+        since = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        activity = run(["az", "monitor", "activity-log", "list", "--offset", "7d", "-o", "json"], expect_json=True)
+        write_json("subscription_activity_log_last_7d", activity)
+        logs["available"] = True
+        logs["notes"].append("Exported subscription Activity Log (last 7 days). Tenant sign-in logs may require Graph access.")
+    except Exception as e:
+        logs["notes"].append(f"Could not export subscription Activity Log: {e}")
+
+    write_json("log_export_notes", logs)
+
+    # ===================== 4) KILL SWITCH RUNBOOK (manual review-first) =====================
+    runbook = []
+    runbook.append("# KILL SWITCH RUNBOOK (REVIEW FIRST)")
+    runbook.append(f"# Generated: {ts}")
+    runbook.append("")
+    runbook.append("## A) Immediately cut high-priv access you don’t recognize")
+    runbook.append("# Review role_assignments_high_priv.json then run specific lines from:")
+    runbook.append(f"#   {OUTPUT_DIR}/rbac_delete_commands_review_first.txt")
+    runbook.append("")
+    runbook.append("## B) Freeze app credentials (service principals / app regs)")
+    runbook.append("# Review entra_disable_credentials_review_first.txt to remove expired/expiring credentials")
+    runbook.append("# If you need rotation, use entra_reset_credentials_review_first.txt (outputs new secrets!)")
+    runbook.append("")
+    runbook.append("## C) Rotate Key Vault secrets (manual but critical)")
+    runbook.append("# 1) Identify what apps use each secret (pipelines, web apps, functions).")
+    runbook.append("# 2) Create a NEW secret/version, update apps to use it, then disable old version usage.")
+    runbook.append("# Key Vault inventory command:")
+    runbook.append('az keyvault list -o table')
+    runbook.append("# List secrets (per vault):")
+    runbook.append('az keyvault secret list --vault-name <VAULT_NAME> -o table')
+    runbook.append("")
+    runbook.append("## D) Lock down CI/CD (GitHub Actions)")
+    runbook.append("# If local_repo_secret_scan.json shows likely secrets:")
+    runbook.append("# - Rotate them immediately in Azure/Entra/Key Vault")
+    runbook.append("# - Remove from repo + rewrite git history if committed (git filter-repo / BFG)")
+    runbook.append("")
+    runbook.append("## E) Confirm logging/alerts are ON")
+    runbook.append("# Ensure diagnostics are enabled to Log Analytics for Activity Log + KeyVault + Storage + Apps.")
+    runbook.append("")
+    write_text("KILL_SWITCH_RUNBOOK", "\n".join(runbook))
+
+    # ===================== Summary =====================
+    summary = []
+    summary.append(f"Subscription: {acct.get('name')} ({sub_id})")
+    summary.append(f"Tenant: {tenant_id}")
+    summary.append("")
+    summary.append("Generated outputs:")
+    summary.append("- role_assignments_high_priv.json")
+    if rbac_delete_cmds:
+        summary.append("- rbac_delete_commands_review_first.txt")
+    summary.append("- entra_app_credential_audit.json")
+    summary.append("- entra_disable_credentials_review_first.txt (if any)")
+    summary.append("- entra_reset_credentials_review_first.txt (if any)")
+    summary.append("- subscription_activity_log_last_7d.json (best-effort)")
+    summary.append("- KILL_SWITCH_RUNBOOK.txt")
+    summary.append("")
+    summary.append("How to proceed safely:")
+    summary.append("1) Start with the runbook + high-priv RBAC list.")
+    summary.append("2) Remove unknown Owners/Contributors first.")
+    summary.append("3) Rotate app credentials/secrets next, then CI/CD.")
+    write_text("SUMMARY", "\n".join(summary))
+
+    print("\n[+] Done. Output folder:", OUTPUT_DIR.resolve())
+    print("[*] IMPORTANT: Commands are review-first. Don’t run bulk deletes unless you understand each entry.")
+
+if __name__ == "__main__":
+    main()
