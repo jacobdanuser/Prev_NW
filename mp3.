@@ -2760,3 +2760,1388 @@ def main():
 
 if __name__ == "__main__":
     main()
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..b839b48eed848b673f8236f6b9cae25cd4db054e 100644
+--- a/examples.py
++++ b/examples.py
+@@ -1,37 +1,39 @@
+ """
+ Example usage demonstrating the metaphysical capabilities restriction system.
+ Shows both game mechanics and philosophical frameworks in action.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalCapability, MetaphysicalPractitioner,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework,
+     create_balanced_magic_system, create_restricted_reality_warper
+ )
++from metaphysical_coda import create_personal_music_lock, reconstruct_metaphysical_coda
++from robotization_consequences import RobotizationState, evaluate_full_robotization
+ 
+ 
+ def example_1_basic_capability_restriction():
+     """Example 1: Basic capability with multiple restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 1: Basic Capability Restriction")
+     print("="*70)
+     
+     # Create a simple telekinesis ability
+     telekinesis = MetaphysicalCapability(
+         name="Advanced Telekinesis",
+         capability_type=CapabilityType.TELEKINESIS,
+         base_power_level=60.0
+     )
+     
+     print(f"\nOriginal capability: {telekinesis}")
+     print(f"Effective power: {telekinesis.get_effective_power():.1f}")
+     
+     # Add restrictions one by one
+     restrictions = [
+         RestrictionRule(
+             RestrictionType.ENERGY_COST,
+             severity=0.3,
+             description="High energy consumption"
+         ),
+@@ -196,82 +198,157 @@ def example_6_multiple_uses_and_cooldown():
+     ))
+     
+     practitioner.add_capability(ability)
+     
+     print(f"Starting energy: {practitioner.energy_pool}/{practitioner.max_energy}")
+     print(f"Ability effective power: {ability.get_effective_power():.1f}")
+     
+     # Use the ability multiple times
+     print("\n--- Sequential Uses ---")
+     for i in range(5):
+         result = practitioner.use_capability(ability)
+         if result['success']:
+             print(f"Use {i+1}: SUCCESS - Energy remaining: {result['remaining_energy']:.1f}")
+         else:
+             print(f"Use {i+1}: FAILED - {result['reason']}")
+             break
+     
+     print(f"\nTotal uses completed: {ability.use_count}")
+ 
+ 
+ def example_7_restriction_modification():
+     """Example 7: Dynamically adding and removing restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 7: Dynamic Restriction Modification")
+     print("="*70)
+-    
++
+     ability = MetaphysicalCapability(
+         "Dimensional Portal",
+         CapabilityType.DIMENSIONAL_TRAVEL,
+         base_power_level=75.0
+     )
+-    
++
+     print(f"Initial power: {ability.get_effective_power():.1f}")
+-    
++
+     # Add restrictions due to environmental factors
+     print("\n--- Adding Environmental Restrictions ---")
+-    
++
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+-    
++
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+-    
++
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+-        print(f"Removed entropy cost restriction")
++        print("Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++def example_8_metaphysical_coda_media_plan():
++    """Example 8: Build a technical image/audio formatting plan."""
++    print("\n" + "=" * 70)
++    print("EXAMPLE 8: Metaphysical Coda Media Plan")
++    print("=" * 70)
++
++    plan = reconstruct_metaphysical_coda(
++        [
++            "./j.pg",
++            "https://i.imgur.com/demo.jpeg",
++            "./concept_art.png",
++        ],
++        include_hpeg=True,
++        include_imgur_targets=True,
++    )
++    print(plan.as_dict())
++
++
++def example_9_personal_music_lock():
++    """Example 9: User-locked tone transformation configuration."""
++    print("\n" + "=" * 70)
++    print("EXAMPLE 9: Personal Music Lock")
++    print("=" * 70)
++
++    locked_plan = create_personal_music_lock(
++        owner_id="me_only",
++        device_fingerprint="device_alpha",
++        secret_phrase="ethereal-bass-signature",
++        image_sources=["./j.pg", "https://i.imgur.com/demo.jpeg"],
++    )
++    valid = locked_plan.verify_access("me_only", "device_alpha", "ethereal-bass-signature")
++    invalid = locked_plan.verify_access("other", "device_alpha", "ethereal-bass-signature")
++
++    print(f"Authorized access: {valid}")
++    print(f"Unauthorized access: {invalid}")
++
++    plan_payload = locked_plan.as_dict()
++    modes = [entry["mode"] for entry in plan_payload["audio_mastering"]]
++    print(f"Available render modes: {modes}")
++    print(plan_payload)
++
++
++
++def example_10_full_robotization_consequences():
++    """Example 10: Consequence matrix for 100% robotization."""
++    print("\n" + "=" * 70)
++    print("EXAMPLE 10: Full Robotization Consequences")
++    print("=" * 70)
++
++    scenario = RobotizationState(
++        automation_rate=1.0,
++        labor_displacement=0.97,
++        capital_ownership_concentration=0.9,
++        ai_infrastructure_dependency=0.95,
++        social_safety_net_strength=0.3,
++        democratic_resilience=0.45,
++    )
++    report = evaluate_full_robotization(scenario)
++
++    print("Risk matrix:")
++    for risk in sorted(report.risks, key=lambda r: r.score, reverse=True):
++        print(f"  - {risk.domain.value}: {risk.score:.1%} | {risk.impact_summary}")
++
++    print("\nMitigations:")
++    for intervention in report.interventions:
++        reductions = ", ".join(
++            f"{domain.value}:{reduction:.0%}"
++            for domain, reduction in intervention.expected_reduction.items()
++        )
++        print(f"  - {intervention.name} -> {reductions}")
++
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
++    example_8_metaphysical_coda_media_plan()
++    example_9_personal_music_lock()
++    example_10_full_robotization_consequences()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/robotization_consequences.py b/robotization_consequences.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ca90ec495e1ab240cd5610662a508b7190fb052c
+--- /dev/null
++++ b/robotization_consequences.py
+@@ -0,0 +1,161 @@
++"""Model consequences of full (100%) robotization and mitigation responses."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from typing import Dict, List
++
++
++class RiskDomain(str, Enum):
++    EMPLOYMENT = "employment"
++    WEALTH_CONCENTRATION = "wealth_concentration"
++    INFRASTRUCTURE_FRAGILITY = "infrastructure_fragility"
++    GOVERNANCE_CAPTURE = "governance_capture"
++    HUMAN_SKILL_ATROPHY = "human_skill_atrophy"
++    PSYCHOLOGICAL_DISLOCATION = "psychological_dislocation"
++
++
++@dataclass
++class RobotizationState:
++    """System state for economy/society under high automation."""
++
++    automation_rate: float = 1.0  # 1.0 == full automation
++    labor_displacement: float = 0.95
++    capital_ownership_concentration: float = 0.85
++    ai_infrastructure_dependency: float = 0.92
++    social_safety_net_strength: float = 0.35
++    democratic_resilience: float = 0.5
++
++
++@dataclass
++class RiskScore:
++    domain: RiskDomain
++    score: float
++    impact_summary: str
++
++
++@dataclass
++class Intervention:
++    name: str
++    leverage: str
++    expected_reduction: Dict[RiskDomain, float]
++
++
++@dataclass
++class RobotizationConsequenceReport:
++    state: RobotizationState
++    risks: List[RiskScore] = field(default_factory=list)
++    interventions: List[Intervention] = field(default_factory=list)
++
++    def to_dict(self) -> Dict[str, object]:
++        return {
++            "state": {
++                "automation_rate": self.state.automation_rate,
++                "labor_displacement": self.state.labor_displacement,
++                "capital_ownership_concentration": self.state.capital_ownership_concentration,
++                "ai_infrastructure_dependency": self.state.ai_infrastructure_dependency,
++                "social_safety_net_strength": self.state.social_safety_net_strength,
++                "democratic_resilience": self.state.democratic_resilience,
++            },
++            "risk_matrix": [
++                {
++                    "domain": r.domain.value,
++                    "score": round(r.score, 3),
++                    "impact_summary": r.impact_summary,
++                }
++                for r in self.risks
++            ],
++            "interventions": [
++                {
++                    "name": i.name,
++                    "leverage": i.leverage,
++                    "expected_reduction": {k.value: v for k, v in i.expected_reduction.items()},
++                }
++                for i in self.interventions
++            ],
++        }
++
++
++def _clamp(value: float) -> float:
++    return max(0.0, min(1.0, value))
++
++
++def evaluate_full_robotization(state: RobotizationState) -> RobotizationConsequenceReport:
++    """Compute problem severity and propose mitigation plan."""
++    risks = [
++        RiskScore(
++            RiskDomain.EMPLOYMENT,
++            _clamp(0.70 * state.labor_displacement + 0.30 * state.automation_rate),
++            "Large-scale displacement without parallel role redesign increases exclusion.",
++        ),
++        RiskScore(
++            RiskDomain.WEALTH_CONCENTRATION,
++            _clamp(0.80 * state.capital_ownership_concentration + 0.20 * state.automation_rate),
++            "Automation rents concentrate unless ownership and tax policy are broadened.",
++        ),
++        RiskScore(
++            RiskDomain.INFRASTRUCTURE_FRAGILITY,
++            _clamp(0.75 * state.ai_infrastructure_dependency + 0.25 * (1.0 - state.social_safety_net_strength)),
++            "High robot dependency amplifies outages, cyber incidents, and cascading failures.",
++        ),
++        RiskScore(
++            RiskDomain.GOVERNANCE_CAPTURE,
++            _clamp(0.65 * state.capital_ownership_concentration + 0.35 * (1.0 - state.democratic_resilience)),
++            "Political capture risk rises when automated infrastructure and capital are centralized.",
++        ),
++        RiskScore(
++            RiskDomain.HUMAN_SKILL_ATROPHY,
++            _clamp(0.60 * state.automation_rate + 0.40 * state.labor_displacement),
++            "Loss of human-in-the-loop practice weakens recovery capacity and autonomy.",
++        ),
++        RiskScore(
++            RiskDomain.PSYCHOLOGICAL_DISLOCATION,
++            _clamp(0.55 * state.labor_displacement + 0.45 * (1.0 - state.social_safety_net_strength)),
++            "Purpose loss and precarity can increase isolation, anxiety, and social fracture.",
++        ),
++    ]
++
++    interventions = [
++        Intervention(
++            name="Universal Basic Dividend + Transition Wage",
++            leverage="Redistribute automation productivity gains to households.",
++            expected_reduction={
++                RiskDomain.EMPLOYMENT: 0.32,
++                RiskDomain.WEALTH_CONCENTRATION: 0.25,
++                RiskDomain.PSYCHOLOGICAL_DISLOCATION: 0.20,
++            },
++        ),
++        Intervention(
++            name="Public-interest Compute + Grid Redundancy",
++            leverage="Harden shared infrastructure with failover and independent audits.",
++            expected_reduction={
++                RiskDomain.INFRASTRUCTURE_FRAGILITY: 0.35,
++                RiskDomain.GOVERNANCE_CAPTURE: 0.15,
++            },
++        ),
++        Intervention(
++            name="Human Capability Guarantee",
++            leverage="Fund lifelong learning, civic service, and human-critical professions.",
++            expected_reduction={
++                RiskDomain.HUMAN_SKILL_ATROPHY: 0.30,
++                RiskDomain.EMPLOYMENT: 0.18,
++                RiskDomain.PSYCHOLOGICAL_DISLOCATION: 0.22,
++            },
++        ),
++        Intervention(
++            name="Algorithmic Due Process Charter",
++            leverage="Mandate explainability, appeals, and anti-capture oversight.",
++            expected_reduction={
++                RiskDomain.GOVERNANCE_CAPTURE: 0.28,
++                RiskDomain.WEALTH_CONCENTRATION: 0.12,
++            },
++        ),
++    ]
++
++    return RobotizationConsequenceReport(state=state, risks=risks, interventions=interventions)
++
++
++if __name__ == "__main__":
++    report = evaluate_full_robotization(RobotizationState())
++    print(report.to_dict())
+diff --git a/robotization_consequences.py b/robotization_consequences.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..445e526168b6ba8d90feb59fc9e057597114cfb9
+--- /dev/null
++++ b/robotization_consequences.py
+@@ -0,0 +1,223 @@
++"""Robotization consequence modeling and mitigation planner.
++
++Simulates a 100% robotized society and computes systemic consequences,
++then generates technical mitigation actions for identified risks.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from typing import Dict, List
++
++
++class RiskDomain(str, Enum):
++    EMPLOYMENT = "employment"
++    INEQUALITY = "inequality"
++    RESILIENCE = "resilience"
++    CYBERSECURITY = "cybersecurity"
++    GOVERNANCE = "governance"
++    IDENTITY = "identity"
++
++
++@dataclass
++class SocietySnapshot:
++    population: int
++    robotization_rate: float  # 0.0..1.0
++    human_job_participation: float  # 0.0..1.0
++    ai_ownership_concentration: float  # 0.0..1.0
++    critical_infrastructure_automation: float  # 0.0..1.0
++    cyber_incident_rate: float  # incidents per million automated ops
++    civic_participation: float  # 0.0..1.0
++    social_cohesion: float  # 0.0..1.0
++
++
++@dataclass
++class Consequence:
++    domain: RiskDomain
++    severity: float  # 0.0..1.0
++    statement: str
++    metrics: Dict[str, float] = field(default_factory=dict)
++
++
++@dataclass
++class MitigationAction:
++    action_id: str
++    domain: RiskDomain
++    title: str
++    technical_controls: List[str]
++    expected_risk_reduction: float  # 0.0..1.0
++
++
++@dataclass
++class RobotizationReport:
++    snapshot: SocietySnapshot
++    consequences: List[Consequence]
++    mitigations: List[MitigationAction]
++
++    def as_dict(self) -> Dict[str, object]:
++        return {
++            "snapshot": self.snapshot.__dict__,
++            "consequences": [
++                {
++                    "domain": c.domain.value,
++                    "severity": round(c.severity, 4),
++                    "statement": c.statement,
++                    "metrics": c.metrics,
++                }
++                for c in self.consequences
++            ],
++            "mitigations": [
++                {
++                    "action_id": m.action_id,
++                    "domain": m.domain.value,
++                    "title": m.title,
++                    "technical_controls": m.technical_controls,
++                    "expected_risk_reduction": round(m.expected_risk_reduction, 4),
++                }
++                for m in self.mitigations
++            ],
++        }
++
++
++def _clamp(value: float) -> float:
++    return max(0.0, min(1.0, value))
++
++
++def analyze_full_robotization(snapshot: SocietySnapshot) -> RobotizationReport:
++    """Analyze consequences for full robotization and build mitigation plan."""
++    r = snapshot.robotization_rate
++    job_displacement = _clamp((r * (1.0 - snapshot.human_job_participation)) * 1.25)
++    inequality_risk = _clamp((snapshot.ai_ownership_concentration * 0.7) + (r * 0.3))
++    resilience_risk = _clamp(snapshot.critical_infrastructure_automation * 0.85)
++    cyber_risk = _clamp((snapshot.cyber_incident_rate / 20.0) * 0.75 + r * 0.25)
++    governance_risk = _clamp((1.0 - snapshot.civic_participation) * 0.6 + r * 0.4)
++    identity_risk = _clamp((1.0 - snapshot.social_cohesion) * 0.6 + r * 0.4)
++
++    consequences = [
++        Consequence(
++            domain=RiskDomain.EMPLOYMENT,
++            severity=job_displacement,
++            statement="Human labor displacement becomes structural at full automation.",
++            metrics={"displacement_index": round(job_displacement, 4)},
++        ),
++        Consequence(
++            domain=RiskDomain.INEQUALITY,
++            severity=inequality_risk,
++            statement="Capital concentration around robotic infrastructure widens wealth inequality.",
++            metrics={"ownership_concentration": snapshot.ai_ownership_concentration},
++        ),
++        Consequence(
++            domain=RiskDomain.RESILIENCE,
++            severity=resilience_risk,
++            statement="Single-point robotic failures can cascade through critical infrastructure.",
++            metrics={"critical_automation": snapshot.critical_infrastructure_automation},
++        ),
++        Consequence(
++            domain=RiskDomain.CYBERSECURITY,
++            severity=cyber_risk,
++            statement="Expanded machine attack surface amplifies cyber-physical risk.",
++            metrics={"incidents_per_million_ops": snapshot.cyber_incident_rate},
++        ),
++        Consequence(
++            domain=RiskDomain.GOVERNANCE,
++            severity=governance_risk,
++            statement="Policy legitimacy erodes when automated systems outpace civic oversight.",
++            metrics={"civic_participation": snapshot.civic_participation},
++        ),
++        Consequence(
++            domain=RiskDomain.IDENTITY,
++            severity=identity_risk,
++            statement="Meaning, purpose, and social belonging decline without human-centered systems.",
++            metrics={"social_cohesion": snapshot.social_cohesion},
++        ),
++    ]
++
++    mitigations = [
++        MitigationAction(
++            action_id="M-EMP-01",
++            domain=RiskDomain.EMPLOYMENT,
++            title="Universal Work Transition Stack",
++            technical_controls=[
++                "National skills graph with continuous AI-assisted upskilling",
++                "Public compute credits for human entrepreneurship",
++                "Automated dividend rails tied to robot productivity",
++            ],
++            expected_risk_reduction=0.42,
++        ),
++        MitigationAction(
++            action_id="M-INEQ-01",
++            domain=RiskDomain.INEQUALITY,
++            title="Distributed Ownership Protocol",
++            technical_controls=[
++                "Tokenized public equity in large automation fleets",
++                "Auditable profit-sharing ledgers",
++                "Dynamic anti-monopoly trigger service",
++            ],
++            expected_risk_reduction=0.36,
++        ),
++        MitigationAction(
++            action_id="M-RES-01",
++            domain=RiskDomain.RESILIENCE,
++            title="Fail-Safe Critical Mesh",
++            technical_controls=[
++                "Human override planes with cryptographic break-glass",
++                "Redundant offline control channels",
++                "Chaos drills for robotics dependency failures",
++            ],
++            expected_risk_reduction=0.47,
++        ),
++        MitigationAction(
++            action_id="M-CYB-01",
++            domain=RiskDomain.CYBERSECURITY,
++            title="Zero-Trust Robotic Runtime",
++            technical_controls=[
++                "Runtime attestation for every robotic workload",
++                "Signed policy updates with staged rollout",
++                "Real-time anomaly detection on actuator commands",
++            ],
++            expected_risk_reduction=0.44,
++        ),
++        MitigationAction(
++            action_id="M-GOV-01",
++            domain=RiskDomain.GOVERNANCE,
++            title="Civic Algorithm Registry",
++            technical_controls=[
++                "Mandatory model cards for public-impact systems",
++                "Participatory policy simulation platform",
++                "Independent algorithmic audit APIs",
++            ],
++            expected_risk_reduction=0.31,
++        ),
++        MitigationAction(
++            action_id="M-IDN-01",
++            domain=RiskDomain.IDENTITY,
++            title="Human Meaning Infrastructure",
++            technical_controls=[
++                "Community contribution scoring independent of labor status",
++                "Public creative platforms with guaranteed access",
++                "Mental health copilots with strict privacy boundaries",
++            ],
++            expected_risk_reduction=0.28,
++        ),
++    ]
++
++    return RobotizationReport(snapshot=snapshot, consequences=consequences, mitigations=mitigations)
++
++
++if __name__ == "__main__":
++    import json
++
++    report = analyze_full_robotization(
++        SocietySnapshot(
++            population=12_000_000,
++            robotization_rate=1.0,
++            human_job_participation=0.07,
++            ai_ownership_concentration=0.82,
++            critical_infrastructure_automation=0.91,
++            cyber_incident_rate=9.5,
++            civic_participation=0.39,
++            social_cohesion=0.44,
++        )
++    )
++    print(json.dumps(report.as_dict(), indent=2))
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..341d3b9b89fd1f13ccdac880452611cb80c634ad 100644
+--- a/examples.py
++++ b/examples.py
+@@ -1,37 +1,39 @@
+ """
+ Example usage demonstrating the metaphysical capabilities restriction system.
+ Shows both game mechanics and philosophical frameworks in action.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalCapability, MetaphysicalPractitioner,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework,
+     create_balanced_magic_system, create_restricted_reality_warper
+ )
++from metaphysical_coda import create_personal_music_lock, reconstruct_metaphysical_coda
++from robotization_consequences import SocietySnapshot, analyze_full_robotization
+ 
+ 
+ def example_1_basic_capability_restriction():
+     """Example 1: Basic capability with multiple restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 1: Basic Capability Restriction")
+     print("="*70)
+     
+     # Create a simple telekinesis ability
+     telekinesis = MetaphysicalCapability(
+         name="Advanced Telekinesis",
+         capability_type=CapabilityType.TELEKINESIS,
+         base_power_level=60.0
+     )
+     
+     print(f"\nOriginal capability: {telekinesis}")
+     print(f"Effective power: {telekinesis.get_effective_power():.1f}")
+     
+     # Add restrictions one by one
+     restrictions = [
+         RestrictionRule(
+             RestrictionType.ENERGY_COST,
+             severity=0.3,
+             description="High energy consumption"
+         ),
+@@ -196,82 +198,158 @@ def example_6_multiple_uses_and_cooldown():
+     ))
+     
+     practitioner.add_capability(ability)
+     
+     print(f"Starting energy: {practitioner.energy_pool}/{practitioner.max_energy}")
+     print(f"Ability effective power: {ability.get_effective_power():.1f}")
+     
+     # Use the ability multiple times
+     print("\n--- Sequential Uses ---")
+     for i in range(5):
+         result = practitioner.use_capability(ability)
+         if result['success']:
+             print(f"Use {i+1}: SUCCESS - Energy remaining: {result['remaining_energy']:.1f}")
+         else:
+             print(f"Use {i+1}: FAILED - {result['reason']}")
+             break
+     
+     print(f"\nTotal uses completed: {ability.use_count}")
+ 
+ 
+ def example_7_restriction_modification():
+     """Example 7: Dynamically adding and removing restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 7: Dynamic Restriction Modification")
+     print("="*70)
+-    
++
+     ability = MetaphysicalCapability(
+         "Dimensional Portal",
+         CapabilityType.DIMENSIONAL_TRAVEL,
+         base_power_level=75.0
+     )
+-    
++
+     print(f"Initial power: {ability.get_effective_power():.1f}")
+-    
++
+     # Add restrictions due to environmental factors
+     print("\n--- Adding Environmental Restrictions ---")
+-    
++
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+-    
++
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+-    
++
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+-        print(f"Removed entropy cost restriction")
++        print("Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++def example_8_metaphysical_coda_media_plan():
++    """Example 8: Build a technical image/audio formatting plan."""
++    print("\n" + "=" * 70)
++    print("EXAMPLE 8: Metaphysical Coda Media Plan")
++    print("=" * 70)
++
++    plan = reconstruct_metaphysical_coda(
++        [
++            "./j.pg",
++            "https://i.imgur.com/demo.jpeg",
++            "./concept_art.png",
++        ],
++        include_hpeg=True,
++        include_imgur_targets=True,
++    )
++    print(plan.as_dict())
++
++
++def example_9_personal_music_lock():
++    """Example 9: User-locked tone transformation configuration."""
++    print("\n" + "=" * 70)
++    print("EXAMPLE 9: Personal Music Lock")
++    print("=" * 70)
++
++    locked_plan = create_personal_music_lock(
++        owner_id="me_only",
++        device_fingerprint="device_alpha",
++        secret_phrase="ethereal-bass-signature",
++        image_sources=["./j.pg", "https://i.imgur.com/demo.jpeg"],
++    )
++    valid = locked_plan.verify_access("me_only", "device_alpha", "ethereal-bass-signature")
++    invalid = locked_plan.verify_access("other", "device_alpha", "ethereal-bass-signature")
++
++    print(f"Authorized access: {valid}")
++    print(f"Unauthorized access: {invalid}")
++
++    plan_payload = locked_plan.as_dict()
++    modes = [entry["mode"] for entry in plan_payload["audio_mastering"]]
++    print(f"Available render modes: {modes}")
++    print(plan_payload)
++
++
++
++def example_10_full_robotization_consequences():
++    """Example 10: Consequences of full robotization and practical mitigations."""
++    print("\n" + "=" * 70)
++    print("EXAMPLE 10: Full Robotization Consequences")
++    print("=" * 70)
++
++    report = analyze_full_robotization(
++        SocietySnapshot(
++            population=5_000_000,
++            robotization_rate=1.0,
++            human_job_participation=0.06,
++            ai_ownership_concentration=0.85,
++            critical_infrastructure_automation=0.93,
++            cyber_incident_rate=11.2,
++            civic_participation=0.37,
++            social_cohesion=0.41,
++        )
++    )
++
++    payload = report.as_dict()
++    top_risks = sorted(payload["consequences"], key=lambda c: c["severity"], reverse=True)[:3]
++    print("Top 3 risks:")
++    for item in top_risks:
++        print(f"  - {item['domain']}: severity={item['severity']}")
++        print(f"    {item['statement']}")
++
++    print("\nMitigation actions:")
++    for action in payload["mitigations"]:
++        print(f"  - {action['action_id']} [{action['domain']}] {action['title']}")
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
++    example_8_metaphysical_coda_media_plan()
++    example_9_personal_music_lock()
++    example_10_full_robotization_consequences()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/robotization_consequences.py b/robotization_consequences.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1d22cbdcd87d3ad1d16d7d0d10408367f0a8758f
+--- /dev/null
++++ b/robotization_consequences.py
+@@ -0,0 +1,184 @@
++"""Model consequences of full (100%) robotization and build mitigation plans."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from typing import Dict, List
++
++
++class RiskDomain(str, Enum):
++    LABOR_DISPLACEMENT = "labor_displacement"
++    WEALTH_CONCENTRATION = "wealth_concentration"
++    CRITICAL_INFRASTRUCTURE = "critical_infrastructure"
++    AI_GOVERNANCE = "ai_governance"
++    HUMAN_SKILL_ATROPHY = "human_skill_atrophy"
++    PSYCHOLOGICAL_MEANING = "psychological_meaning"
++
++
++@dataclass
++class ConsequenceSignal:
++    domain: RiskDomain
++    severity: float  # 0.0-1.0
++    probability: float  # 0.0-1.0
++    velocity: float  # 0.0-1.0
++    description: str
++
++    def risk_score(self) -> float:
++        return round(self.severity * self.probability * self.velocity, 4)
++
++
++@dataclass
++class MitigationAction:
++    name: str
++    domain: RiskDomain
++    expected_risk_reduction: float  # 0.0-1.0
++    horizon_months: int
++    owner: str
++
++
++@dataclass
++class RobotizationScenario:
++    automation_rate: float = 1.0
++    signals: List[ConsequenceSignal] = field(default_factory=list)
++    actions: List[MitigationAction] = field(default_factory=list)
++
++    def add_default_signals(self) -> None:
++        self.signals = [
++            ConsequenceSignal(
++                RiskDomain.LABOR_DISPLACEMENT,
++                severity=0.95,
++                probability=0.95,
++                velocity=0.85,
++                description="Large workforce displacement and wage floor collapse.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.WEALTH_CONCENTRATION,
++                severity=0.9,
++                probability=0.9,
++                velocity=0.8,
++                description="Capital returns dominate labor returns; inequality expands.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.CRITICAL_INFRASTRUCTURE,
++                severity=0.92,
++                probability=0.8,
++                velocity=0.78,
++                description="Single-model failures cascade through logistics/energy/health.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.AI_GOVERNANCE,
++                severity=0.88,
++                probability=0.82,
++                velocity=0.77,
++                description="Opaque autonomous decision layers reduce accountability.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.HUMAN_SKILL_ATROPHY,
++                severity=0.8,
++                probability=0.86,
++                velocity=0.74,
++                description="Loss of practical human expertise due to over-automation.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.PSYCHOLOGICAL_MEANING,
++                severity=0.78,
++                probability=0.8,
++                velocity=0.72,
++                description="Identity and purpose erosion as work structure dissolves.",
++            ),
++        ]
++
++    def add_default_actions(self) -> None:
++        self.actions = [
++            MitigationAction(
++                name="Universal Basic Dividend linked to automation productivity",
++                domain=RiskDomain.LABOR_DISPLACEMENT,
++                expected_risk_reduction=0.28,
++                horizon_months=18,
++                owner="Fiscal Authority",
++            ),
++            MitigationAction(
++                name="Robot-taxed social equity fund",
++                domain=RiskDomain.WEALTH_CONCENTRATION,
++                expected_risk_reduction=0.25,
++                horizon_months=24,
++                owner="Treasury",
++            ),
++            MitigationAction(
++                name="Dual-control failover with human emergency override",
++                domain=RiskDomain.CRITICAL_INFRASTRUCTURE,
++                expected_risk_reduction=0.31,
++                horizon_months=12,
++                owner="Infrastructure Agency",
++            ),
++            MitigationAction(
++                name="Mandatory model transparency and incident audit trails",
++                domain=RiskDomain.AI_GOVERNANCE,
++                expected_risk_reduction=0.22,
++                horizon_months=10,
++                owner="Regulatory Authority",
++            ),
++            MitigationAction(
++                name="National human-skill retention corps",
++                domain=RiskDomain.HUMAN_SKILL_ATROPHY,
++                expected_risk_reduction=0.2,
++                horizon_months=14,
++                owner="Education Ministry",
++            ),
++            MitigationAction(
++                name="Purpose and civic contribution programs",
++                domain=RiskDomain.PSYCHOLOGICAL_MEANING,
++                expected_risk_reduction=0.18,
++                horizon_months=16,
++                owner="Public Health + Civil Society",
++            ),
++        ]
++
++    def risk_dashboard(self) -> Dict[str, object]:
++        if not self.signals:
++            self.add_default_signals()
++        if not self.actions:
++            self.add_default_actions()
++
++        by_domain = {}
++        for signal in self.signals:
++            by_domain[signal.domain.value] = {
++                "severity": signal.severity,
++                "probability": signal.probability,
++                "velocity": signal.velocity,
++                "risk_score": signal.risk_score(),
++                "description": signal.description,
++            }
++
++        total_risk = sum(s.risk_score() for s in self.signals)
++        mitigation_value = sum(a.expected_risk_reduction for a in self.actions)
++        residual_risk = max(0.0, round(total_risk * (1.0 - min(0.85, mitigation_value / 3.0)), 4))
++
++        return {
++            "automation_rate": self.automation_rate,
++            "risk_domains": by_domain,
++            "mitigations": [
++                {
++                    "name": a.name,
++                    "domain": a.domain.value,
++                    "expected_risk_reduction": a.expected_risk_reduction,
++                    "horizon_months": a.horizon_months,
++                    "owner": a.owner,
++                }
++                for a in self.actions
++            ],
++            "aggregate": {
++                "total_risk": round(total_risk, 4),
++                "mitigation_capacity": round(mitigation_value, 4),
++                "residual_risk": residual_risk,
++                "status": "severe_but_actionable" if residual_risk > 1.5 else "stabilizing",
++            },
++        }
++
++
++if __name__ == "__main__":
++    import json
++
++    scenario = RobotizationScenario(automation_rate=1.0)
++    print(json.dumps(scenario.risk_dashboard(), indent=2))
+diff --git a/robotization_consequences.py b/robotization_consequences.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1d22cbdcd87d3ad1d16d7d0d10408367f0a8758f
+--- /dev/null
++++ b/robotization_consequences.py
+@@ -0,0 +1,184 @@
++"""Model consequences of full (100%) robotization and build mitigation plans."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from typing import Dict, List
++
++
++class RiskDomain(str, Enum):
++    LABOR_DISPLACEMENT = "labor_displacement"
++    WEALTH_CONCENTRATION = "wealth_concentration"
++    CRITICAL_INFRASTRUCTURE = "critical_infrastructure"
++    AI_GOVERNANCE = "ai_governance"
++    HUMAN_SKILL_ATROPHY = "human_skill_atrophy"
++    PSYCHOLOGICAL_MEANING = "psychological_meaning"
++
++
++@dataclass
++class ConsequenceSignal:
++    domain: RiskDomain
++    severity: float  # 0.0-1.0
++    probability: float  # 0.0-1.0
++    velocity: float  # 0.0-1.0
++    description: str
++
++    def risk_score(self) -> float:
++        return round(self.severity * self.probability * self.velocity, 4)
++
++
++@dataclass
++class MitigationAction:
++    name: str
++    domain: RiskDomain
++    expected_risk_reduction: float  # 0.0-1.0
++    horizon_months: int
++    owner: str
++
++
++@dataclass
++class RobotizationScenario:
++    automation_rate: float = 1.0
++    signals: List[ConsequenceSignal] = field(default_factory=list)
++    actions: List[MitigationAction] = field(default_factory=list)
++
++    def add_default_signals(self) -> None:
++        self.signals = [
++            ConsequenceSignal(
++                RiskDomain.LABOR_DISPLACEMENT,
++                severity=0.95,
++                probability=0.95,
++                velocity=0.85,
++                description="Large workforce displacement and wage floor collapse.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.WEALTH_CONCENTRATION,
++                severity=0.9,
++                probability=0.9,
++                velocity=0.8,
++                description="Capital returns dominate labor returns; inequality expands.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.CRITICAL_INFRASTRUCTURE,
++                severity=0.92,
++                probability=0.8,
++                velocity=0.78,
++                description="Single-model failures cascade through logistics/energy/health.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.AI_GOVERNANCE,
++                severity=0.88,
++                probability=0.82,
++                velocity=0.77,
++                description="Opaque autonomous decision layers reduce accountability.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.HUMAN_SKILL_ATROPHY,
++                severity=0.8,
++                probability=0.86,
++                velocity=0.74,
++                description="Loss of practical human expertise due to over-automation.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.PSYCHOLOGICAL_MEANING,
++                severity=0.78,
++                probability=0.8,
++                velocity=0.72,
++                description="Identity and purpose erosion as work structure dissolves.",
++            ),
++        ]
++
++    def add_default_actions(self) -> None:
++        self.actions = [
++            MitigationAction(
++                name="Universal Basic Dividend linked to automation productivity",
++                domain=RiskDomain.LABOR_DISPLACEMENT,
++                expected_risk_reduction=0.28,
++                horizon_months=18,
++                owner="Fiscal Authority",
++            ),
++            MitigationAction(
++                name="Robot-taxed social equity fund",
++                domain=RiskDomain.WEALTH_CONCENTRATION,
++                expected_risk_reduction=0.25,
++                horizon_months=24,
++                owner="Treasury",
++            ),
++            MitigationAction(
++                name="Dual-control failover with human emergency override",
++                domain=RiskDomain.CRITICAL_INFRASTRUCTURE,
++                expected_risk_reduction=0.31,
++                horizon_months=12,
++                owner="Infrastructure Agency",
++            ),
++            MitigationAction(
++                name="Mandatory model transparency and incident audit trails",
++                domain=RiskDomain.AI_GOVERNANCE,
++                expected_risk_reduction=0.22,
++                horizon_months=10,
++                owner="Regulatory Authority",
++            ),
++            MitigationAction(
++                name="National human-skill retention corps",
++                domain=RiskDomain.HUMAN_SKILL_ATROPHY,
++                expected_risk_reduction=0.2,
++                horizon_months=14,
++                owner="Education Ministry",
++            ),
++            MitigationAction(
++                name="Purpose and civic contribution programs",
++                domain=RiskDomain.PSYCHOLOGICAL_MEANING,
++                expected_risk_reduction=0.18,
++                horizon_months=16,
++                owner="Public Health + Civil Society",
++            ),
++        ]
++
++    def risk_dashboard(self) -> Dict[str, object]:
++        if not self.signals:
++            self.add_default_signals()
++        if not self.actions:
++            self.add_default_actions()
++
++        by_domain = {}
++        for signal in self.signals:
++            by_domain[signal.domain.value] = {
++                "severity": signal.severity,
++                "probability": signal.probability,
++                "velocity": signal.velocity,
++                "risk_score": signal.risk_score(),
++                "description": signal.description,
++            }
++
++        total_risk = sum(s.risk_score() for s in self.signals)
++        mitigation_value = sum(a.expected_risk_reduction for a in self.actions)
++        residual_risk = max(0.0, round(total_risk * (1.0 - min(0.85, mitigation_value / 3.0)), 4))
++
++        return {
++            "automation_rate": self.automation_rate,
++            "risk_domains": by_domain,
++            "mitigations": [
++                {
++                    "name": a.name,
++                    "domain": a.domain.value,
++                    "expected_risk_reduction": a.expected_risk_reduction,
++                    "horizon_months": a.horizon_months,
++                    "owner": a.owner,
++                }
++                for a in self.actions
++            ],
++            "aggregate": {
++                "total_risk": round(total_risk, 4),
++                "mitigation_capacity": round(mitigation_value, 4),
++                "residual_risk": residual_risk,
++                "status": "severe_but_actionable" if residual_risk > 1.5 else "stabilizing",
++            },
++        }
++
++
++if __name__ == "__main__":
++    import json
++
++    scenario = RobotizationScenario(automation_rate=1.0)
++    print(json.dumps(scenario.risk_dashboard(), indent=2))
+diff --git a/robotization_consequences.py b/robotization_consequences.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1d22cbdcd87d3ad1d16d7d0d10408367f0a8758f
+--- /dev/null
++++ b/robotization_consequences.py
+@@ -0,0 +1,184 @@
++"""Model consequences of full (100%) robotization and build mitigation plans."""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from typing import Dict, List
++
++
++class RiskDomain(str, Enum):
++    LABOR_DISPLACEMENT = "labor_displacement"
++    WEALTH_CONCENTRATION = "wealth_concentration"
++    CRITICAL_INFRASTRUCTURE = "critical_infrastructure"
++    AI_GOVERNANCE = "ai_governance"
++    HUMAN_SKILL_ATROPHY = "human_skill_atrophy"
++    PSYCHOLOGICAL_MEANING = "psychological_meaning"
++
++
++@dataclass
++class ConsequenceSignal:
++    domain: RiskDomain
++    severity: float  # 0.0-1.0
++    probability: float  # 0.0-1.0
++    velocity: float  # 0.0-1.0
++    description: str
++
++    def risk_score(self) -> float:
++        return round(self.severity * self.probability * self.velocity, 4)
++
++
++@dataclass
++class MitigationAction:
++    name: str
++    domain: RiskDomain
++    expected_risk_reduction: float  # 0.0-1.0
++    horizon_months: int
++    owner: str
++
++
++@dataclass
++class RobotizationScenario:
++    automation_rate: float = 1.0
++    signals: List[ConsequenceSignal] = field(default_factory=list)
++    actions: List[MitigationAction] = field(default_factory=list)
++
++    def add_default_signals(self) -> None:
++        self.signals = [
++            ConsequenceSignal(
++                RiskDomain.LABOR_DISPLACEMENT,
++                severity=0.95,
++                probability=0.95,
++                velocity=0.85,
++                description="Large workforce displacement and wage floor collapse.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.WEALTH_CONCENTRATION,
++                severity=0.9,
++                probability=0.9,
++                velocity=0.8,
++                description="Capital returns dominate labor returns; inequality expands.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.CRITICAL_INFRASTRUCTURE,
++                severity=0.92,
++                probability=0.8,
++                velocity=0.78,
++                description="Single-model failures cascade through logistics/energy/health.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.AI_GOVERNANCE,
++                severity=0.88,
++                probability=0.82,
++                velocity=0.77,
++                description="Opaque autonomous decision layers reduce accountability.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.HUMAN_SKILL_ATROPHY,
++                severity=0.8,
++                probability=0.86,
++                velocity=0.74,
++                description="Loss of practical human expertise due to over-automation.",
++            ),
++            ConsequenceSignal(
++                RiskDomain.PSYCHOLOGICAL_MEANING,
++                severity=0.78,
++                probability=0.8,
++                velocity=0.72,
++                description="Identity and purpose erosion as work structure dissolves.",
++            ),
++        ]
++
++    def add_default_actions(self) -> None:
++        self.actions = [
++            MitigationAction(
++                name="Universal Basic Dividend linked to automation productivity",
++                domain=RiskDomain.LABOR_DISPLACEMENT,
++                expected_risk_reduction=0.28,
++                horizon_months=18,
++                owner="Fiscal Authority",
++            ),
++            MitigationAction(
++                name="Robot-taxed social equity fund",
++                domain=RiskDomain.WEALTH_CONCENTRATION,
++                expected_risk_reduction=0.25,
++                horizon_months=24,
++                owner="Treasury",
++            ),
++            MitigationAction(
++                name="Dual-control failover with human emergency override",
++                domain=RiskDomain.CRITICAL_INFRASTRUCTURE,
++                expected_risk_reduction=0.31,
++                horizon_months=12,
++                owner="Infrastructure Agency",
++            ),
++            MitigationAction(
++                name="Mandatory model transparency and incident audit trails",
++                domain=RiskDomain.AI_GOVERNANCE,
++                expected_risk_reduction=0.22,
++                horizon_months=10,
++                owner="Regulatory Authority",
++            ),
++            MitigationAction(
++                name="National human-skill retention corps",
++                domain=RiskDomain.HUMAN_SKILL_ATROPHY,
++                expected_risk_reduction=0.2,
++                horizon_months=14,
++                owner="Education Ministry",
++            ),
++            MitigationAction(
++                name="Purpose and civic contribution programs",
++                domain=RiskDomain.PSYCHOLOGICAL_MEANING,
++                expected_risk_reduction=0.18,
++                horizon_months=16,
++                owner="Public Health + Civil Society",
++            ),
++        ]
++
++    def risk_dashboard(self) -> Dict[str, object]:
++        if not self.signals:
++            self.add_default_signals()
++        if not self.actions:
++            self.add_default_actions()
++
++        by_domain = {}
++        for signal in self.signals:
++            by_domain[signal.domain.value] = {
++                "severity": signal.severity,
++                "probability": signal.probability,
++                "velocity": signal.velocity,
++                "risk_score": signal.risk_score(),
++                "description": signal.description,
++            }
++
++        total_risk = sum(s.risk_score() for s in self.signals)
++        mitigation_value = sum(a.expected_risk_reduction for a in self.actions)
++        residual_risk = max(0.0, round(total_risk * (1.0 - min(0.85, mitigation_value / 3.0)), 4))
++
++        return {
++            "automation_rate": self.automation_rate,
++            "risk_domains": by_domain,
++            "mitigations": [
++                {
++                    "name": a.name,
++                    "domain": a.domain.value,
++                    "expected_risk_reduction": a.expected_risk_reduction,
++                    "horizon_months": a.horizon_months,
++                    "owner": a.owner,
++                }
++                for a in self.actions
++            ],
++            "aggregate": {
++                "total_risk": round(total_risk, 4),
++                "mitigation_capacity": round(mitigation_value, 4),
++                "residual_risk": residual_risk,
++                "status": "severe_but_actionable" if residual_risk > 1.5 else "stabilizing",
++            },
++        }
++
++
++if __name__ == "__main__":
++    import json
++
++    scenario = RobotizationScenario(automation_rate=1.0)
++    print(json.dumps(scenario.risk_dashboard(), indent=2))
