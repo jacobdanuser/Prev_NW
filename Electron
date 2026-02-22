@@ -1,0 +1,5873 @@
+diff --git a/ELECTRON_BASELINE.md b/ELECTRON_BASELINE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..9869510a92f29d606332419c19984c97cfc4459c
+--- /dev/null
++++ b/ELECTRON_BASELINE.md
+@@ -0,0 +1,27 @@
++# Ephemeral Electron Baseline
++
++This repository now includes two drop-in modules:
++
++- `electron_ephemeral_baseline.js` for Electron main-process hardening.
++- `backend_secret_shutdown.js` for backend secret TTL storage + redacted request logging.
++
++## Electron usage
++
++```js
++const { app } = require('electron');
++const { applyEphemeralElectronBaseline } = require('./electron_ephemeral_baseline');
++
++applyEphemeralElectronBaseline({ app });
++```
++
++## Backend usage (Express)
++
++```js
++const express = require('express');
++const { redactingRequestLogger, ephemeralSecretStore } = require('./backend_secret_shutdown');
++
++const app = express();
++const secrets = ephemeralSecretStore(30_000);
++
++app.use(redactingRequestLogger);
++```
+diff --git a/backend_secret_shutdown.js b/backend_secret_shutdown.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..13d784b9e427a8147a946886d563e1675bd9cfe9
+--- /dev/null
++++ b/backend_secret_shutdown.js
+@@ -0,0 +1,64 @@
++'use strict';
++
++/**
++ * Backend-side helpers to keep runtime as ephemeral as possible.
++ * Compatible with Express-style middleware.
++ */
++
++const crypto = require('crypto');
++
++function ephemeralSecretStore(ttlMs = 60_000) {
++  const store = new Map();
++
++  function set(key, value) {
++    const expiresAt = Date.now() + ttlMs;
++    store.set(key, { value, expiresAt });
++  }
++
++  function get(key) {
++    const item = store.get(key);
++    if (!item) return undefined;
++    if (Date.now() > item.expiresAt) {
++      store.delete(key);
++      return undefined;
++    }
++    return item.value;
++  }
++
++  function purge() {
++    for (const [key, item] of store.entries()) {
++      if (!item || Date.now() > item.expiresAt) {
++        store.delete(key);
++      }
++    }
++  }
++
++  function destroy() {
++    for (const [, item] of store.entries()) {
++      if (typeof item.value === 'string') {
++        const random = crypto.randomBytes(item.value.length).toString('hex').slice(0, item.value.length);
++        item.value = random;
++      }
++    }
++    store.clear();
++  }
++
++  return { set, get, purge, destroy };
++}
++
++function redactingRequestLogger(req, _res, next) {
++  const unsafeHeaders = ['authorization', 'x-api-key', 'cookie', 'set-cookie'];
++  const safeHeaders = { ...req.headers };
++
++  for (const h of unsafeHeaders) {
++    if (safeHeaders[h]) safeHeaders[h] = '[REDACTED]';
++  }
++
++  console.info('[request]', req.method, req.originalUrl || req.url, safeHeaders);
++  next();
++}
++
++module.exports = {
++  ephemeralSecretStore,
++  redactingRequestLogger
++};
+diff --git a/electron_ephemeral_baseline.js b/electron_ephemeral_baseline.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..5a079b8cf2c055127e35f165ac2833fee6f76a2f
+--- /dev/null
++++ b/electron_ephemeral_baseline.js
+@@ -0,0 +1,137 @@
++'use strict';
++
++/**
++ * Electron baseline hardening focused on ephemeral runtime behavior.
++ *
++ * Usage (main process):
++ *   const { app, BrowserWindow } = require('electron');
++ *   const { applyEphemeralElectronBaseline } = require('./electron_ephemeral_baseline');
++ *
++ *   applyEphemeralElectronBaseline({ app });
++ *   app.whenReady().then(() => {
++ *     const win = new BrowserWindow({
++ *       webPreferences: {
++ *         contextIsolation: true,
++ *         sandbox: true,
++ *         nodeIntegration: false,
++ *         partition: 'ephemeral:main'
++ *       }
++ *     });
++ *   });
++ */
++
++const path = require('path');
++const crypto = require('crypto');
++
++function bestEffortDelete(value) {
++  if (!value || typeof value !== 'string') return;
++  const random = crypto.randomBytes(value.length).toString('hex').slice(0, value.length);
++  // overwrite local variable reference best-effort
++  value = random; // eslint-disable-line no-param-reassign
++  value = ''; // eslint-disable-line no-param-reassign
++}
++
++function scrubProcessSecrets(options = {}) {
++  const {
++    envPrefixDenyList = ['SECRET', 'TOKEN', 'KEY', 'PASSWORD', 'CREDENTIAL', 'PRIVATE'],
++    explicitKeys = []
++  } = options;
++
++  const keys = Object.keys(process.env);
++  for (const key of keys) {
++    const upper = key.toUpperCase();
++    const denied = envPrefixDenyList.some((word) => upper.includes(word));
++    if (denied || explicitKeys.includes(key)) {
++      bestEffortDelete(process.env[key]);
++      delete process.env[key];
++    }
++  }
++}
++
++function attachLogRedaction() {
++  const redact = (input) => {
++    const text = String(input);
++    return text
++      .replace(/(bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
++      .replace(/(api[_-]?key\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(secret\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]');
++  };
++
++  for (const method of ['log', 'info', 'warn', 'error']) {
++    const original = console[method].bind(console);
++    console[method] = (...args) => original(...args.map(redact));
++  }
++}
++
++async function hardenSession(electronSession) {
++  // Never persist cookies/storage across launches.
++  await electronSession.clearStorageData({
++    storages: [
++      'appcache',
++      'cookies',
++      'filesystem',
++      'indexdb',
++      'localstorage',
++      'shadercache',
++      'serviceworkers',
++      'cachestorage',
++      'websql'
++    ]
++  });
++
++  await electronSession.clearCache();
++
++  // Strict network defaults: HTTPS only and deny known tracking pivots.
++  electronSession.webRequest.onBeforeRequest((details, callback) => {
++    const url = details.url || '';
++    const isHttp = /^http:\/\//i.test(url);
++    const blocked = /(telemetry|tracking|metrics|beacon)/i.test(url);
++    callback({ cancel: isHttp || blocked });
++  });
++
++  electronSession.setPermissionRequestHandler((_webContents, permission, callback) => {
++    const allowList = new Set(['clipboard-read']);
++    callback(allowList.has(permission));
++  });
++}
++
++function applyEphemeralElectronBaseline({ app, userDataFolderName = 'ephemeral-runtime' }) {
++  if (!app || typeof app.setPath !== 'function') {
++    throw new TypeError('applyEphemeralElectronBaseline requires the Electron app object');
++  }
++
++  // Route all process-level user data to a throwaway folder.
++  app.setPath('userData', path.join(app.getPath('temp'), userDataFolderName));
++
++  // Chromium / Electron process hardening switches.
++  app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,PasswordManagerEnableService');
++  app.commandLine.appendSwitch('disable-sync');
++  app.commandLine.appendSwitch('disable-background-networking');
++  app.commandLine.appendSwitch('disable-renderer-backgrounding');
++  app.commandLine.appendSwitch('no-default-browser-check');
++
++  scrubProcessSecrets();
++  attachLogRedaction();
++
++  app.on('web-contents-created', (_event, contents) => {
++    contents.setWindowOpenHandler(() => ({ action: 'deny' }));
++
++    contents.on('will-navigate', (event, targetUrl) => {
++      if (!/^https:\/\//i.test(targetUrl)) {
++        event.preventDefault();
++      }
++    });
++  });
++
++  app.on('before-quit', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession);
++    scrubProcessSecrets();
++  });
++}
++
++module.exports = {
++  applyEphemeralElectronBaseline,
++  hardenSession,
++  scrubProcessSecrets
++};
+diff --git a/ELECTRON_BASELINE.md b/ELECTRON_BASELINE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..559a67b9f45ac3395810fbe9adc9ea68a13fd54f
+--- /dev/null
++++ b/ELECTRON_BASELINE.md
+@@ -0,0 +1,61 @@
++# Ephemeral Electron Baseline
++
++This repository includes two drop-in modules:
++
++- `electron_ephemeral_baseline.js` for Electron main-process hardening.
++- `backend_secret_shutdown.js` for backend secret TTL storage + redacted request logging.
++
++## Electron usage
++
++```js
++const { app, BrowserWindow } = require('electron');
++const { applyEphemeralElectronBaseline } = require('./electron_ephemeral_baseline');
++
++applyEphemeralElectronBaseline({
++  app,
++  allowedNavigationHosts: ['example.com']
++});
++
++app.whenReady().then(() => {
++  const win = new BrowserWindow({
++    webPreferences: {
++      contextIsolation: true,
++      sandbox: true,
++      nodeIntegration: false,
++      partition: 'ephemeral:main'
++    }
++  });
++
++  win.loadURL('https://example.com');
++});
++```
++
++### What this baseline now does
++
++- Uses a unique temp `userData` directory per run.
++- Clears browser storage/cache on ready and before quit.
++- Blocks non-HTTPS requests and denies dangerous permissions.
++- Blocks `window.open` and webview attachment.
++- Scrubs secret-like env vars and redacts secret-like console text.
++- Deletes the temp runtime folder during shutdown (`will-quit`, best effort).
++
++## Backend usage (Express)
++
++```js
++const express = require('express');
++const { redactingRequestLogger, ephemeralSecretStore } = require('./backend_secret_shutdown');
++
++const app = express();
++const secrets = ephemeralSecretStore(30_000, { purgeIntervalMs: 5_000, maxEntries: 2_000 });
++
++app.use(redactingRequestLogger);
++
++app.post('/session', (req, res) => {
++  secrets.set(`session:${req.ip}`, req.body.token);
++  res.status(204).end();
++});
++
++process.on('SIGTERM', () => {
++  secrets.destroy();
++});
++```
+diff --git a/backend_secret_shutdown.js b/backend_secret_shutdown.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..a38a4abd51d5d98fa52d6e58d986101c817a4fc6
+--- /dev/null
++++ b/backend_secret_shutdown.js
+@@ -0,0 +1,109 @@
++'use strict';
++
++/**
++ * Backend-side helpers to keep runtime as ephemeral as possible.
++ * Compatible with Express-style middleware.
++ */
++
++const crypto = require('crypto');
++
++function cloneSafe(value) {
++  if (value === null || value === undefined) return value;
++  if (typeof value === 'object') return JSON.parse(JSON.stringify(value));
++  return value;
++}
++
++function ephemeralSecretStore(ttlMs = 60_000, options = {}) {
++  const store = new Map();
++  const {
++    purgeIntervalMs = 5_000,
++    maxEntries = 1_000
++  } = options;
++
++  const interval = setInterval(() => {
++    purge();
++  }, purgeIntervalMs);
++
++  if (typeof interval.unref === 'function') {
++    interval.unref();
++  }
++
++  function set(key, value) {
++    if (store.size >= maxEntries) {
++      purge();
++      if (store.size >= maxEntries) {
++        throw new Error('ephemeral_secret_store_capacity_reached');
++      }
++    }
++
++    const expiresAt = Date.now() + ttlMs;
++    store.set(key, { value: cloneSafe(value), expiresAt });
++  }
++
++  function get(key) {
++    const item = store.get(key);
++    if (!item) return undefined;
++    if (Date.now() > item.expiresAt) {
++      store.delete(key);
++      return undefined;
++    }
++    return cloneSafe(item.value);
++  }
++
++  function del(key) {
++    return store.delete(key);
++  }
++
++  function purge() {
++    const now = Date.now();
++    for (const [key, item] of store.entries()) {
++      if (!item || now > item.expiresAt) {
++        store.delete(key);
++      }
++    }
++  }
++
++  function destroy() {
++    clearInterval(interval);
++
++    for (const [, item] of store.entries()) {
++      if (typeof item.value === 'string') {
++        const random = crypto.randomBytes(item.value.length).toString('hex').slice(0, item.value.length);
++        item.value = random;
++      }
++    }
++
++    store.clear();
++  }
++
++  function size() {
++    purge();
++    return store.size;
++  }
++
++  return { set, get, del, purge, destroy, size };
++}
++
++function redactingRequestLogger(req, _res, next) {
++  const unsafeHeaders = [
++    'authorization',
++    'x-api-key',
++    'cookie',
++    'set-cookie',
++    'proxy-authorization',
++    'x-auth-token'
++  ];
++  const safeHeaders = { ...req.headers };
++
++  for (const headerName of unsafeHeaders) {
++    if (safeHeaders[headerName]) safeHeaders[headerName] = '[REDACTED]';
++  }
++
++  console.info('[request]', req.method, req.originalUrl || req.url, safeHeaders);
++  next();
++}
++
++module.exports = {
++  ephemeralSecretStore,
++  redactingRequestLogger
++};
+diff --git a/electron_ephemeral_baseline.js b/electron_ephemeral_baseline.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..05f22ee2956d5df43a1d5d84f2120083a3085f3c
+--- /dev/null
++++ b/electron_ephemeral_baseline.js
+@@ -0,0 +1,209 @@
++'use strict';
++
++/**
++ * Electron baseline hardening focused on ephemeral runtime behavior.
++ *
++ * Usage (main process):
++ *   const { app, BrowserWindow } = require('electron');
++ *   const { applyEphemeralElectronBaseline } = require('./electron_ephemeral_baseline');
++ *
++ *   applyEphemeralElectronBaseline({ app });
++ *   app.whenReady().then(() => {
++ *     const win = new BrowserWindow({
++ *       webPreferences: {
++ *         contextIsolation: true,
++ *         sandbox: true,
++ *         nodeIntegration: false,
++ *         partition: 'ephemeral:main'
++ *       }
++ *     });
++ *   });
++ */
++
++const crypto = require('crypto');
++const fs = require('fs/promises');
++const os = require('os');
++const path = require('path');
++
++const DEFAULT_SECRET_KEYWORDS = ['SECRET', 'TOKEN', 'KEY', 'PASSWORD', 'CREDENTIAL', 'PRIVATE'];
++const DEFAULT_DENIED_PERMISSIONS = new Set([
++  'camera',
++  'microphone',
++  'geolocation',
++  'midi',
++  'midiSysex',
++  'notifications',
++  'openExternal',
++  'pointerLock',
++  'fullscreen',
++  'clipboard-sanitized-write'
++]);
++
++function randomTag(length = 8) {
++  return crypto.randomBytes(length).toString('hex');
++}
++
++function pickAllowedNavigation(originAllowList, targetUrl) {
++  if (!/^https:\/\//i.test(targetUrl)) return false;
++  if (!originAllowList || originAllowList.length === 0) return true;
++
++  try {
++    const host = new URL(targetUrl).host.toLowerCase();
++    return originAllowList.some((allowed) => {
++      const clean = String(allowed || '').trim().toLowerCase();
++      return clean.length > 0 && (host === clean || host.endsWith(`.${clean}`));
++    });
++  } catch {
++    return false;
++  }
++}
++
++function scrubProcessSecrets(options = {}) {
++  const {
++    envKeywordDenyList = DEFAULT_SECRET_KEYWORDS,
++    explicitKeys = []
++  } = options;
++
++  const removed = [];
++  const keys = Object.keys(process.env);
++
++  for (const key of keys) {
++    const upper = key.toUpperCase();
++    const deniedByKeyword = envKeywordDenyList.some((word) => upper.includes(String(word).toUpperCase()));
++    if (deniedByKeyword || explicitKeys.includes(key)) {
++      delete process.env[key];
++      removed.push(key);
++    }
++  }
++
++  return removed;
++}
++
++function attachLogRedaction() {
++  const redact = (input) => {
++    const text = String(input);
++    return text
++      .replace(/(bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
++      .replace(/(api[_-]?key\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(secret\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(authorization\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(cookie\s*[:=]\s*)[^\n]+/gi, '$1[REDACTED]');
++  };
++
++  for (const method of ['log', 'info', 'warn', 'error']) {
++    const original = console[method].bind(console);
++    console[method] = (...args) => original(...args.map(redact));
++  }
++}
++
++async function hardenSession(electronSession, options = {}) {
++  if (!electronSession) return;
++
++  const { denyTrackingRequests = true } = options;
++
++  await electronSession.clearStorageData({
++    storages: [
++      'appcache',
++      'cookies',
++      'filesystem',
++      'indexeddb',
++      'localstorage',
++      'shadercache',
++      'serviceworkers',
++      'cachestorage',
++      'websql'
++    ]
++  });
++
++  await electronSession.clearCache();
++
++  electronSession.webRequest.onBeforeRequest((details, callback) => {
++    const url = details.url || '';
++    const isHttp = /^http:\/\//i.test(url);
++    const isTracking = /(telemetry|tracking|metrics|beacon)/i.test(url);
++    callback({ cancel: isHttp || (denyTrackingRequests && isTracking) });
++  });
++
++  electronSession.setPermissionRequestHandler((_webContents, permission, callback) => {
++    callback(!DEFAULT_DENIED_PERMISSIONS.has(permission));
++  });
++}
++
++async function tryDeleteDirectory(dirPath) {
++  if (!dirPath) return;
++  try {
++    await fs.rm(dirPath, { recursive: true, force: true, maxRetries: 2 });
++  } catch {
++    // Best-effort cleanup only.
++  }
++}
++
++function applyEphemeralElectronBaseline({
++  app,
++  userDataFolderName,
++  allowedNavigationHosts = [],
++  secretKeyDenyList = DEFAULT_SECRET_KEYWORDS,
++  clearStorageOnReady = true
++}) {
++  if (!app || typeof app.setPath !== 'function') {
++    throw new TypeError('applyEphemeralElectronBaseline requires the Electron app object');
++  }
++
++  const ephemeralFolder = userDataFolderName
++    || `ephemeral-runtime-${process.pid}-${Date.now()}-${randomTag(4)}`;
++  const ephemeralPath = path.join(os.tmpdir(), ephemeralFolder);
++
++  app.setPath('userData', ephemeralPath);
++
++  app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,PasswordManagerEnableService,InterestFeedContentSuggestions');
++  app.commandLine.appendSwitch('disable-sync');
++  app.commandLine.appendSwitch('disable-background-networking');
++  app.commandLine.appendSwitch('disable-renderer-backgrounding');
++  app.commandLine.appendSwitch('disable-breakpad');
++  app.commandLine.appendSwitch('metrics-recording-only');
++  app.commandLine.appendSwitch('no-default-browser-check');
++
++  scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  attachLogRedaction();
++
++  app.on('web-contents-created', (_event, contents) => {
++    contents.setWindowOpenHandler(() => ({ action: 'deny' }));
++
++    contents.on('will-navigate', (event, targetUrl) => {
++      if (!pickAllowedNavigation(allowedNavigationHosts, targetUrl)) {
++        event.preventDefault();
++      }
++    });
++
++    contents.on('will-attach-webview', (event) => {
++      event.preventDefault();
++    });
++  });
++
++  app.on('ready', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession);
++
++    if (clearStorageOnReady) {
++      await session.defaultSession.flushStorageData();
++    }
++  });
++
++  app.on('before-quit', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession);
++    scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  });
++
++  app.on('will-quit', async () => {
++    await tryDeleteDirectory(ephemeralPath);
++  });
++
++  return { ephemeralPath };
++}
++
++module.exports = {
++  applyEphemeralElectronBaseline,
++  hardenSession,
++  scrubProcessSecrets
++};
+diff --git a/ELECTRON_BASELINE.md b/ELECTRON_BASELINE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..63184162347928686cea3b82269507fbb3e57f92
+--- /dev/null
++++ b/ELECTRON_BASELINE.md
+@@ -0,0 +1,67 @@
++# Ephemeral Electron Baseline
++
++This repository includes two drop-in modules:
++
++- `electron_ephemeral_baseline.js` for Electron main-process hardening.
++- `backend_secret_shutdown.js` for backend secret TTL storage + redacted request/static-cycle protection.
++
++## Electron usage
++
++```js
++const { app, BrowserWindow } = require('electron');
++const { applyEphemeralElectronBaseline } = require('./electron_ephemeral_baseline');
++
++applyEphemeralElectronBaseline({
++  app,
++  allowedNavigationHosts: ['example.com'],
++  denyTrackingRequests: true
++});
++
++app.whenReady().then(() => {
++  const win = new BrowserWindow({
++    webPreferences: {
++      contextIsolation: true,
++      sandbox: true,
++      nodeIntegration: false,
++      partition: 'ephemeral:main'
++    }
++  });
++
++  win.loadURL('https://example.com');
++});
++```
++
++## Backend usage (Express)
++
++```js
++const express = require('express');
++const {
++  redactingRequestLogger,
++  hardenStaticResponses,
++  ephemeralSecretStore
++} = require('./backend_secret_shutdown');
++
++const app = express();
++const secrets = ephemeralSecretStore(30_000, { purgeIntervalMs: 5_000, maxEntries: 2_000 });
++
++app.use(hardenStaticResponses);
++app.use(redactingRequestLogger);
++
++app.post('/session', (req, res) => {
++  secrets.set(`session:${req.ip}`, req.body.token);
++  res.status(204).end();
++});
++
++process.on('SIGTERM', () => {
++  secrets.destroy();
++});
++```
++
++## Protection highlights
++
++- Unique temp userData per run + best-effort removal on `will-quit`.
++- Runtime blocking of non-HTTPS, tracking URLs, `window.open`, and webview attachments.
++- Permission deny defaults for camera/mic/geolocation and related APIs.
++- Process env secret scrubbing and log redaction.
++- In-memory secret lifecycle controls (`set/get/del/touch/purge/destroy/size`) with TTL and bounded capacity.
++- Static-cycle hardening via no-store/no-cache response middleware.
+diff --git a/backend_secret_shutdown.js b/backend_secret_shutdown.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..ccb9a37caeb74735fe3aa4c4784937e038ecb6be
+--- /dev/null
++++ b/backend_secret_shutdown.js
+@@ -0,0 +1,172 @@
++'use strict';
++
++/**
++ * Backend-side helpers to keep runtime as ephemeral as possible.
++ * Compatible with Express-style middleware.
++ */
++
++const crypto = require('crypto');
++
++function cloneSafe(value) {
++  if (value === null || value === undefined) return value;
++  if (typeof value === 'object') return JSON.parse(JSON.stringify(value));
++  return value;
++}
++
++function overwriteString(input) {
++  if (typeof input !== 'string' || input.length === 0) return '';
++  return crypto.randomBytes(input.length).toString('hex').slice(0, input.length);
++}
++
++function overwriteObjectDeep(value) {
++  if (typeof value === 'string') return overwriteString(value);
++  if (Array.isArray(value)) return value.map((entry) => overwriteObjectDeep(entry));
++  if (value && typeof value === 'object') {
++    const out = {};
++    for (const key of Object.keys(value)) {
++      out[key] = overwriteObjectDeep(value[key]);
++    }
++    return out;
++  }
++  return value;
++}
++
++function ephemeralSecretStore(ttlMs = 60_000, options = {}) {
++  const store = new Map();
++  const {
++    purgeIntervalMs = 5_000,
++    maxEntries = 1_000,
++    now = () => Date.now()
++  } = options;
++
++  const interval = setInterval(() => {
++    purge();
++  }, purgeIntervalMs);
++
++  if (typeof interval.unref === 'function') {
++    interval.unref();
++  }
++
++  function normalizeKey(key) {
++    return String(key);
++  }
++
++  function isExpired(item) {
++    return !item || now() > item.expiresAt;
++  }
++
++  function set(key, value) {
++    const normalized = normalizeKey(key);
++
++    if (store.size >= maxEntries && !store.has(normalized)) {
++      purge();
++      if (store.size >= maxEntries) {
++        throw new Error('ephemeral_secret_store_capacity_reached');
++      }
++    }
++
++    const expiresAt = now() + ttlMs;
++    store.set(normalized, { value: cloneSafe(value), expiresAt });
++  }
++
++  function get(key) {
++    const normalized = normalizeKey(key);
++    const item = store.get(normalized);
++    if (isExpired(item)) {
++      store.delete(normalized);
++      return undefined;
++    }
++    return cloneSafe(item.value);
++  }
++
++  function del(key) {
++    return store.delete(normalizeKey(key));
++  }
++
++  function touch(key, extensionMs = ttlMs) {
++    const normalized = normalizeKey(key);
++    const item = store.get(normalized);
++    if (isExpired(item)) {
++      store.delete(normalized);
++      return false;
++    }
++
++    item.expiresAt = now() + extensionMs;
++    return true;
++  }
++
++  function purge() {
++    const snapshotNow = now();
++    for (const [key, item] of store.entries()) {
++      if (!item || snapshotNow > item.expiresAt) {
++        store.delete(key);
++      }
++    }
++  }
++
++  function destroy() {
++    clearInterval(interval);
++
++    for (const [, item] of store.entries()) {
++      item.value = overwriteObjectDeep(item.value);
++      item.expiresAt = 0;
++    }
++
++    store.clear();
++  }
++
++  function size() {
++    purge();
++    return store.size;
++  }
++
++  return { set, get, del, touch, purge, destroy, size };
++}
++
++function redactSensitiveHeaders(headers = {}) {
++  const unsafeHeaders = new Set([
++    'authorization',
++    'x-api-key',
++    'cookie',
++    'set-cookie',
++    'proxy-authorization',
++    'x-auth-token',
++    'x-csrf-token',
++    'x-access-token'
++  ]);
++
++  const safeHeaders = { ...headers };
++  for (const [headerName, headerValue] of Object.entries(safeHeaders)) {
++    if (unsafeHeaders.has(String(headerName).toLowerCase())) {
++      safeHeaders[headerName] = '[REDACTED]';
++      continue;
++    }
++
++    if (typeof headerValue === 'string' && /(bearer\s+[a-z0-9._-]+|api[_-]?key\s*[:=])/i.test(headerValue)) {
++      safeHeaders[headerName] = '[REDACTED]';
++    }
++  }
++
++  return safeHeaders;
++}
++
++function redactingRequestLogger(req, _res, next) {
++  const safeHeaders = redactSensitiveHeaders(req.headers);
++  console.info('[request]', req.method, req.originalUrl || req.url, safeHeaders);
++  next();
++}
++
++function hardenStaticResponses(req, res, next) {
++  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
++  res.setHeader('Pragma', 'no-cache');
++  res.setHeader('Expires', '0');
++  res.setHeader('Surrogate-Control', 'no-store');
++  next();
++}
++
++module.exports = {
++  ephemeralSecretStore,
++  redactingRequestLogger,
++  hardenStaticResponses,
++  redactSensitiveHeaders
++};
+diff --git a/electron_ephemeral_baseline.js b/electron_ephemeral_baseline.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..bf19e2eb7fac8beaf46176f02cedd572e1d11df4
+--- /dev/null
++++ b/electron_ephemeral_baseline.js
+@@ -0,0 +1,208 @@
++'use strict';
++
++/**
++ * Electron baseline hardening focused on ephemeral runtime behavior.
++ */
++
++const crypto = require('crypto');
++const fs = require('fs/promises');
++const os = require('os');
++const path = require('path');
++
++const DEFAULT_SECRET_KEYWORDS = ['SECRET', 'TOKEN', 'KEY', 'PASSWORD', 'CREDENTIAL', 'PRIVATE'];
++const DEFAULT_DENIED_PERMISSIONS = new Set([
++  'camera',
++  'microphone',
++  'geolocation',
++  'midi',
++  'midiSysex',
++  'notifications',
++  'openExternal',
++  'pointerLock',
++  'fullscreen',
++  'clipboard-sanitized-write'
++]);
++
++function randomTag(length = 8) {
++  return crypto.randomBytes(length).toString('hex');
++}
++
++function pickAllowedNavigation(originAllowList, targetUrl) {
++  if (!/^https:\/\//i.test(targetUrl)) return false;
++  if (!originAllowList || originAllowList.length === 0) return true;
++
++  try {
++    const host = new URL(targetUrl).host.toLowerCase();
++    return originAllowList.some((allowed) => {
++      const clean = String(allowed || '').trim().toLowerCase();
++      return clean.length > 0 && (host === clean || host.endsWith(`.${clean}`));
++    });
++  } catch {
++    return false;
++  }
++}
++
++function scrubProcessSecrets(options = {}) {
++  const {
++    envKeywordDenyList = DEFAULT_SECRET_KEYWORDS,
++    explicitKeys = []
++  } = options;
++
++  const removed = [];
++  const keys = Object.keys(process.env);
++
++  for (const key of keys) {
++    const upper = key.toUpperCase();
++    const deniedByKeyword = envKeywordDenyList.some((word) => upper.includes(String(word).toUpperCase()));
++    if (deniedByKeyword || explicitKeys.includes(key)) {
++      delete process.env[key];
++      removed.push(key);
++    }
++  }
++
++  return removed;
++}
++
++function attachLogRedaction() {
++  const redact = (input) => {
++    const text = String(input);
++    return text
++      .replace(/(bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
++      .replace(/(api[_-]?key\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(secret\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(authorization\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(cookie\s*[:=]\s*)[^\n]+/gi, '$1[REDACTED]');
++  };
++
++  for (const method of ['log', 'info', 'warn', 'error']) {
++    const original = console[method].bind(console);
++    console[method] = (...args) => original(...args.map(redact));
++  }
++}
++
++async function hardenSession(electronSession, options = {}) {
++  if (!electronSession) return;
++
++  const {
++    denyTrackingRequests = true,
++    denyPermissionSet = DEFAULT_DENIED_PERMISSIONS
++  } = options;
++
++  await electronSession.clearStorageData({
++    storages: [
++      'appcache',
++      'cookies',
++      'filesystem',
++      'indexeddb',
++      'localstorage',
++      'shadercache',
++      'serviceworkers',
++      'cachestorage',
++      'websql'
++    ]
++  });
++
++  await electronSession.clearCache();
++
++  electronSession.webRequest.onBeforeRequest((details, callback) => {
++    const url = details.url || '';
++    const isHttp = /^http:\/\//i.test(url);
++    const isTracking = /(telemetry|tracking|metrics|beacon|analytics)/i.test(url);
++    callback({ cancel: isHttp || (denyTrackingRequests && isTracking) });
++  });
++
++  electronSession.setPermissionRequestHandler((_webContents, permission, callback) => {
++    callback(!denyPermissionSet.has(permission));
++  });
++}
++
++function secureWindowContents(contents, allowedNavigationHosts) {
++  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
++
++  contents.on('will-navigate', (event, targetUrl) => {
++    if (!pickAllowedNavigation(allowedNavigationHosts, targetUrl)) {
++      event.preventDefault();
++    }
++  });
++
++  contents.on('will-attach-webview', (event) => {
++    event.preventDefault();
++  });
++
++  contents.on('render-process-gone', () => {
++    // Avoid keeping stale secret-bearing state around after crashes.
++    contents.session.flushStorageData();
++  });
++}
++
++async function tryDeleteDirectory(dirPath) {
++  if (!dirPath) return;
++  try {
++    await fs.rm(dirPath, { recursive: true, force: true, maxRetries: 2 });
++  } catch {
++    // Best-effort cleanup only.
++  }
++}
++
++function applyEphemeralElectronBaseline({
++  app,
++  userDataFolderName,
++  allowedNavigationHosts = [],
++  secretKeyDenyList = DEFAULT_SECRET_KEYWORDS,
++  clearStorageOnReady = true,
++  denyTrackingRequests = true
++}) {
++  if (!app || typeof app.setPath !== 'function') {
++    throw new TypeError('applyEphemeralElectronBaseline requires the Electron app object');
++  }
++
++  const ephemeralFolder = userDataFolderName
++    || `ephemeral-runtime-${process.pid}-${Date.now()}-${randomTag(4)}`;
++  const ephemeralPath = path.join(os.tmpdir(), ephemeralFolder);
++
++  app.setPath('userData', ephemeralPath);
++
++  app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,PasswordManagerEnableService,InterestFeedContentSuggestions');
++  app.commandLine.appendSwitch('disable-sync');
++  app.commandLine.appendSwitch('disable-background-networking');
++  app.commandLine.appendSwitch('disable-renderer-backgrounding');
++  app.commandLine.appendSwitch('disable-breakpad');
++  app.commandLine.appendSwitch('metrics-recording-only');
++  app.commandLine.appendSwitch('no-default-browser-check');
++
++  scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  attachLogRedaction();
++
++  app.on('web-contents-created', (_event, contents) => {
++    secureWindowContents(contents, allowedNavigationHosts);
++  });
++
++  app.on('ready', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++
++    if (clearStorageOnReady) {
++      await session.defaultSession.flushStorageData();
++    }
++  });
++
++  app.on('before-quit', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++    scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  });
++
++  app.on('will-quit', async () => {
++    await tryDeleteDirectory(ephemeralPath);
++  });
++
++  return { ephemeralPath };
++}
++
++module.exports = {
++  applyEphemeralElectronBaseline,
++  hardenSession,
++  scrubProcessSecrets,
++  redactConsole: attachLogRedaction,
++  secureWindowContents
++};
+diff --git a/backend_secret_shutdown.js b/backend_secret_shutdown.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..ccb9a37caeb74735fe3aa4c4784937e038ecb6be
+--- /dev/null
++++ b/backend_secret_shutdown.js
+@@ -0,0 +1,172 @@
++'use strict';
++
++/**
++ * Backend-side helpers to keep runtime as ephemeral as possible.
++ * Compatible with Express-style middleware.
++ */
++
++const crypto = require('crypto');
++
++function cloneSafe(value) {
++  if (value === null || value === undefined) return value;
++  if (typeof value === 'object') return JSON.parse(JSON.stringify(value));
++  return value;
++}
++
++function overwriteString(input) {
++  if (typeof input !== 'string' || input.length === 0) return '';
++  return crypto.randomBytes(input.length).toString('hex').slice(0, input.length);
++}
++
++function overwriteObjectDeep(value) {
++  if (typeof value === 'string') return overwriteString(value);
++  if (Array.isArray(value)) return value.map((entry) => overwriteObjectDeep(entry));
++  if (value && typeof value === 'object') {
++    const out = {};
++    for (const key of Object.keys(value)) {
++      out[key] = overwriteObjectDeep(value[key]);
++    }
++    return out;
++  }
++  return value;
++}
++
++function ephemeralSecretStore(ttlMs = 60_000, options = {}) {
++  const store = new Map();
++  const {
++    purgeIntervalMs = 5_000,
++    maxEntries = 1_000,
++    now = () => Date.now()
++  } = options;
++
++  const interval = setInterval(() => {
++    purge();
++  }, purgeIntervalMs);
++
++  if (typeof interval.unref === 'function') {
++    interval.unref();
++  }
++
++  function normalizeKey(key) {
++    return String(key);
++  }
++
++  function isExpired(item) {
++    return !item || now() > item.expiresAt;
++  }
++
++  function set(key, value) {
++    const normalized = normalizeKey(key);
++
++    if (store.size >= maxEntries && !store.has(normalized)) {
++      purge();
++      if (store.size >= maxEntries) {
++        throw new Error('ephemeral_secret_store_capacity_reached');
++      }
++    }
++
++    const expiresAt = now() + ttlMs;
++    store.set(normalized, { value: cloneSafe(value), expiresAt });
++  }
++
++  function get(key) {
++    const normalized = normalizeKey(key);
++    const item = store.get(normalized);
++    if (isExpired(item)) {
++      store.delete(normalized);
++      return undefined;
++    }
++    return cloneSafe(item.value);
++  }
++
++  function del(key) {
++    return store.delete(normalizeKey(key));
++  }
++
++  function touch(key, extensionMs = ttlMs) {
++    const normalized = normalizeKey(key);
++    const item = store.get(normalized);
++    if (isExpired(item)) {
++      store.delete(normalized);
++      return false;
++    }
++
++    item.expiresAt = now() + extensionMs;
++    return true;
++  }
++
++  function purge() {
++    const snapshotNow = now();
++    for (const [key, item] of store.entries()) {
++      if (!item || snapshotNow > item.expiresAt) {
++        store.delete(key);
++      }
++    }
++  }
++
++  function destroy() {
++    clearInterval(interval);
++
++    for (const [, item] of store.entries()) {
++      item.value = overwriteObjectDeep(item.value);
++      item.expiresAt = 0;
++    }
++
++    store.clear();
++  }
++
++  function size() {
++    purge();
++    return store.size;
++  }
++
++  return { set, get, del, touch, purge, destroy, size };
++}
++
++function redactSensitiveHeaders(headers = {}) {
++  const unsafeHeaders = new Set([
++    'authorization',
++    'x-api-key',
++    'cookie',
++    'set-cookie',
++    'proxy-authorization',
++    'x-auth-token',
++    'x-csrf-token',
++    'x-access-token'
++  ]);
++
++  const safeHeaders = { ...headers };
++  for (const [headerName, headerValue] of Object.entries(safeHeaders)) {
++    if (unsafeHeaders.has(String(headerName).toLowerCase())) {
++      safeHeaders[headerName] = '[REDACTED]';
++      continue;
++    }
++
++    if (typeof headerValue === 'string' && /(bearer\s+[a-z0-9._-]+|api[_-]?key\s*[:=])/i.test(headerValue)) {
++      safeHeaders[headerName] = '[REDACTED]';
++    }
++  }
++
++  return safeHeaders;
++}
++
++function redactingRequestLogger(req, _res, next) {
++  const safeHeaders = redactSensitiveHeaders(req.headers);
++  console.info('[request]', req.method, req.originalUrl || req.url, safeHeaders);
++  next();
++}
++
++function hardenStaticResponses(req, res, next) {
++  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
++  res.setHeader('Pragma', 'no-cache');
++  res.setHeader('Expires', '0');
++  res.setHeader('Surrogate-Control', 'no-store');
++  next();
++}
++
++module.exports = {
++  ephemeralSecretStore,
++  redactingRequestLogger,
++  hardenStaticResponses,
++  redactSensitiveHeaders
++};
+diff --git a/ELECTRON_BASELINE.md b/ELECTRON_BASELINE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..07f5c021ae02c5167d09052e11051b530b7a3ff0
+--- /dev/null
++++ b/ELECTRON_BASELINE.md
+@@ -0,0 +1,87 @@
++# Ephemeral Electron Baseline
++
++This repository includes two drop-in modules:
++
++- `electron_ephemeral_baseline.js` for Electron main-process hardening.
++- `backend_secret_shutdown.js` for backend secret TTL storage + redacted request/static-cycle protection.
++
++## Electron usage
++
++```js
++const { app, BrowserWindow } = require('electron');
++const { applyEphemeralElectronBaseline } = require('./electron_ephemeral_baseline');
++
++applyEphemeralElectronBaseline({
++  app,
++  allowedNavigationHosts: ['example.com'],
++  denyTrackingRequests: true
++});
++
++app.whenReady().then(() => {
++  const win = new BrowserWindow({
++    webPreferences: {
++      contextIsolation: true,
++      sandbox: true,
++      nodeIntegration: false,
++      partition: 'ephemeral:main'
++    }
++  });
++
++  win.loadURL('https://example.com');
++});
++```
++
++## Backend usage (Express)
++
++```js
++const express = require('express');
++const {
++  redactingRequestLogger,
++  hardenStaticResponses,
++  ephemeralSecretStore
++} = require('./backend_secret_shutdown');
++
++const app = express();
++const secrets = ephemeralSecretStore(30_000, { purgeIntervalMs: 5_000, maxEntries: 2_000 });
++
++app.use(hardenStaticResponses);
++app.use(redactingRequestLogger);
++
++app.post('/session', (req, res) => {
++  secrets.set(`session:${req.ip}`, req.body.token);
++  res.status(204).end();
++});
++
++process.on('SIGTERM', () => {
++  secrets.destroy();
++});
++```
++
++## Protection highlights
++
++- Unique temp userData per run + best-effort removal on `will-quit`.
++- Runtime blocking of non-HTTPS, tracking URLs, `window.open`, and webview attachments.
++- Permission deny defaults for camera/mic/geolocation and related APIs.
++- Process env secret scrubbing and log redaction.
++- In-memory secret lifecycle controls (`set/get/del/touch/purge/destroy/size`) with TTL and bounded capacity.
++- Static-cycle hardening via no-store/no-cache response middleware.
++
++## Universal script (all domains)
++
++If you want one script that applies the baseline to Electron + backend together:
++
++```js
++const { app } = require('electron');
++const express = require('express');
++const {
++  releaseElectronFromDomains,
++  releaseBackendFromDomains
++} = require('./universal_domain_release');
++
++const api = express();
++
++releaseElectronFromDomains({ app, allowHosts: ['example.com'] });
++const runtime = releaseBackendFromDomains({ app: api, ttlMs: 30_000, maxEntries: 2_000 });
++
++// Use runtime.secretVault for ephemeral token/session values.
++```
+diff --git a/electron_ephemeral_baseline.js b/electron_ephemeral_baseline.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..bf19e2eb7fac8beaf46176f02cedd572e1d11df4
+--- /dev/null
++++ b/electron_ephemeral_baseline.js
+@@ -0,0 +1,208 @@
++'use strict';
++
++/**
++ * Electron baseline hardening focused on ephemeral runtime behavior.
++ */
++
++const crypto = require('crypto');
++const fs = require('fs/promises');
++const os = require('os');
++const path = require('path');
++
++const DEFAULT_SECRET_KEYWORDS = ['SECRET', 'TOKEN', 'KEY', 'PASSWORD', 'CREDENTIAL', 'PRIVATE'];
++const DEFAULT_DENIED_PERMISSIONS = new Set([
++  'camera',
++  'microphone',
++  'geolocation',
++  'midi',
++  'midiSysex',
++  'notifications',
++  'openExternal',
++  'pointerLock',
++  'fullscreen',
++  'clipboard-sanitized-write'
++]);
++
++function randomTag(length = 8) {
++  return crypto.randomBytes(length).toString('hex');
++}
++
++function pickAllowedNavigation(originAllowList, targetUrl) {
++  if (!/^https:\/\//i.test(targetUrl)) return false;
++  if (!originAllowList || originAllowList.length === 0) return true;
++
++  try {
++    const host = new URL(targetUrl).host.toLowerCase();
++    return originAllowList.some((allowed) => {
++      const clean = String(allowed || '').trim().toLowerCase();
++      return clean.length > 0 && (host === clean || host.endsWith(`.${clean}`));
++    });
++  } catch {
++    return false;
++  }
++}
++
++function scrubProcessSecrets(options = {}) {
++  const {
++    envKeywordDenyList = DEFAULT_SECRET_KEYWORDS,
++    explicitKeys = []
++  } = options;
++
++  const removed = [];
++  const keys = Object.keys(process.env);
++
++  for (const key of keys) {
++    const upper = key.toUpperCase();
++    const deniedByKeyword = envKeywordDenyList.some((word) => upper.includes(String(word).toUpperCase()));
++    if (deniedByKeyword || explicitKeys.includes(key)) {
++      delete process.env[key];
++      removed.push(key);
++    }
++  }
++
++  return removed;
++}
++
++function attachLogRedaction() {
++  const redact = (input) => {
++    const text = String(input);
++    return text
++      .replace(/(bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
++      .replace(/(api[_-]?key\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(secret\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(authorization\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(cookie\s*[:=]\s*)[^\n]+/gi, '$1[REDACTED]');
++  };
++
++  for (const method of ['log', 'info', 'warn', 'error']) {
++    const original = console[method].bind(console);
++    console[method] = (...args) => original(...args.map(redact));
++  }
++}
++
++async function hardenSession(electronSession, options = {}) {
++  if (!electronSession) return;
++
++  const {
++    denyTrackingRequests = true,
++    denyPermissionSet = DEFAULT_DENIED_PERMISSIONS
++  } = options;
++
++  await electronSession.clearStorageData({
++    storages: [
++      'appcache',
++      'cookies',
++      'filesystem',
++      'indexeddb',
++      'localstorage',
++      'shadercache',
++      'serviceworkers',
++      'cachestorage',
++      'websql'
++    ]
++  });
++
++  await electronSession.clearCache();
++
++  electronSession.webRequest.onBeforeRequest((details, callback) => {
++    const url = details.url || '';
++    const isHttp = /^http:\/\//i.test(url);
++    const isTracking = /(telemetry|tracking|metrics|beacon|analytics)/i.test(url);
++    callback({ cancel: isHttp || (denyTrackingRequests && isTracking) });
++  });
++
++  electronSession.setPermissionRequestHandler((_webContents, permission, callback) => {
++    callback(!denyPermissionSet.has(permission));
++  });
++}
++
++function secureWindowContents(contents, allowedNavigationHosts) {
++  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
++
++  contents.on('will-navigate', (event, targetUrl) => {
++    if (!pickAllowedNavigation(allowedNavigationHosts, targetUrl)) {
++      event.preventDefault();
++    }
++  });
++
++  contents.on('will-attach-webview', (event) => {
++    event.preventDefault();
++  });
++
++  contents.on('render-process-gone', () => {
++    // Avoid keeping stale secret-bearing state around after crashes.
++    contents.session.flushStorageData();
++  });
++}
++
++async function tryDeleteDirectory(dirPath) {
++  if (!dirPath) return;
++  try {
++    await fs.rm(dirPath, { recursive: true, force: true, maxRetries: 2 });
++  } catch {
++    // Best-effort cleanup only.
++  }
++}
++
++function applyEphemeralElectronBaseline({
++  app,
++  userDataFolderName,
++  allowedNavigationHosts = [],
++  secretKeyDenyList = DEFAULT_SECRET_KEYWORDS,
++  clearStorageOnReady = true,
++  denyTrackingRequests = true
++}) {
++  if (!app || typeof app.setPath !== 'function') {
++    throw new TypeError('applyEphemeralElectronBaseline requires the Electron app object');
++  }
++
++  const ephemeralFolder = userDataFolderName
++    || `ephemeral-runtime-${process.pid}-${Date.now()}-${randomTag(4)}`;
++  const ephemeralPath = path.join(os.tmpdir(), ephemeralFolder);
++
++  app.setPath('userData', ephemeralPath);
++
++  app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,PasswordManagerEnableService,InterestFeedContentSuggestions');
++  app.commandLine.appendSwitch('disable-sync');
++  app.commandLine.appendSwitch('disable-background-networking');
++  app.commandLine.appendSwitch('disable-renderer-backgrounding');
++  app.commandLine.appendSwitch('disable-breakpad');
++  app.commandLine.appendSwitch('metrics-recording-only');
++  app.commandLine.appendSwitch('no-default-browser-check');
++
++  scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  attachLogRedaction();
++
++  app.on('web-contents-created', (_event, contents) => {
++    secureWindowContents(contents, allowedNavigationHosts);
++  });
++
++  app.on('ready', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++
++    if (clearStorageOnReady) {
++      await session.defaultSession.flushStorageData();
++    }
++  });
++
++  app.on('before-quit', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++    scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  });
++
++  app.on('will-quit', async () => {
++    await tryDeleteDirectory(ephemeralPath);
++  });
++
++  return { ephemeralPath };
++}
++
++module.exports = {
++  applyEphemeralElectronBaseline,
++  hardenSession,
++  scrubProcessSecrets,
++  redactConsole: attachLogRedaction,
++  secureWindowContents
++};
+diff --git a/universal_domain_release.js b/universal_domain_release.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..532e6621f6f0c738f8886759530ce331139832bf
+--- /dev/null
++++ b/universal_domain_release.js
+@@ -0,0 +1,70 @@
++'use strict';
++
++/**
++ * Universal Domain Release Script
++ *
++ * Practical interpretation of "free all powers from domains":
++ * - Remove long-lived secret material from process/runtime memory.
++ * - Force ephemeral/no-cache/no-tracking behavior for Electron (Chromium).
++ * - Add backend middleware that suppresses secret leakage and static persistence.
++ *
++ * This module composes the repository's hardened primitives into one entrypoint.
++ */
++
++const {
++  applyEphemeralElectronBaseline,
++  scrubProcessSecrets
++} = require('./electron_ephemeral_baseline');
++const {
++  ephemeralSecretStore,
++  redactingRequestLogger,
++  hardenStaticResponses
++} = require('./backend_secret_shutdown');
++
++function releaseElectronFromDomains({ app, allowHosts = [] }) {
++  if (!app) {
++    throw new TypeError('releaseElectronFromDomains requires { app } from Electron main process');
++  }
++
++  return applyEphemeralElectronBaseline({
++    app,
++    allowedNavigationHosts: allowHosts,
++    denyTrackingRequests: true,
++    clearStorageOnReady: true
++  });
++}
++
++function releaseBackendFromDomains({ app, ttlMs = 30_000, maxEntries = 2_000 } = {}) {
++  const vault = ephemeralSecretStore(ttlMs, {
++    purgeIntervalMs: Math.min(5_000, Math.max(500, Math.floor(ttlMs / 4))),
++    maxEntries
++  });
++
++  if (app && typeof app.use === 'function') {
++    app.use(hardenStaticResponses);
++    app.use(redactingRequestLogger);
++  }
++
++  const shutdown = () => {
++    scrubProcessSecrets();
++    vault.destroy();
++  };
++
++  process.once('SIGTERM', shutdown);
++  process.once('SIGINT', shutdown);
++  process.once('beforeExit', shutdown);
++
++  return {
++    secretVault: vault,
++    middleware: {
++      hardenStaticResponses,
++      redactingRequestLogger
++    },
++    shutdown
++  };
++}
++
++module.exports = {
++  releaseElectronFromDomains,
++  releaseBackendFromDomains
++};
+diff --git a/ELECTRON_BASELINE.md b/ELECTRON_BASELINE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..defcfe3bbc17631101f3769c5a4db4f35fb1e864
+--- /dev/null
++++ b/ELECTRON_BASELINE.md
+@@ -0,0 +1,101 @@
++# Ephemeral Electron Baseline
++
++This repository includes two drop-in modules:
++
++- `electron_ephemeral_baseline.js` for Electron main-process hardening.
++- `backend_secret_shutdown.js` for backend secret TTL storage + redacted request/static-cycle protection.
++
++## Electron usage
++
++```js
++const { app, BrowserWindow } = require('electron');
++const { applyEphemeralElectronBaseline } = require('./electron_ephemeral_baseline');
++
++applyEphemeralElectronBaseline({
++  app,
++  allowedNavigationHosts: ['example.com'],
++  denyTrackingRequests: true
++});
++
++app.whenReady().then(() => {
++  const win = new BrowserWindow({
++    webPreferences: {
++      contextIsolation: true,
++      sandbox: true,
++      nodeIntegration: false,
++      partition: 'ephemeral:main'
++    }
++  });
++
++  win.loadURL('https://example.com');
++});
++```
++
++## Backend usage (Express)
++
++```js
++const express = require('express');
++const {
++  redactingRequestLogger,
++  hardenStaticResponses,
++  ephemeralSecretStore
++} = require('./backend_secret_shutdown');
++
++const app = express();
++const secrets = ephemeralSecretStore(30_000, { purgeIntervalMs: 5_000, maxEntries: 2_000 });
++
++app.use(hardenStaticResponses);
++app.use(redactingRequestLogger);
++
++app.post('/session', (req, res) => {
++  secrets.set(`session:${req.ip}`, req.body.token);
++  res.status(204).end();
++});
++
++process.on('SIGTERM', () => {
++  secrets.destroy();
++});
++```
++
++## Protection highlights
++
++- Unique temp userData per run + best-effort removal on `will-quit`.
++- Runtime blocking of non-HTTPS, tracking URLs, `window.open`, and webview attachments.
++- Permission deny defaults for camera/mic/geolocation and related APIs.
++- Process env secret scrubbing and log redaction.
++- In-memory secret lifecycle controls (`set/get/del/touch/purge/destroy/size`) with TTL and bounded capacity.
++- Static-cycle hardening via no-store/no-cache response middleware.
++
++## Universal script (all domains)
++
++If you want one script that applies the baseline to Electron + backend together:
++
++```js
++const { app } = require('electron');
++const express = require('express');
++const {
++  releaseElectronFromDomains,
++  releaseBackendFromDomains
++} = require('./universal_domain_release');
++
++const api = express();
++
++releaseElectronFromDomains({ app, allowHosts: ['example.com'] });
++const runtime = releaseBackendFromDomains({ app: api, ttlMs: 30_000, maxEntries: 2_000 });
++
++// Use runtime.secretVault for ephemeral token/session values.
++```
++
++
++### Server-wide runtime shield
++
++`releaseBackendFromDomains(...)` now also attaches process-level fatal/warning guards
++(`unhandledRejection`, `uncaughtException`, `warning`) that redact messages and
++trigger secret scrubbing/vault destruction. You can detach them with:
++
++```js
++const runtime = releaseBackendFromDomains({ app: api, shouldExitOnFatal: false });
++
++// later
++runtime.detachRuntimeShield();
++```
+diff --git a/backend_secret_shutdown.js b/backend_secret_shutdown.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..ccb9a37caeb74735fe3aa4c4784937e038ecb6be
+--- /dev/null
++++ b/backend_secret_shutdown.js
+@@ -0,0 +1,172 @@
++'use strict';
++
++/**
++ * Backend-side helpers to keep runtime as ephemeral as possible.
++ * Compatible with Express-style middleware.
++ */
++
++const crypto = require('crypto');
++
++function cloneSafe(value) {
++  if (value === null || value === undefined) return value;
++  if (typeof value === 'object') return JSON.parse(JSON.stringify(value));
++  return value;
++}
++
++function overwriteString(input) {
++  if (typeof input !== 'string' || input.length === 0) return '';
++  return crypto.randomBytes(input.length).toString('hex').slice(0, input.length);
++}
++
++function overwriteObjectDeep(value) {
++  if (typeof value === 'string') return overwriteString(value);
++  if (Array.isArray(value)) return value.map((entry) => overwriteObjectDeep(entry));
++  if (value && typeof value === 'object') {
++    const out = {};
++    for (const key of Object.keys(value)) {
++      out[key] = overwriteObjectDeep(value[key]);
++    }
++    return out;
++  }
++  return value;
++}
++
++function ephemeralSecretStore(ttlMs = 60_000, options = {}) {
++  const store = new Map();
++  const {
++    purgeIntervalMs = 5_000,
++    maxEntries = 1_000,
++    now = () => Date.now()
++  } = options;
++
++  const interval = setInterval(() => {
++    purge();
++  }, purgeIntervalMs);
++
++  if (typeof interval.unref === 'function') {
++    interval.unref();
++  }
++
++  function normalizeKey(key) {
++    return String(key);
++  }
++
++  function isExpired(item) {
++    return !item || now() > item.expiresAt;
++  }
++
++  function set(key, value) {
++    const normalized = normalizeKey(key);
++
++    if (store.size >= maxEntries && !store.has(normalized)) {
++      purge();
++      if (store.size >= maxEntries) {
++        throw new Error('ephemeral_secret_store_capacity_reached');
++      }
++    }
++
++    const expiresAt = now() + ttlMs;
++    store.set(normalized, { value: cloneSafe(value), expiresAt });
++  }
++
++  function get(key) {
++    const normalized = normalizeKey(key);
++    const item = store.get(normalized);
++    if (isExpired(item)) {
++      store.delete(normalized);
++      return undefined;
++    }
++    return cloneSafe(item.value);
++  }
++
++  function del(key) {
++    return store.delete(normalizeKey(key));
++  }
++
++  function touch(key, extensionMs = ttlMs) {
++    const normalized = normalizeKey(key);
++    const item = store.get(normalized);
++    if (isExpired(item)) {
++      store.delete(normalized);
++      return false;
++    }
++
++    item.expiresAt = now() + extensionMs;
++    return true;
++  }
++
++  function purge() {
++    const snapshotNow = now();
++    for (const [key, item] of store.entries()) {
++      if (!item || snapshotNow > item.expiresAt) {
++        store.delete(key);
++      }
++    }
++  }
++
++  function destroy() {
++    clearInterval(interval);
++
++    for (const [, item] of store.entries()) {
++      item.value = overwriteObjectDeep(item.value);
++      item.expiresAt = 0;
++    }
++
++    store.clear();
++  }
++
++  function size() {
++    purge();
++    return store.size;
++  }
++
++  return { set, get, del, touch, purge, destroy, size };
++}
++
++function redactSensitiveHeaders(headers = {}) {
++  const unsafeHeaders = new Set([
++    'authorization',
++    'x-api-key',
++    'cookie',
++    'set-cookie',
++    'proxy-authorization',
++    'x-auth-token',
++    'x-csrf-token',
++    'x-access-token'
++  ]);
++
++  const safeHeaders = { ...headers };
++  for (const [headerName, headerValue] of Object.entries(safeHeaders)) {
++    if (unsafeHeaders.has(String(headerName).toLowerCase())) {
++      safeHeaders[headerName] = '[REDACTED]';
++      continue;
++    }
++
++    if (typeof headerValue === 'string' && /(bearer\s+[a-z0-9._-]+|api[_-]?key\s*[:=])/i.test(headerValue)) {
++      safeHeaders[headerName] = '[REDACTED]';
++    }
++  }
++
++  return safeHeaders;
++}
++
++function redactingRequestLogger(req, _res, next) {
++  const safeHeaders = redactSensitiveHeaders(req.headers);
++  console.info('[request]', req.method, req.originalUrl || req.url, safeHeaders);
++  next();
++}
++
++function hardenStaticResponses(req, res, next) {
++  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
++  res.setHeader('Pragma', 'no-cache');
++  res.setHeader('Expires', '0');
++  res.setHeader('Surrogate-Control', 'no-store');
++  next();
++}
++
++module.exports = {
++  ephemeralSecretStore,
++  redactingRequestLogger,
++  hardenStaticResponses,
++  redactSensitiveHeaders
++};
+diff --git a/electron_ephemeral_baseline.js b/electron_ephemeral_baseline.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..bf19e2eb7fac8beaf46176f02cedd572e1d11df4
+--- /dev/null
++++ b/electron_ephemeral_baseline.js
+@@ -0,0 +1,208 @@
++'use strict';
++
++/**
++ * Electron baseline hardening focused on ephemeral runtime behavior.
++ */
++
++const crypto = require('crypto');
++const fs = require('fs/promises');
++const os = require('os');
++const path = require('path');
++
++const DEFAULT_SECRET_KEYWORDS = ['SECRET', 'TOKEN', 'KEY', 'PASSWORD', 'CREDENTIAL', 'PRIVATE'];
++const DEFAULT_DENIED_PERMISSIONS = new Set([
++  'camera',
++  'microphone',
++  'geolocation',
++  'midi',
++  'midiSysex',
++  'notifications',
++  'openExternal',
++  'pointerLock',
++  'fullscreen',
++  'clipboard-sanitized-write'
++]);
++
++function randomTag(length = 8) {
++  return crypto.randomBytes(length).toString('hex');
++}
++
++function pickAllowedNavigation(originAllowList, targetUrl) {
++  if (!/^https:\/\//i.test(targetUrl)) return false;
++  if (!originAllowList || originAllowList.length === 0) return true;
++
++  try {
++    const host = new URL(targetUrl).host.toLowerCase();
++    return originAllowList.some((allowed) => {
++      const clean = String(allowed || '').trim().toLowerCase();
++      return clean.length > 0 && (host === clean || host.endsWith(`.${clean}`));
++    });
++  } catch {
++    return false;
++  }
++}
++
++function scrubProcessSecrets(options = {}) {
++  const {
++    envKeywordDenyList = DEFAULT_SECRET_KEYWORDS,
++    explicitKeys = []
++  } = options;
++
++  const removed = [];
++  const keys = Object.keys(process.env);
++
++  for (const key of keys) {
++    const upper = key.toUpperCase();
++    const deniedByKeyword = envKeywordDenyList.some((word) => upper.includes(String(word).toUpperCase()));
++    if (deniedByKeyword || explicitKeys.includes(key)) {
++      delete process.env[key];
++      removed.push(key);
++    }
++  }
++
++  return removed;
++}
++
++function attachLogRedaction() {
++  const redact = (input) => {
++    const text = String(input);
++    return text
++      .replace(/(bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
++      .replace(/(api[_-]?key\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(secret\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(authorization\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(cookie\s*[:=]\s*)[^\n]+/gi, '$1[REDACTED]');
++  };
++
++  for (const method of ['log', 'info', 'warn', 'error']) {
++    const original = console[method].bind(console);
++    console[method] = (...args) => original(...args.map(redact));
++  }
++}
++
++async function hardenSession(electronSession, options = {}) {
++  if (!electronSession) return;
++
++  const {
++    denyTrackingRequests = true,
++    denyPermissionSet = DEFAULT_DENIED_PERMISSIONS
++  } = options;
++
++  await electronSession.clearStorageData({
++    storages: [
++      'appcache',
++      'cookies',
++      'filesystem',
++      'indexeddb',
++      'localstorage',
++      'shadercache',
++      'serviceworkers',
++      'cachestorage',
++      'websql'
++    ]
++  });
++
++  await electronSession.clearCache();
++
++  electronSession.webRequest.onBeforeRequest((details, callback) => {
++    const url = details.url || '';
++    const isHttp = /^http:\/\//i.test(url);
++    const isTracking = /(telemetry|tracking|metrics|beacon|analytics)/i.test(url);
++    callback({ cancel: isHttp || (denyTrackingRequests && isTracking) });
++  });
++
++  electronSession.setPermissionRequestHandler((_webContents, permission, callback) => {
++    callback(!denyPermissionSet.has(permission));
++  });
++}
++
++function secureWindowContents(contents, allowedNavigationHosts) {
++  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
++
++  contents.on('will-navigate', (event, targetUrl) => {
++    if (!pickAllowedNavigation(allowedNavigationHosts, targetUrl)) {
++      event.preventDefault();
++    }
++  });
++
++  contents.on('will-attach-webview', (event) => {
++    event.preventDefault();
++  });
++
++  contents.on('render-process-gone', () => {
++    // Avoid keeping stale secret-bearing state around after crashes.
++    contents.session.flushStorageData();
++  });
++}
++
++async function tryDeleteDirectory(dirPath) {
++  if (!dirPath) return;
++  try {
++    await fs.rm(dirPath, { recursive: true, force: true, maxRetries: 2 });
++  } catch {
++    // Best-effort cleanup only.
++  }
++}
++
++function applyEphemeralElectronBaseline({
++  app,
++  userDataFolderName,
++  allowedNavigationHosts = [],
++  secretKeyDenyList = DEFAULT_SECRET_KEYWORDS,
++  clearStorageOnReady = true,
++  denyTrackingRequests = true
++}) {
++  if (!app || typeof app.setPath !== 'function') {
++    throw new TypeError('applyEphemeralElectronBaseline requires the Electron app object');
++  }
++
++  const ephemeralFolder = userDataFolderName
++    || `ephemeral-runtime-${process.pid}-${Date.now()}-${randomTag(4)}`;
++  const ephemeralPath = path.join(os.tmpdir(), ephemeralFolder);
++
++  app.setPath('userData', ephemeralPath);
++
++  app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,PasswordManagerEnableService,InterestFeedContentSuggestions');
++  app.commandLine.appendSwitch('disable-sync');
++  app.commandLine.appendSwitch('disable-background-networking');
++  app.commandLine.appendSwitch('disable-renderer-backgrounding');
++  app.commandLine.appendSwitch('disable-breakpad');
++  app.commandLine.appendSwitch('metrics-recording-only');
++  app.commandLine.appendSwitch('no-default-browser-check');
++
++  scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  attachLogRedaction();
++
++  app.on('web-contents-created', (_event, contents) => {
++    secureWindowContents(contents, allowedNavigationHosts);
++  });
++
++  app.on('ready', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++
++    if (clearStorageOnReady) {
++      await session.defaultSession.flushStorageData();
++    }
++  });
++
++  app.on('before-quit', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++    scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  });
++
++  app.on('will-quit', async () => {
++    await tryDeleteDirectory(ephemeralPath);
++  });
++
++  return { ephemeralPath };
++}
++
++module.exports = {
++  applyEphemeralElectronBaseline,
++  hardenSession,
++  scrubProcessSecrets,
++  redactConsole: attachLogRedaction,
++  secureWindowContents
++};
+diff --git a/universal_domain_release.js b/universal_domain_release.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..f7d427dba43fd071bbb2aa6dbd559c5d43d20999
+--- /dev/null
++++ b/universal_domain_release.js
+@@ -0,0 +1,115 @@
++'use strict';
++
++/**
++ * Universal Domain Release Script
++ *
++ * Practical interpretation of "free all powers from domains":
++ * - Remove long-lived secret material from process/runtime memory.
++ * - Force ephemeral/no-cache/no-tracking behavior for Electron (Chromium).
++ * - Add backend middleware that suppresses secret leakage and static persistence.
++ * - Provide process-level shutdown guards for any Node server runtime.
++ */
++
++const {
++  applyEphemeralElectronBaseline,
++  scrubProcessSecrets
++} = require('./electron_ephemeral_baseline');
++const {
++  ephemeralSecretStore,
++  redactingRequestLogger,
++  hardenStaticResponses,
++  redactSensitiveHeaders
++} = require('./backend_secret_shutdown');
++
++function releaseElectronFromDomains({ app, allowHosts = [] }) {
++  if (!app) {
++    throw new TypeError('releaseElectronFromDomains requires { app } from Electron main process');
++  }
++
++  return applyEphemeralElectronBaseline({
++    app,
++    allowedNavigationHosts: allowHosts,
++    denyTrackingRequests: true,
++    clearStorageOnReady: true
++  });
++}
++
++function buildServerRuntimeShield({ secretVault, shouldExitOnFatal = false } = {}) {
++  const onFatal = (err) => {
++    const message = err && err.message ? String(err.message) : String(err);
++    const safe = redactSensitiveHeaders({ error: message });
++    console.error('[runtime-fatal]', safe.error);
++
++    scrubProcessSecrets();
++    if (secretVault && typeof secretVault.destroy === 'function') {
++      secretVault.destroy();
++    }
++
++    if (shouldExitOnFatal) {
++      process.exitCode = 1;
++    }
++  };
++
++  const onWarning = (warning) => {
++    const msg = warning && warning.message ? warning.message : warning;
++    console.warn('[runtime-warning]', redactSensitiveHeaders({ warning: String(msg) }).warning);
++  };
++
++  process.on('unhandledRejection', onFatal);
++  process.on('uncaughtException', onFatal);
++  process.on('warning', onWarning);
++
++  return function detach() {
++    process.off('unhandledRejection', onFatal);
++    process.off('uncaughtException', onFatal);
++    process.off('warning', onWarning);
++  };
++}
++
++function releaseBackendFromDomains({
++  app,
++  ttlMs = 30_000,
++  maxEntries = 2_000,
++  shouldExitOnFatal = false
++} = {}) {
++  const vault = ephemeralSecretStore(ttlMs, {
++    purgeIntervalMs: Math.min(5_000, Math.max(500, Math.floor(ttlMs / 4))),
++    maxEntries
++  });
++
++  if (app && typeof app.use === 'function') {
++    app.use(hardenStaticResponses);
++    app.use(redactingRequestLogger);
++  }
++
++  const detachRuntimeShield = buildServerRuntimeShield({
++    secretVault: vault,
++    shouldExitOnFatal
++  });
++
++  const shutdown = () => {
++    scrubProcessSecrets();
++    vault.destroy();
++    detachRuntimeShield();
++  };
++
++  process.once('SIGTERM', shutdown);
++  process.once('SIGINT', shutdown);
++  process.once('beforeExit', shutdown);
++
++  return {
++    secretVault: vault,
++    middleware: {
++      hardenStaticResponses,
++      redactingRequestLogger
++    },
++    detachRuntimeShield,
++    shutdown
++  };
++}
++
++module.exports = {
++  releaseElectronFromDomains,
++  releaseBackendFromDomains,
++  buildServerRuntimeShield
++};
+diff --git a/ELECTRON_BASELINE.md b/ELECTRON_BASELINE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..4d646012ea368d5a7afb82ab8eecf110374bdb25
+--- /dev/null
++++ b/ELECTRON_BASELINE.md
+@@ -0,0 +1,122 @@
++# Ephemeral Electron Baseline
++
++This repository includes two drop-in modules:
++
++- `electron_ephemeral_baseline.js` for Electron main-process hardening.
++- `backend_secret_shutdown.js` for backend secret TTL storage + redacted request/static-cycle protection.
++
++## Electron usage
++
++```js
++const { app, BrowserWindow } = require('electron');
++const { applyEphemeralElectronBaseline } = require('./electron_ephemeral_baseline');
++
++applyEphemeralElectronBaseline({
++  app,
++  allowedNavigationHosts: ['example.com'],
++  denyTrackingRequests: true
++});
++
++app.whenReady().then(() => {
++  const win = new BrowserWindow({
++    webPreferences: {
++      contextIsolation: true,
++      sandbox: true,
++      nodeIntegration: false,
++      partition: 'ephemeral:main'
++    }
++  });
++
++  win.loadURL('https://example.com');
++});
++```
++
++## Backend usage (Express)
++
++```js
++const express = require('express');
++const {
++  redactingRequestLogger,
++  hardenStaticResponses,
++  ephemeralSecretStore
++} = require('./backend_secret_shutdown');
++
++const app = express();
++const secrets = ephemeralSecretStore(30_000, { purgeIntervalMs: 5_000, maxEntries: 2_000 });
++
++app.use(hardenStaticResponses);
++app.use(redactingRequestLogger);
++
++app.post('/session', (req, res) => {
++  secrets.set(`session:${req.ip}`, req.body.token);
++  res.status(204).end();
++});
++
++process.on('SIGTERM', () => {
++  secrets.destroy();
++});
++```
++
++## Protection highlights
++
++- Unique temp userData per run + best-effort removal on `will-quit`.
++- Runtime blocking of non-HTTPS, tracking URLs, `window.open`, and webview attachments.
++- Permission deny defaults for camera/mic/geolocation and related APIs.
++- Process env secret scrubbing and log redaction.
++- In-memory secret lifecycle controls (`set/get/del/touch/purge/destroy/size`) with TTL and bounded capacity.
++- Static-cycle hardening via no-store/no-cache response middleware.
++
++## Universal script (all domains)
++
++If you want one script that applies the baseline to Electron + backend together:
++
++```js
++const { app } = require('electron');
++const express = require('express');
++const {
++  releaseElectronFromDomains,
++  releaseBackendFromDomains
++} = require('./universal_domain_release');
++
++const api = express();
++
++releaseElectronFromDomains({ app, allowHosts: ['example.com'] });
++const runtime = releaseBackendFromDomains({ app: api, ttlMs: 30_000, maxEntries: 2_000 });
++
++// Use runtime.secretVault for ephemeral token/session values.
++```
++
++
++### Server-wide runtime shield
++
++`releaseBackendFromDomains(...)` now also attaches process-level fatal/warning guards
++(`unhandledRejection`, `uncaughtException`, `warning`) that redact messages and
++trigger secret scrubbing/vault destruction. You can detach them with:
++
++```js
++const runtime = releaseBackendFromDomains({ app: api, shouldExitOnFatal: false });
++
++// later
++runtime.detachRuntimeShield();
++```
++
++
++### Dark server guards (HTTP/HTTPS boundary)
++
++You can pass a Node `http.Server`/`https.Server` into `releaseBackendFromDomains`.
++This applies request/headers/keepalive timeout ceilings, drop/client error handling,
++and returns `serverGuards.shutdownServer()` for graceful close + secret cleanup.
++
++```js
++const http = require('http');
++const express = require('express');
++const { releaseBackendFromDomains } = require('./universal_domain_release');
++
++const api = express();
++const server = http.createServer(api);
++
++const runtime = releaseBackendFromDomains({ app: api, server, ttlMs: 30_000 });
++
++// later
++await runtime.shutdown();
++```
+diff --git a/backend_secret_shutdown.js b/backend_secret_shutdown.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..ccb9a37caeb74735fe3aa4c4784937e038ecb6be
+--- /dev/null
++++ b/backend_secret_shutdown.js
+@@ -0,0 +1,172 @@
++'use strict';
++
++/**
++ * Backend-side helpers to keep runtime as ephemeral as possible.
++ * Compatible with Express-style middleware.
++ */
++
++const crypto = require('crypto');
++
++function cloneSafe(value) {
++  if (value === null || value === undefined) return value;
++  if (typeof value === 'object') return JSON.parse(JSON.stringify(value));
++  return value;
++}
++
++function overwriteString(input) {
++  if (typeof input !== 'string' || input.length === 0) return '';
++  return crypto.randomBytes(input.length).toString('hex').slice(0, input.length);
++}
++
++function overwriteObjectDeep(value) {
++  if (typeof value === 'string') return overwriteString(value);
++  if (Array.isArray(value)) return value.map((entry) => overwriteObjectDeep(entry));
++  if (value && typeof value === 'object') {
++    const out = {};
++    for (const key of Object.keys(value)) {
++      out[key] = overwriteObjectDeep(value[key]);
++    }
++    return out;
++  }
++  return value;
++}
++
++function ephemeralSecretStore(ttlMs = 60_000, options = {}) {
++  const store = new Map();
++  const {
++    purgeIntervalMs = 5_000,
++    maxEntries = 1_000,
++    now = () => Date.now()
++  } = options;
++
++  const interval = setInterval(() => {
++    purge();
++  }, purgeIntervalMs);
++
++  if (typeof interval.unref === 'function') {
++    interval.unref();
++  }
++
++  function normalizeKey(key) {
++    return String(key);
++  }
++
++  function isExpired(item) {
++    return !item || now() > item.expiresAt;
++  }
++
++  function set(key, value) {
++    const normalized = normalizeKey(key);
++
++    if (store.size >= maxEntries && !store.has(normalized)) {
++      purge();
++      if (store.size >= maxEntries) {
++        throw new Error('ephemeral_secret_store_capacity_reached');
++      }
++    }
++
++    const expiresAt = now() + ttlMs;
++    store.set(normalized, { value: cloneSafe(value), expiresAt });
++  }
++
++  function get(key) {
++    const normalized = normalizeKey(key);
++    const item = store.get(normalized);
++    if (isExpired(item)) {
++      store.delete(normalized);
++      return undefined;
++    }
++    return cloneSafe(item.value);
++  }
++
++  function del(key) {
++    return store.delete(normalizeKey(key));
++  }
++
++  function touch(key, extensionMs = ttlMs) {
++    const normalized = normalizeKey(key);
++    const item = store.get(normalized);
++    if (isExpired(item)) {
++      store.delete(normalized);
++      return false;
++    }
++
++    item.expiresAt = now() + extensionMs;
++    return true;
++  }
++
++  function purge() {
++    const snapshotNow = now();
++    for (const [key, item] of store.entries()) {
++      if (!item || snapshotNow > item.expiresAt) {
++        store.delete(key);
++      }
++    }
++  }
++
++  function destroy() {
++    clearInterval(interval);
++
++    for (const [, item] of store.entries()) {
++      item.value = overwriteObjectDeep(item.value);
++      item.expiresAt = 0;
++    }
++
++    store.clear();
++  }
++
++  function size() {
++    purge();
++    return store.size;
++  }
++
++  return { set, get, del, touch, purge, destroy, size };
++}
++
++function redactSensitiveHeaders(headers = {}) {
++  const unsafeHeaders = new Set([
++    'authorization',
++    'x-api-key',
++    'cookie',
++    'set-cookie',
++    'proxy-authorization',
++    'x-auth-token',
++    'x-csrf-token',
++    'x-access-token'
++  ]);
++
++  const safeHeaders = { ...headers };
++  for (const [headerName, headerValue] of Object.entries(safeHeaders)) {
++    if (unsafeHeaders.has(String(headerName).toLowerCase())) {
++      safeHeaders[headerName] = '[REDACTED]';
++      continue;
++    }
++
++    if (typeof headerValue === 'string' && /(bearer\s+[a-z0-9._-]+|api[_-]?key\s*[:=])/i.test(headerValue)) {
++      safeHeaders[headerName] = '[REDACTED]';
++    }
++  }
++
++  return safeHeaders;
++}
++
++function redactingRequestLogger(req, _res, next) {
++  const safeHeaders = redactSensitiveHeaders(req.headers);
++  console.info('[request]', req.method, req.originalUrl || req.url, safeHeaders);
++  next();
++}
++
++function hardenStaticResponses(req, res, next) {
++  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
++  res.setHeader('Pragma', 'no-cache');
++  res.setHeader('Expires', '0');
++  res.setHeader('Surrogate-Control', 'no-store');
++  next();
++}
++
++module.exports = {
++  ephemeralSecretStore,
++  redactingRequestLogger,
++  hardenStaticResponses,
++  redactSensitiveHeaders
++};
+diff --git a/electron_ephemeral_baseline.js b/electron_ephemeral_baseline.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..bf19e2eb7fac8beaf46176f02cedd572e1d11df4
+--- /dev/null
++++ b/electron_ephemeral_baseline.js
+@@ -0,0 +1,208 @@
++'use strict';
++
++/**
++ * Electron baseline hardening focused on ephemeral runtime behavior.
++ */
++
++const crypto = require('crypto');
++const fs = require('fs/promises');
++const os = require('os');
++const path = require('path');
++
++const DEFAULT_SECRET_KEYWORDS = ['SECRET', 'TOKEN', 'KEY', 'PASSWORD', 'CREDENTIAL', 'PRIVATE'];
++const DEFAULT_DENIED_PERMISSIONS = new Set([
++  'camera',
++  'microphone',
++  'geolocation',
++  'midi',
++  'midiSysex',
++  'notifications',
++  'openExternal',
++  'pointerLock',
++  'fullscreen',
++  'clipboard-sanitized-write'
++]);
++
++function randomTag(length = 8) {
++  return crypto.randomBytes(length).toString('hex');
++}
++
++function pickAllowedNavigation(originAllowList, targetUrl) {
++  if (!/^https:\/\//i.test(targetUrl)) return false;
++  if (!originAllowList || originAllowList.length === 0) return true;
++
++  try {
++    const host = new URL(targetUrl).host.toLowerCase();
++    return originAllowList.some((allowed) => {
++      const clean = String(allowed || '').trim().toLowerCase();
++      return clean.length > 0 && (host === clean || host.endsWith(`.${clean}`));
++    });
++  } catch {
++    return false;
++  }
++}
++
++function scrubProcessSecrets(options = {}) {
++  const {
++    envKeywordDenyList = DEFAULT_SECRET_KEYWORDS,
++    explicitKeys = []
++  } = options;
++
++  const removed = [];
++  const keys = Object.keys(process.env);
++
++  for (const key of keys) {
++    const upper = key.toUpperCase();
++    const deniedByKeyword = envKeywordDenyList.some((word) => upper.includes(String(word).toUpperCase()));
++    if (deniedByKeyword || explicitKeys.includes(key)) {
++      delete process.env[key];
++      removed.push(key);
++    }
++  }
++
++  return removed;
++}
++
++function attachLogRedaction() {
++  const redact = (input) => {
++    const text = String(input);
++    return text
++      .replace(/(bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
++      .replace(/(api[_-]?key\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(secret\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(authorization\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(cookie\s*[:=]\s*)[^\n]+/gi, '$1[REDACTED]');
++  };
++
++  for (const method of ['log', 'info', 'warn', 'error']) {
++    const original = console[method].bind(console);
++    console[method] = (...args) => original(...args.map(redact));
++  }
++}
++
++async function hardenSession(electronSession, options = {}) {
++  if (!electronSession) return;
++
++  const {
++    denyTrackingRequests = true,
++    denyPermissionSet = DEFAULT_DENIED_PERMISSIONS
++  } = options;
++
++  await electronSession.clearStorageData({
++    storages: [
++      'appcache',
++      'cookies',
++      'filesystem',
++      'indexeddb',
++      'localstorage',
++      'shadercache',
++      'serviceworkers',
++      'cachestorage',
++      'websql'
++    ]
++  });
++
++  await electronSession.clearCache();
++
++  electronSession.webRequest.onBeforeRequest((details, callback) => {
++    const url = details.url || '';
++    const isHttp = /^http:\/\//i.test(url);
++    const isTracking = /(telemetry|tracking|metrics|beacon|analytics)/i.test(url);
++    callback({ cancel: isHttp || (denyTrackingRequests && isTracking) });
++  });
++
++  electronSession.setPermissionRequestHandler((_webContents, permission, callback) => {
++    callback(!denyPermissionSet.has(permission));
++  });
++}
++
++function secureWindowContents(contents, allowedNavigationHosts) {
++  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
++
++  contents.on('will-navigate', (event, targetUrl) => {
++    if (!pickAllowedNavigation(allowedNavigationHosts, targetUrl)) {
++      event.preventDefault();
++    }
++  });
++
++  contents.on('will-attach-webview', (event) => {
++    event.preventDefault();
++  });
++
++  contents.on('render-process-gone', () => {
++    // Avoid keeping stale secret-bearing state around after crashes.
++    contents.session.flushStorageData();
++  });
++}
++
++async function tryDeleteDirectory(dirPath) {
++  if (!dirPath) return;
++  try {
++    await fs.rm(dirPath, { recursive: true, force: true, maxRetries: 2 });
++  } catch {
++    // Best-effort cleanup only.
++  }
++}
++
++function applyEphemeralElectronBaseline({
++  app,
++  userDataFolderName,
++  allowedNavigationHosts = [],
++  secretKeyDenyList = DEFAULT_SECRET_KEYWORDS,
++  clearStorageOnReady = true,
++  denyTrackingRequests = true
++}) {
++  if (!app || typeof app.setPath !== 'function') {
++    throw new TypeError('applyEphemeralElectronBaseline requires the Electron app object');
++  }
++
++  const ephemeralFolder = userDataFolderName
++    || `ephemeral-runtime-${process.pid}-${Date.now()}-${randomTag(4)}`;
++  const ephemeralPath = path.join(os.tmpdir(), ephemeralFolder);
++
++  app.setPath('userData', ephemeralPath);
++
++  app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,PasswordManagerEnableService,InterestFeedContentSuggestions');
++  app.commandLine.appendSwitch('disable-sync');
++  app.commandLine.appendSwitch('disable-background-networking');
++  app.commandLine.appendSwitch('disable-renderer-backgrounding');
++  app.commandLine.appendSwitch('disable-breakpad');
++  app.commandLine.appendSwitch('metrics-recording-only');
++  app.commandLine.appendSwitch('no-default-browser-check');
++
++  scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  attachLogRedaction();
++
++  app.on('web-contents-created', (_event, contents) => {
++    secureWindowContents(contents, allowedNavigationHosts);
++  });
++
++  app.on('ready', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++
++    if (clearStorageOnReady) {
++      await session.defaultSession.flushStorageData();
++    }
++  });
++
++  app.on('before-quit', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++    scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  });
++
++  app.on('will-quit', async () => {
++    await tryDeleteDirectory(ephemeralPath);
++  });
++
++  return { ephemeralPath };
++}
++
++module.exports = {
++  applyEphemeralElectronBaseline,
++  hardenSession,
++  scrubProcessSecrets,
++  redactConsole: attachLogRedaction,
++  secureWindowContents
++};
+diff --git a/universal_domain_release.js b/universal_domain_release.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..0f1784684dcea92998d04c116b27ecc7d0cc0de4
+--- /dev/null
++++ b/universal_domain_release.js
+@@ -0,0 +1,190 @@
++'use strict';
++
++/**
++ * Universal Domain Release Script
++ *
++ * Practical interpretation of "free all powers from domains":
++ * - Remove long-lived secret material from process/runtime memory.
++ * - Force ephemeral/no-cache/no-tracking behavior for Electron (Chromium).
++ * - Add backend middleware that suppresses secret leakage and static persistence.
++ * - Provide process-level shutdown guards for any Node server runtime.
++ */
++
++const {
++  applyEphemeralElectronBaseline,
++  scrubProcessSecrets
++} = require('./electron_ephemeral_baseline');
++const {
++  ephemeralSecretStore,
++  redactingRequestLogger,
++  hardenStaticResponses,
++  redactSensitiveHeaders
++} = require('./backend_secret_shutdown');
++
++function releaseElectronFromDomains({ app, allowHosts = [] }) {
++  if (!app) {
++    throw new TypeError('releaseElectronFromDomains requires { app } from Electron main process');
++  }
++
++  return applyEphemeralElectronBaseline({
++    app,
++    allowedNavigationHosts: allowHosts,
++    denyTrackingRequests: true,
++    clearStorageOnReady: true
++  });
++}
++
++function buildServerRuntimeShield({ secretVault, shouldExitOnFatal = false } = {}) {
++  const onFatal = (err) => {
++    const message = err && err.message ? String(err.message) : String(err);
++    const safe = redactSensitiveHeaders({ error: message });
++    console.error('[runtime-fatal]', safe.error);
++
++    scrubProcessSecrets();
++    if (secretVault && typeof secretVault.destroy === 'function') {
++      secretVault.destroy();
++    }
++
++    if (shouldExitOnFatal) {
++      process.exitCode = 1;
++    }
++  };
++
++  const onWarning = (warning) => {
++    const msg = warning && warning.message ? warning.message : warning;
++    console.warn('[runtime-warning]', redactSensitiveHeaders({ warning: String(msg) }).warning);
++  };
++
++  process.on('unhandledRejection', onFatal);
++  process.on('uncaughtException', onFatal);
++  process.on('warning', onWarning);
++
++  return function detach() {
++    process.off('unhandledRejection', onFatal);
++    process.off('uncaughtException', onFatal);
++    process.off('warning', onWarning);
++  };
++}
++
++function bindDarkServerGuards({
++  server,
++  secretVault,
++  requestTimeoutMs = 30_000,
++  headersTimeoutMs = 15_000,
++  keepAliveTimeoutMs = 5_000,
++  maxRequestsPerSocket = 100
++} = {}) {
++  if (!server) {
++    throw new TypeError('bindDarkServerGuards requires a Node http/https server instance');
++  }
++
++  server.requestTimeout = requestTimeoutMs;
++  server.headersTimeout = headersTimeoutMs;
++  server.keepAliveTimeout = keepAliveTimeoutMs;
++  server.maxRequestsPerSocket = maxRequestsPerSocket;
++
++  const onClientError = (_error, socket) => {
++    if (socket && !socket.destroyed) {
++      socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
++      socket.destroy();
++    }
++  };
++
++  const onDropRequest = (req, socket) => {
++    const safe = redactSensitiveHeaders(req && req.headers ? req.headers : {});
++    console.warn('[drop-request]', req ? req.url : 'unknown', safe);
++    if (socket && !socket.destroyed) {
++      socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
++      socket.destroy();
++    }
++  };
++
++  server.on('clientError', onClientError);
++  server.on('dropRequest', onDropRequest);
++
++  const shutdownServer = (graceMs = 2_000) => new Promise((resolve) => {
++    const timer = setTimeout(() => {
++      if (typeof server.closeAllConnections === 'function') {
++        server.closeAllConnections();
++      }
++      resolve();
++    }, graceMs);
++
++    server.close(() => {
++      clearTimeout(timer);
++      if (secretVault && typeof secretVault.destroy === 'function') {
++        secretVault.destroy();
++      }
++      resolve();
++    });
++  });
++
++  const detach = () => {
++    server.off('clientError', onClientError);
++    server.off('dropRequest', onDropRequest);
++  };
++
++  return {
++    shutdownServer,
++    detach
++  };
++}
++
++function releaseBackendFromDomains({
++  app,
++  server,
++  ttlMs = 30_000,
++  maxEntries = 2_000,
++  shouldExitOnFatal = false
++} = {}) {
++  const vault = ephemeralSecretStore(ttlMs, {
++    purgeIntervalMs: Math.min(5_000, Math.max(500, Math.floor(ttlMs / 4))),
++    maxEntries
++  });
++
++  if (app && typeof app.use === 'function') {
++    app.use(hardenStaticResponses);
++    app.use(redactingRequestLogger);
++  }
++
++  const detachRuntimeShield = buildServerRuntimeShield({
++    secretVault: vault,
++    shouldExitOnFatal
++  });
++
++  const serverGuards = server
++    ? bindDarkServerGuards({ server, secretVault: vault })
++    : null;
++
++  const shutdown = async () => {
++    scrubProcessSecrets();
++    if (serverGuards) {
++      await serverGuards.shutdownServer();
++      serverGuards.detach();
++    }
++    vault.destroy();
++    detachRuntimeShield();
++  };
++
++  process.once('SIGTERM', shutdown);
++  process.once('SIGINT', shutdown);
++  process.once('beforeExit', shutdown);
++
++  return {
++    secretVault: vault,
++    middleware: {
++      hardenStaticResponses,
++      redactingRequestLogger
++    },
++    detachRuntimeShield,
++    shutdown,
++    serverGuards
++  };
++}
++
++module.exports = {
++  releaseElectronFromDomains,
++  releaseBackendFromDomains,
++  buildServerRuntimeShield,
++  bindDarkServerGuards
++};
+diff --git a/backend_secret_shutdown.js b/backend_secret_shutdown.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..ccb9a37caeb74735fe3aa4c4784937e038ecb6be
+--- /dev/null
++++ b/backend_secret_shutdown.js
+@@ -0,0 +1,172 @@
++'use strict';
++
++/**
++ * Backend-side helpers to keep runtime as ephemeral as possible.
++ * Compatible with Express-style middleware.
++ */
++
++const crypto = require('crypto');
++
++function cloneSafe(value) {
++  if (value === null || value === undefined) return value;
++  if (typeof value === 'object') return JSON.parse(JSON.stringify(value));
++  return value;
++}
++
++function overwriteString(input) {
++  if (typeof input !== 'string' || input.length === 0) return '';
++  return crypto.randomBytes(input.length).toString('hex').slice(0, input.length);
++}
++
++function overwriteObjectDeep(value) {
++  if (typeof value === 'string') return overwriteString(value);
++  if (Array.isArray(value)) return value.map((entry) => overwriteObjectDeep(entry));
++  if (value && typeof value === 'object') {
++    const out = {};
++    for (const key of Object.keys(value)) {
++      out[key] = overwriteObjectDeep(value[key]);
++    }
++    return out;
++  }
++  return value;
++}
++
++function ephemeralSecretStore(ttlMs = 60_000, options = {}) {
++  const store = new Map();
++  const {
++    purgeIntervalMs = 5_000,
++    maxEntries = 1_000,
++    now = () => Date.now()
++  } = options;
++
++  const interval = setInterval(() => {
++    purge();
++  }, purgeIntervalMs);
++
++  if (typeof interval.unref === 'function') {
++    interval.unref();
++  }
++
++  function normalizeKey(key) {
++    return String(key);
++  }
++
++  function isExpired(item) {
++    return !item || now() > item.expiresAt;
++  }
++
++  function set(key, value) {
++    const normalized = normalizeKey(key);
++
++    if (store.size >= maxEntries && !store.has(normalized)) {
++      purge();
++      if (store.size >= maxEntries) {
++        throw new Error('ephemeral_secret_store_capacity_reached');
++      }
++    }
++
++    const expiresAt = now() + ttlMs;
++    store.set(normalized, { value: cloneSafe(value), expiresAt });
++  }
++
++  function get(key) {
++    const normalized = normalizeKey(key);
++    const item = store.get(normalized);
++    if (isExpired(item)) {
++      store.delete(normalized);
++      return undefined;
++    }
++    return cloneSafe(item.value);
++  }
++
++  function del(key) {
++    return store.delete(normalizeKey(key));
++  }
++
++  function touch(key, extensionMs = ttlMs) {
++    const normalized = normalizeKey(key);
++    const item = store.get(normalized);
++    if (isExpired(item)) {
++      store.delete(normalized);
++      return false;
++    }
++
++    item.expiresAt = now() + extensionMs;
++    return true;
++  }
++
++  function purge() {
++    const snapshotNow = now();
++    for (const [key, item] of store.entries()) {
++      if (!item || snapshotNow > item.expiresAt) {
++        store.delete(key);
++      }
++    }
++  }
++
++  function destroy() {
++    clearInterval(interval);
++
++    for (const [, item] of store.entries()) {
++      item.value = overwriteObjectDeep(item.value);
++      item.expiresAt = 0;
++    }
++
++    store.clear();
++  }
++
++  function size() {
++    purge();
++    return store.size;
++  }
++
++  return { set, get, del, touch, purge, destroy, size };
++}
++
++function redactSensitiveHeaders(headers = {}) {
++  const unsafeHeaders = new Set([
++    'authorization',
++    'x-api-key',
++    'cookie',
++    'set-cookie',
++    'proxy-authorization',
++    'x-auth-token',
++    'x-csrf-token',
++    'x-access-token'
++  ]);
++
++  const safeHeaders = { ...headers };
++  for (const [headerName, headerValue] of Object.entries(safeHeaders)) {
++    if (unsafeHeaders.has(String(headerName).toLowerCase())) {
++      safeHeaders[headerName] = '[REDACTED]';
++      continue;
++    }
++
++    if (typeof headerValue === 'string' && /(bearer\s+[a-z0-9._-]+|api[_-]?key\s*[:=])/i.test(headerValue)) {
++      safeHeaders[headerName] = '[REDACTED]';
++    }
++  }
++
++  return safeHeaders;
++}
++
++function redactingRequestLogger(req, _res, next) {
++  const safeHeaders = redactSensitiveHeaders(req.headers);
++  console.info('[request]', req.method, req.originalUrl || req.url, safeHeaders);
++  next();
++}
++
++function hardenStaticResponses(req, res, next) {
++  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
++  res.setHeader('Pragma', 'no-cache');
++  res.setHeader('Expires', '0');
++  res.setHeader('Surrogate-Control', 'no-store');
++  next();
++}
++
++module.exports = {
++  ephemeralSecretStore,
++  redactingRequestLogger,
++  hardenStaticResponses,
++  redactSensitiveHeaders
++};
+diff --git a/ELECTRON_BASELINE.md b/ELECTRON_BASELINE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..fa7341be2fba033a7c6e75874a74f0daf8a160c1
+--- /dev/null
++++ b/ELECTRON_BASELINE.md
+@@ -0,0 +1,151 @@
++# Ephemeral Electron Baseline
++
++This repository includes two drop-in modules:
++
++- `electron_ephemeral_baseline.js` for Electron main-process hardening.
++- `backend_secret_shutdown.js` for backend secret TTL storage + redacted request/static-cycle protection.
++
++## Electron usage
++
++```js
++const { app, BrowserWindow } = require('electron');
++const { applyEphemeralElectronBaseline } = require('./electron_ephemeral_baseline');
++
++applyEphemeralElectronBaseline({
++  app,
++  allowedNavigationHosts: ['example.com'],
++  denyTrackingRequests: true
++});
++
++app.whenReady().then(() => {
++  const win = new BrowserWindow({
++    webPreferences: {
++      contextIsolation: true,
++      sandbox: true,
++      nodeIntegration: false,
++      partition: 'ephemeral:main'
++    }
++  });
++
++  win.loadURL('https://example.com');
++});
++```
++
++## Backend usage (Express)
++
++```js
++const express = require('express');
++const {
++  redactingRequestLogger,
++  hardenStaticResponses,
++  ephemeralSecretStore
++} = require('./backend_secret_shutdown');
++
++const app = express();
++const secrets = ephemeralSecretStore(30_000, { purgeIntervalMs: 5_000, maxEntries: 2_000 });
++
++app.use(hardenStaticResponses);
++app.use(redactingRequestLogger);
++
++app.post('/session', (req, res) => {
++  secrets.set(`session:${req.ip}`, req.body.token);
++  res.status(204).end();
++});
++
++process.on('SIGTERM', () => {
++  secrets.destroy();
++});
++```
++
++## Protection highlights
++
++- Unique temp userData per run + best-effort removal on `will-quit`.
++- Runtime blocking of non-HTTPS, tracking URLs, `window.open`, and webview attachments.
++- Permission deny defaults for camera/mic/geolocation and related APIs.
++- Process env secret scrubbing and log redaction.
++- In-memory secret lifecycle controls (`set/get/del/touch/purge/destroy/size`) with TTL and bounded capacity.
++- Static-cycle hardening via no-store/no-cache response middleware.
++
++## Universal script (all domains)
++
++If you want one script that applies the baseline to Electron + backend together:
++
++```js
++const { app } = require('electron');
++const express = require('express');
++const {
++  releaseElectronFromDomains,
++  releaseBackendFromDomains
++} = require('./universal_domain_release');
++
++const api = express();
++
++releaseElectronFromDomains({ app, allowHosts: ['example.com'] });
++const runtime = releaseBackendFromDomains({ app: api, ttlMs: 30_000, maxEntries: 2_000 });
++
++// Use runtime.secretVault for ephemeral token/session values.
++```
++
++
++### Server-wide runtime shield
++
++`releaseBackendFromDomains(...)` now also attaches process-level fatal/warning guards
++(`unhandledRejection`, `uncaughtException`, `warning`) that redact messages and
++trigger secret scrubbing/vault destruction. You can detach them with:
++
++```js
++const runtime = releaseBackendFromDomains({ app: api, shouldExitOnFatal: false });
++
++// later
++runtime.detachRuntimeShield();
++```
++
++
++### Dark server guards (HTTP/HTTPS boundary)
++
++You can pass a Node `http.Server`/`https.Server` into `releaseBackendFromDomains`.
++This applies request/headers/keepalive timeout ceilings, drop/client error handling,
++and returns `serverGuards.shutdownServer()` for graceful close + secret cleanup.
++
++```js
++const http = require('http');
++const express = require('express');
++const { releaseBackendFromDomains } = require('./universal_domain_release');
++
++const api = express();
++const server = http.createServer(api);
++
++const runtime = releaseBackendFromDomains({ app: api, server, ttlMs: 30_000 });
++
++// later
++await runtime.shutdown();
++```
++
++
++## Hydrogen-Electron adapter
++
++For Hydrogen-flavored Electron stacks, use `hydrogen_electron_release.js` as a
++single composition entrypoint:
++
++```js
++const http = require('http');
++const express = require('express');
++const { app } = require('electron');
++const { releaseHydrogenElectron } = require('./hydrogen_electron_release');
++
++const api = express();
++const server = http.createServer(api);
++
++const runtime = releaseHydrogenElectron({
++  electronApp: app,
++  allowHosts: ['example.com'],
++  backendApp: api,
++  backendServer: server,
++  ttlMs: 30_000,
++  maxEntries: 2_000,
++  shouldExitOnFatal: false
++});
++
++// later
++await runtime.shutdown();
++```
+diff --git a/electron_ephemeral_baseline.js b/electron_ephemeral_baseline.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..bf19e2eb7fac8beaf46176f02cedd572e1d11df4
+--- /dev/null
++++ b/electron_ephemeral_baseline.js
+@@ -0,0 +1,208 @@
++'use strict';
++
++/**
++ * Electron baseline hardening focused on ephemeral runtime behavior.
++ */
++
++const crypto = require('crypto');
++const fs = require('fs/promises');
++const os = require('os');
++const path = require('path');
++
++const DEFAULT_SECRET_KEYWORDS = ['SECRET', 'TOKEN', 'KEY', 'PASSWORD', 'CREDENTIAL', 'PRIVATE'];
++const DEFAULT_DENIED_PERMISSIONS = new Set([
++  'camera',
++  'microphone',
++  'geolocation',
++  'midi',
++  'midiSysex',
++  'notifications',
++  'openExternal',
++  'pointerLock',
++  'fullscreen',
++  'clipboard-sanitized-write'
++]);
++
++function randomTag(length = 8) {
++  return crypto.randomBytes(length).toString('hex');
++}
++
++function pickAllowedNavigation(originAllowList, targetUrl) {
++  if (!/^https:\/\//i.test(targetUrl)) return false;
++  if (!originAllowList || originAllowList.length === 0) return true;
++
++  try {
++    const host = new URL(targetUrl).host.toLowerCase();
++    return originAllowList.some((allowed) => {
++      const clean = String(allowed || '').trim().toLowerCase();
++      return clean.length > 0 && (host === clean || host.endsWith(`.${clean}`));
++    });
++  } catch {
++    return false;
++  }
++}
++
++function scrubProcessSecrets(options = {}) {
++  const {
++    envKeywordDenyList = DEFAULT_SECRET_KEYWORDS,
++    explicitKeys = []
++  } = options;
++
++  const removed = [];
++  const keys = Object.keys(process.env);
++
++  for (const key of keys) {
++    const upper = key.toUpperCase();
++    const deniedByKeyword = envKeywordDenyList.some((word) => upper.includes(String(word).toUpperCase()));
++    if (deniedByKeyword || explicitKeys.includes(key)) {
++      delete process.env[key];
++      removed.push(key);
++    }
++  }
++
++  return removed;
++}
++
++function attachLogRedaction() {
++  const redact = (input) => {
++    const text = String(input);
++    return text
++      .replace(/(bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
++      .replace(/(api[_-]?key\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(secret\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(authorization\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(cookie\s*[:=]\s*)[^\n]+/gi, '$1[REDACTED]');
++  };
++
++  for (const method of ['log', 'info', 'warn', 'error']) {
++    const original = console[method].bind(console);
++    console[method] = (...args) => original(...args.map(redact));
++  }
++}
++
++async function hardenSession(electronSession, options = {}) {
++  if (!electronSession) return;
++
++  const {
++    denyTrackingRequests = true,
++    denyPermissionSet = DEFAULT_DENIED_PERMISSIONS
++  } = options;
++
++  await electronSession.clearStorageData({
++    storages: [
++      'appcache',
++      'cookies',
++      'filesystem',
++      'indexeddb',
++      'localstorage',
++      'shadercache',
++      'serviceworkers',
++      'cachestorage',
++      'websql'
++    ]
++  });
++
++  await electronSession.clearCache();
++
++  electronSession.webRequest.onBeforeRequest((details, callback) => {
++    const url = details.url || '';
++    const isHttp = /^http:\/\//i.test(url);
++    const isTracking = /(telemetry|tracking|metrics|beacon|analytics)/i.test(url);
++    callback({ cancel: isHttp || (denyTrackingRequests && isTracking) });
++  });
++
++  electronSession.setPermissionRequestHandler((_webContents, permission, callback) => {
++    callback(!denyPermissionSet.has(permission));
++  });
++}
++
++function secureWindowContents(contents, allowedNavigationHosts) {
++  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
++
++  contents.on('will-navigate', (event, targetUrl) => {
++    if (!pickAllowedNavigation(allowedNavigationHosts, targetUrl)) {
++      event.preventDefault();
++    }
++  });
++
++  contents.on('will-attach-webview', (event) => {
++    event.preventDefault();
++  });
++
++  contents.on('render-process-gone', () => {
++    // Avoid keeping stale secret-bearing state around after crashes.
++    contents.session.flushStorageData();
++  });
++}
++
++async function tryDeleteDirectory(dirPath) {
++  if (!dirPath) return;
++  try {
++    await fs.rm(dirPath, { recursive: true, force: true, maxRetries: 2 });
++  } catch {
++    // Best-effort cleanup only.
++  }
++}
++
++function applyEphemeralElectronBaseline({
++  app,
++  userDataFolderName,
++  allowedNavigationHosts = [],
++  secretKeyDenyList = DEFAULT_SECRET_KEYWORDS,
++  clearStorageOnReady = true,
++  denyTrackingRequests = true
++}) {
++  if (!app || typeof app.setPath !== 'function') {
++    throw new TypeError('applyEphemeralElectronBaseline requires the Electron app object');
++  }
++
++  const ephemeralFolder = userDataFolderName
++    || `ephemeral-runtime-${process.pid}-${Date.now()}-${randomTag(4)}`;
++  const ephemeralPath = path.join(os.tmpdir(), ephemeralFolder);
++
++  app.setPath('userData', ephemeralPath);
++
++  app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,PasswordManagerEnableService,InterestFeedContentSuggestions');
++  app.commandLine.appendSwitch('disable-sync');
++  app.commandLine.appendSwitch('disable-background-networking');
++  app.commandLine.appendSwitch('disable-renderer-backgrounding');
++  app.commandLine.appendSwitch('disable-breakpad');
++  app.commandLine.appendSwitch('metrics-recording-only');
++  app.commandLine.appendSwitch('no-default-browser-check');
++
++  scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  attachLogRedaction();
++
++  app.on('web-contents-created', (_event, contents) => {
++    secureWindowContents(contents, allowedNavigationHosts);
++  });
++
++  app.on('ready', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++
++    if (clearStorageOnReady) {
++      await session.defaultSession.flushStorageData();
++    }
++  });
++
++  app.on('before-quit', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++    scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  });
++
++  app.on('will-quit', async () => {
++    await tryDeleteDirectory(ephemeralPath);
++  });
++
++  return { ephemeralPath };
++}
++
++module.exports = {
++  applyEphemeralElectronBaseline,
++  hardenSession,
++  scrubProcessSecrets,
++  redactConsole: attachLogRedaction,
++  secureWindowContents
++};
+diff --git a/hydrogen_electron_release.js b/hydrogen_electron_release.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..10eb46f4908c6ef61310d87b53558b90329f8a0f
+--- /dev/null
++++ b/hydrogen_electron_release.js
+@@ -0,0 +1,60 @@
++'use strict';
++
++/**
++ * Hydrogen-Electron Domain Release
++ *
++ * Adapter around the universal hardening primitives for applications branded
++ * or structured as "Hydrogen-Electron" runtimes.
++ */
++
++const {
++  releaseElectronFromDomains,
++  releaseBackendFromDomains,
++  bindDarkServerGuards,
++  buildServerRuntimeShield
++} = require('./universal_domain_release');
++
++function releaseHydrogenElectron({
++  electronApp,
++  allowHosts = [],
++  backendApp,
++  backendServer,
++  ttlMs = 30_000,
++  maxEntries = 2_000,
++  shouldExitOnFatal = false
++} = {}) {
++  if (!electronApp) {
++    throw new TypeError('releaseHydrogenElectron requires { electronApp }');
++  }
++
++  const electronRuntime = releaseElectronFromDomains({
++    app: electronApp,
++    allowHosts
++  });
++
++  const backendRuntime = releaseBackendFromDomains({
++    app: backendApp,
++    server: backendServer,
++    ttlMs,
++    maxEntries,
++    shouldExitOnFatal
++  });
++
++  return {
++    electronRuntime,
++    backendRuntime,
++    shutdown: async () => {
++      if (backendRuntime && typeof backendRuntime.shutdown === 'function') {
++        await backendRuntime.shutdown();
++      }
++    }
++  };
++}
++
++module.exports = {
++  releaseHydrogenElectron,
++  releaseElectronFromDomains,
++  releaseBackendFromDomains,
++  bindDarkServerGuards,
++  buildServerRuntimeShield
++};
+diff --git a/ELECTRON_BASELINE.md b/ELECTRON_BASELINE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..fa7341be2fba033a7c6e75874a74f0daf8a160c1
+--- /dev/null
++++ b/ELECTRON_BASELINE.md
+@@ -0,0 +1,151 @@
++# Ephemeral Electron Baseline
++
++This repository includes two drop-in modules:
++
++- `electron_ephemeral_baseline.js` for Electron main-process hardening.
++- `backend_secret_shutdown.js` for backend secret TTL storage + redacted request/static-cycle protection.
++
++## Electron usage
++
++```js
++const { app, BrowserWindow } = require('electron');
++const { applyEphemeralElectronBaseline } = require('./electron_ephemeral_baseline');
++
++applyEphemeralElectronBaseline({
++  app,
++  allowedNavigationHosts: ['example.com'],
++  denyTrackingRequests: true
++});
++
++app.whenReady().then(() => {
++  const win = new BrowserWindow({
++    webPreferences: {
++      contextIsolation: true,
++      sandbox: true,
++      nodeIntegration: false,
++      partition: 'ephemeral:main'
++    }
++  });
++
++  win.loadURL('https://example.com');
++});
++```
++
++## Backend usage (Express)
++
++```js
++const express = require('express');
++const {
++  redactingRequestLogger,
++  hardenStaticResponses,
++  ephemeralSecretStore
++} = require('./backend_secret_shutdown');
++
++const app = express();
++const secrets = ephemeralSecretStore(30_000, { purgeIntervalMs: 5_000, maxEntries: 2_000 });
++
++app.use(hardenStaticResponses);
++app.use(redactingRequestLogger);
++
++app.post('/session', (req, res) => {
++  secrets.set(`session:${req.ip}`, req.body.token);
++  res.status(204).end();
++});
++
++process.on('SIGTERM', () => {
++  secrets.destroy();
++});
++```
++
++## Protection highlights
++
++- Unique temp userData per run + best-effort removal on `will-quit`.
++- Runtime blocking of non-HTTPS, tracking URLs, `window.open`, and webview attachments.
++- Permission deny defaults for camera/mic/geolocation and related APIs.
++- Process env secret scrubbing and log redaction.
++- In-memory secret lifecycle controls (`set/get/del/touch/purge/destroy/size`) with TTL and bounded capacity.
++- Static-cycle hardening via no-store/no-cache response middleware.
++
++## Universal script (all domains)
++
++If you want one script that applies the baseline to Electron + backend together:
++
++```js
++const { app } = require('electron');
++const express = require('express');
++const {
++  releaseElectronFromDomains,
++  releaseBackendFromDomains
++} = require('./universal_domain_release');
++
++const api = express();
++
++releaseElectronFromDomains({ app, allowHosts: ['example.com'] });
++const runtime = releaseBackendFromDomains({ app: api, ttlMs: 30_000, maxEntries: 2_000 });
++
++// Use runtime.secretVault for ephemeral token/session values.
++```
++
++
++### Server-wide runtime shield
++
++`releaseBackendFromDomains(...)` now also attaches process-level fatal/warning guards
++(`unhandledRejection`, `uncaughtException`, `warning`) that redact messages and
++trigger secret scrubbing/vault destruction. You can detach them with:
++
++```js
++const runtime = releaseBackendFromDomains({ app: api, shouldExitOnFatal: false });
++
++// later
++runtime.detachRuntimeShield();
++```
++
++
++### Dark server guards (HTTP/HTTPS boundary)
++
++You can pass a Node `http.Server`/`https.Server` into `releaseBackendFromDomains`.
++This applies request/headers/keepalive timeout ceilings, drop/client error handling,
++and returns `serverGuards.shutdownServer()` for graceful close + secret cleanup.
++
++```js
++const http = require('http');
++const express = require('express');
++const { releaseBackendFromDomains } = require('./universal_domain_release');
++
++const api = express();
++const server = http.createServer(api);
++
++const runtime = releaseBackendFromDomains({ app: api, server, ttlMs: 30_000 });
++
++// later
++await runtime.shutdown();
++```
++
++
++## Hydrogen-Electron adapter
++
++For Hydrogen-flavored Electron stacks, use `hydrogen_electron_release.js` as a
++single composition entrypoint:
++
++```js
++const http = require('http');
++const express = require('express');
++const { app } = require('electron');
++const { releaseHydrogenElectron } = require('./hydrogen_electron_release');
++
++const api = express();
++const server = http.createServer(api);
++
++const runtime = releaseHydrogenElectron({
++  electronApp: app,
++  allowHosts: ['example.com'],
++  backendApp: api,
++  backendServer: server,
++  ttlMs: 30_000,
++  maxEntries: 2_000,
++  shouldExitOnFatal: false
++});
++
++// later
++await runtime.shutdown();
++```
+diff --git a/electron_ephemeral_baseline.js b/electron_ephemeral_baseline.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..bf19e2eb7fac8beaf46176f02cedd572e1d11df4
+--- /dev/null
++++ b/electron_ephemeral_baseline.js
+@@ -0,0 +1,208 @@
++'use strict';
++
++/**
++ * Electron baseline hardening focused on ephemeral runtime behavior.
++ */
++
++const crypto = require('crypto');
++const fs = require('fs/promises');
++const os = require('os');
++const path = require('path');
++
++const DEFAULT_SECRET_KEYWORDS = ['SECRET', 'TOKEN', 'KEY', 'PASSWORD', 'CREDENTIAL', 'PRIVATE'];
++const DEFAULT_DENIED_PERMISSIONS = new Set([
++  'camera',
++  'microphone',
++  'geolocation',
++  'midi',
++  'midiSysex',
++  'notifications',
++  'openExternal',
++  'pointerLock',
++  'fullscreen',
++  'clipboard-sanitized-write'
++]);
++
++function randomTag(length = 8) {
++  return crypto.randomBytes(length).toString('hex');
++}
++
++function pickAllowedNavigation(originAllowList, targetUrl) {
++  if (!/^https:\/\//i.test(targetUrl)) return false;
++  if (!originAllowList || originAllowList.length === 0) return true;
++
++  try {
++    const host = new URL(targetUrl).host.toLowerCase();
++    return originAllowList.some((allowed) => {
++      const clean = String(allowed || '').trim().toLowerCase();
++      return clean.length > 0 && (host === clean || host.endsWith(`.${clean}`));
++    });
++  } catch {
++    return false;
++  }
++}
++
++function scrubProcessSecrets(options = {}) {
++  const {
++    envKeywordDenyList = DEFAULT_SECRET_KEYWORDS,
++    explicitKeys = []
++  } = options;
++
++  const removed = [];
++  const keys = Object.keys(process.env);
++
++  for (const key of keys) {
++    const upper = key.toUpperCase();
++    const deniedByKeyword = envKeywordDenyList.some((word) => upper.includes(String(word).toUpperCase()));
++    if (deniedByKeyword || explicitKeys.includes(key)) {
++      delete process.env[key];
++      removed.push(key);
++    }
++  }
++
++  return removed;
++}
++
++function attachLogRedaction() {
++  const redact = (input) => {
++    const text = String(input);
++    return text
++      .replace(/(bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
++      .replace(/(api[_-]?key\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(secret\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(authorization\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(cookie\s*[:=]\s*)[^\n]+/gi, '$1[REDACTED]');
++  };
++
++  for (const method of ['log', 'info', 'warn', 'error']) {
++    const original = console[method].bind(console);
++    console[method] = (...args) => original(...args.map(redact));
++  }
++}
++
++async function hardenSession(electronSession, options = {}) {
++  if (!electronSession) return;
++
++  const {
++    denyTrackingRequests = true,
++    denyPermissionSet = DEFAULT_DENIED_PERMISSIONS
++  } = options;
++
++  await electronSession.clearStorageData({
++    storages: [
++      'appcache',
++      'cookies',
++      'filesystem',
++      'indexeddb',
++      'localstorage',
++      'shadercache',
++      'serviceworkers',
++      'cachestorage',
++      'websql'
++    ]
++  });
++
++  await electronSession.clearCache();
++
++  electronSession.webRequest.onBeforeRequest((details, callback) => {
++    const url = details.url || '';
++    const isHttp = /^http:\/\//i.test(url);
++    const isTracking = /(telemetry|tracking|metrics|beacon|analytics)/i.test(url);
++    callback({ cancel: isHttp || (denyTrackingRequests && isTracking) });
++  });
++
++  electronSession.setPermissionRequestHandler((_webContents, permission, callback) => {
++    callback(!denyPermissionSet.has(permission));
++  });
++}
++
++function secureWindowContents(contents, allowedNavigationHosts) {
++  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
++
++  contents.on('will-navigate', (event, targetUrl) => {
++    if (!pickAllowedNavigation(allowedNavigationHosts, targetUrl)) {
++      event.preventDefault();
++    }
++  });
++
++  contents.on('will-attach-webview', (event) => {
++    event.preventDefault();
++  });
++
++  contents.on('render-process-gone', () => {
++    // Avoid keeping stale secret-bearing state around after crashes.
++    contents.session.flushStorageData();
++  });
++}
++
++async function tryDeleteDirectory(dirPath) {
++  if (!dirPath) return;
++  try {
++    await fs.rm(dirPath, { recursive: true, force: true, maxRetries: 2 });
++  } catch {
++    // Best-effort cleanup only.
++  }
++}
++
++function applyEphemeralElectronBaseline({
++  app,
++  userDataFolderName,
++  allowedNavigationHosts = [],
++  secretKeyDenyList = DEFAULT_SECRET_KEYWORDS,
++  clearStorageOnReady = true,
++  denyTrackingRequests = true
++}) {
++  if (!app || typeof app.setPath !== 'function') {
++    throw new TypeError('applyEphemeralElectronBaseline requires the Electron app object');
++  }
++
++  const ephemeralFolder = userDataFolderName
++    || `ephemeral-runtime-${process.pid}-${Date.now()}-${randomTag(4)}`;
++  const ephemeralPath = path.join(os.tmpdir(), ephemeralFolder);
++
++  app.setPath('userData', ephemeralPath);
++
++  app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,PasswordManagerEnableService,InterestFeedContentSuggestions');
++  app.commandLine.appendSwitch('disable-sync');
++  app.commandLine.appendSwitch('disable-background-networking');
++  app.commandLine.appendSwitch('disable-renderer-backgrounding');
++  app.commandLine.appendSwitch('disable-breakpad');
++  app.commandLine.appendSwitch('metrics-recording-only');
++  app.commandLine.appendSwitch('no-default-browser-check');
++
++  scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  attachLogRedaction();
++
++  app.on('web-contents-created', (_event, contents) => {
++    secureWindowContents(contents, allowedNavigationHosts);
++  });
++
++  app.on('ready', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++
++    if (clearStorageOnReady) {
++      await session.defaultSession.flushStorageData();
++    }
++  });
++
++  app.on('before-quit', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++    scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  });
++
++  app.on('will-quit', async () => {
++    await tryDeleteDirectory(ephemeralPath);
++  });
++
++  return { ephemeralPath };
++}
++
++module.exports = {
++  applyEphemeralElectronBaseline,
++  hardenSession,
++  scrubProcessSecrets,
++  redactConsole: attachLogRedaction,
++  secureWindowContents
++};
+diff --git a/electron_ephemeral_baseline.js b/electron_ephemeral_baseline.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..bf19e2eb7fac8beaf46176f02cedd572e1d11df4
+--- /dev/null
++++ b/electron_ephemeral_baseline.js
+@@ -0,0 +1,208 @@
++'use strict';
++
++/**
++ * Electron baseline hardening focused on ephemeral runtime behavior.
++ */
++
++const crypto = require('crypto');
++const fs = require('fs/promises');
++const os = require('os');
++const path = require('path');
++
++const DEFAULT_SECRET_KEYWORDS = ['SECRET', 'TOKEN', 'KEY', 'PASSWORD', 'CREDENTIAL', 'PRIVATE'];
++const DEFAULT_DENIED_PERMISSIONS = new Set([
++  'camera',
++  'microphone',
++  'geolocation',
++  'midi',
++  'midiSysex',
++  'notifications',
++  'openExternal',
++  'pointerLock',
++  'fullscreen',
++  'clipboard-sanitized-write'
++]);
++
++function randomTag(length = 8) {
++  return crypto.randomBytes(length).toString('hex');
++}
++
++function pickAllowedNavigation(originAllowList, targetUrl) {
++  if (!/^https:\/\//i.test(targetUrl)) return false;
++  if (!originAllowList || originAllowList.length === 0) return true;
++
++  try {
++    const host = new URL(targetUrl).host.toLowerCase();
++    return originAllowList.some((allowed) => {
++      const clean = String(allowed || '').trim().toLowerCase();
++      return clean.length > 0 && (host === clean || host.endsWith(`.${clean}`));
++    });
++  } catch {
++    return false;
++  }
++}
++
++function scrubProcessSecrets(options = {}) {
++  const {
++    envKeywordDenyList = DEFAULT_SECRET_KEYWORDS,
++    explicitKeys = []
++  } = options;
++
++  const removed = [];
++  const keys = Object.keys(process.env);
++
++  for (const key of keys) {
++    const upper = key.toUpperCase();
++    const deniedByKeyword = envKeywordDenyList.some((word) => upper.includes(String(word).toUpperCase()));
++    if (deniedByKeyword || explicitKeys.includes(key)) {
++      delete process.env[key];
++      removed.push(key);
++    }
++  }
++
++  return removed;
++}
++
++function attachLogRedaction() {
++  const redact = (input) => {
++    const text = String(input);
++    return text
++      .replace(/(bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
++      .replace(/(api[_-]?key\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(secret\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(authorization\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(cookie\s*[:=]\s*)[^\n]+/gi, '$1[REDACTED]');
++  };
++
++  for (const method of ['log', 'info', 'warn', 'error']) {
++    const original = console[method].bind(console);
++    console[method] = (...args) => original(...args.map(redact));
++  }
++}
++
++async function hardenSession(electronSession, options = {}) {
++  if (!electronSession) return;
++
++  const {
++    denyTrackingRequests = true,
++    denyPermissionSet = DEFAULT_DENIED_PERMISSIONS
++  } = options;
++
++  await electronSession.clearStorageData({
++    storages: [
++      'appcache',
++      'cookies',
++      'filesystem',
++      'indexeddb',
++      'localstorage',
++      'shadercache',
++      'serviceworkers',
++      'cachestorage',
++      'websql'
++    ]
++  });
++
++  await electronSession.clearCache();
++
++  electronSession.webRequest.onBeforeRequest((details, callback) => {
++    const url = details.url || '';
++    const isHttp = /^http:\/\//i.test(url);
++    const isTracking = /(telemetry|tracking|metrics|beacon|analytics)/i.test(url);
++    callback({ cancel: isHttp || (denyTrackingRequests && isTracking) });
++  });
++
++  electronSession.setPermissionRequestHandler((_webContents, permission, callback) => {
++    callback(!denyPermissionSet.has(permission));
++  });
++}
++
++function secureWindowContents(contents, allowedNavigationHosts) {
++  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
++
++  contents.on('will-navigate', (event, targetUrl) => {
++    if (!pickAllowedNavigation(allowedNavigationHosts, targetUrl)) {
++      event.preventDefault();
++    }
++  });
++
++  contents.on('will-attach-webview', (event) => {
++    event.preventDefault();
++  });
++
++  contents.on('render-process-gone', () => {
++    // Avoid keeping stale secret-bearing state around after crashes.
++    contents.session.flushStorageData();
++  });
++}
++
++async function tryDeleteDirectory(dirPath) {
++  if (!dirPath) return;
++  try {
++    await fs.rm(dirPath, { recursive: true, force: true, maxRetries: 2 });
++  } catch {
++    // Best-effort cleanup only.
++  }
++}
++
++function applyEphemeralElectronBaseline({
++  app,
++  userDataFolderName,
++  allowedNavigationHosts = [],
++  secretKeyDenyList = DEFAULT_SECRET_KEYWORDS,
++  clearStorageOnReady = true,
++  denyTrackingRequests = true
++}) {
++  if (!app || typeof app.setPath !== 'function') {
++    throw new TypeError('applyEphemeralElectronBaseline requires the Electron app object');
++  }
++
++  const ephemeralFolder = userDataFolderName
++    || `ephemeral-runtime-${process.pid}-${Date.now()}-${randomTag(4)}`;
++  const ephemeralPath = path.join(os.tmpdir(), ephemeralFolder);
++
++  app.setPath('userData', ephemeralPath);
++
++  app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,PasswordManagerEnableService,InterestFeedContentSuggestions');
++  app.commandLine.appendSwitch('disable-sync');
++  app.commandLine.appendSwitch('disable-background-networking');
++  app.commandLine.appendSwitch('disable-renderer-backgrounding');
++  app.commandLine.appendSwitch('disable-breakpad');
++  app.commandLine.appendSwitch('metrics-recording-only');
++  app.commandLine.appendSwitch('no-default-browser-check');
++
++  scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  attachLogRedaction();
++
++  app.on('web-contents-created', (_event, contents) => {
++    secureWindowContents(contents, allowedNavigationHosts);
++  });
++
++  app.on('ready', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++
++    if (clearStorageOnReady) {
++      await session.defaultSession.flushStorageData();
++    }
++  });
++
++  app.on('before-quit', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++    scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  });
++
++  app.on('will-quit', async () => {
++    await tryDeleteDirectory(ephemeralPath);
++  });
++
++  return { ephemeralPath };
++}
++
++module.exports = {
++  applyEphemeralElectronBaseline,
++  hardenSession,
++  scrubProcessSecrets,
++  redactConsole: attachLogRedaction,
++  secureWindowContents
++};
+diff --git a/ELECTRON_BASELINE.md b/ELECTRON_BASELINE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..fa7341be2fba033a7c6e75874a74f0daf8a160c1
+--- /dev/null
++++ b/ELECTRON_BASELINE.md
+@@ -0,0 +1,151 @@
++# Ephemeral Electron Baseline
++
++This repository includes two drop-in modules:
++
++- `electron_ephemeral_baseline.js` for Electron main-process hardening.
++- `backend_secret_shutdown.js` for backend secret TTL storage + redacted request/static-cycle protection.
++
++## Electron usage
++
++```js
++const { app, BrowserWindow } = require('electron');
++const { applyEphemeralElectronBaseline } = require('./electron_ephemeral_baseline');
++
++applyEphemeralElectronBaseline({
++  app,
++  allowedNavigationHosts: ['example.com'],
++  denyTrackingRequests: true
++});
++
++app.whenReady().then(() => {
++  const win = new BrowserWindow({
++    webPreferences: {
++      contextIsolation: true,
++      sandbox: true,
++      nodeIntegration: false,
++      partition: 'ephemeral:main'
++    }
++  });
++
++  win.loadURL('https://example.com');
++});
++```
++
++## Backend usage (Express)
++
++```js
++const express = require('express');
++const {
++  redactingRequestLogger,
++  hardenStaticResponses,
++  ephemeralSecretStore
++} = require('./backend_secret_shutdown');
++
++const app = express();
++const secrets = ephemeralSecretStore(30_000, { purgeIntervalMs: 5_000, maxEntries: 2_000 });
++
++app.use(hardenStaticResponses);
++app.use(redactingRequestLogger);
++
++app.post('/session', (req, res) => {
++  secrets.set(`session:${req.ip}`, req.body.token);
++  res.status(204).end();
++});
++
++process.on('SIGTERM', () => {
++  secrets.destroy();
++});
++```
++
++## Protection highlights
++
++- Unique temp userData per run + best-effort removal on `will-quit`.
++- Runtime blocking of non-HTTPS, tracking URLs, `window.open`, and webview attachments.
++- Permission deny defaults for camera/mic/geolocation and related APIs.
++- Process env secret scrubbing and log redaction.
++- In-memory secret lifecycle controls (`set/get/del/touch/purge/destroy/size`) with TTL and bounded capacity.
++- Static-cycle hardening via no-store/no-cache response middleware.
++
++## Universal script (all domains)
++
++If you want one script that applies the baseline to Electron + backend together:
++
++```js
++const { app } = require('electron');
++const express = require('express');
++const {
++  releaseElectronFromDomains,
++  releaseBackendFromDomains
++} = require('./universal_domain_release');
++
++const api = express();
++
++releaseElectronFromDomains({ app, allowHosts: ['example.com'] });
++const runtime = releaseBackendFromDomains({ app: api, ttlMs: 30_000, maxEntries: 2_000 });
++
++// Use runtime.secretVault for ephemeral token/session values.
++```
++
++
++### Server-wide runtime shield
++
++`releaseBackendFromDomains(...)` now also attaches process-level fatal/warning guards
++(`unhandledRejection`, `uncaughtException`, `warning`) that redact messages and
++trigger secret scrubbing/vault destruction. You can detach them with:
++
++```js
++const runtime = releaseBackendFromDomains({ app: api, shouldExitOnFatal: false });
++
++// later
++runtime.detachRuntimeShield();
++```
++
++
++### Dark server guards (HTTP/HTTPS boundary)
++
++You can pass a Node `http.Server`/`https.Server` into `releaseBackendFromDomains`.
++This applies request/headers/keepalive timeout ceilings, drop/client error handling,
++and returns `serverGuards.shutdownServer()` for graceful close + secret cleanup.
++
++```js
++const http = require('http');
++const express = require('express');
++const { releaseBackendFromDomains } = require('./universal_domain_release');
++
++const api = express();
++const server = http.createServer(api);
++
++const runtime = releaseBackendFromDomains({ app: api, server, ttlMs: 30_000 });
++
++// later
++await runtime.shutdown();
++```
++
++
++## Hydrogen-Electron adapter
++
++For Hydrogen-flavored Electron stacks, use `hydrogen_electron_release.js` as a
++single composition entrypoint:
++
++```js
++const http = require('http');
++const express = require('express');
++const { app } = require('electron');
++const { releaseHydrogenElectron } = require('./hydrogen_electron_release');
++
++const api = express();
++const server = http.createServer(api);
++
++const runtime = releaseHydrogenElectron({
++  electronApp: app,
++  allowHosts: ['example.com'],
++  backendApp: api,
++  backendServer: server,
++  ttlMs: 30_000,
++  maxEntries: 2_000,
++  shouldExitOnFatal: false
++});
++
++// later
++await runtime.shutdown();
++```
+diff --git a/hydrogen_electron_release.js b/hydrogen_electron_release.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..10eb46f4908c6ef61310d87b53558b90329f8a0f
+--- /dev/null
++++ b/hydrogen_electron_release.js
+@@ -0,0 +1,60 @@
++'use strict';
++
++/**
++ * Hydrogen-Electron Domain Release
++ *
++ * Adapter around the universal hardening primitives for applications branded
++ * or structured as "Hydrogen-Electron" runtimes.
++ */
++
++const {
++  releaseElectronFromDomains,
++  releaseBackendFromDomains,
++  bindDarkServerGuards,
++  buildServerRuntimeShield
++} = require('./universal_domain_release');
++
++function releaseHydrogenElectron({
++  electronApp,
++  allowHosts = [],
++  backendApp,
++  backendServer,
++  ttlMs = 30_000,
++  maxEntries = 2_000,
++  shouldExitOnFatal = false
++} = {}) {
++  if (!electronApp) {
++    throw new TypeError('releaseHydrogenElectron requires { electronApp }');
++  }
++
++  const electronRuntime = releaseElectronFromDomains({
++    app: electronApp,
++    allowHosts
++  });
++
++  const backendRuntime = releaseBackendFromDomains({
++    app: backendApp,
++    server: backendServer,
++    ttlMs,
++    maxEntries,
++    shouldExitOnFatal
++  });
++
++  return {
++    electronRuntime,
++    backendRuntime,
++    shutdown: async () => {
++      if (backendRuntime && typeof backendRuntime.shutdown === 'function') {
++        await backendRuntime.shutdown();
++      }
++    }
++  };
++}
++
++module.exports = {
++  releaseHydrogenElectron,
++  releaseElectronFromDomains,
++  releaseBackendFromDomains,
++  bindDarkServerGuards,
++  buildServerRuntimeShield
++};
+diff --git a/ELECTRON_BASELINE.md b/ELECTRON_BASELINE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..4bf305d41d8e7239a6d25fd52b13916d44d2535b
+--- /dev/null
++++ b/ELECTRON_BASELINE.md
+@@ -0,0 +1,171 @@
++# Ephemeral Electron Baseline
++
++This repository includes two drop-in modules:
++
++- `electron_ephemeral_baseline.js` for Electron main-process hardening.
++- `backend_secret_shutdown.js` for backend secret TTL storage + redacted request/static-cycle protection.
++
++## Electron usage
++
++```js
++const { app, BrowserWindow } = require('electron');
++const { applyEphemeralElectronBaseline } = require('./electron_ephemeral_baseline');
++
++applyEphemeralElectronBaseline({
++  app,
++  allowedNavigationHosts: ['example.com'],
++  denyTrackingRequests: true
++});
++
++app.whenReady().then(() => {
++  const win = new BrowserWindow({
++    webPreferences: {
++      contextIsolation: true,
++      sandbox: true,
++      nodeIntegration: false,
++      partition: 'ephemeral:main'
++    }
++  });
++
++  win.loadURL('https://example.com');
++});
++```
++
++## Backend usage (Express)
++
++```js
++const express = require('express');
++const {
++  redactingRequestLogger,
++  hardenStaticResponses,
++  ephemeralSecretStore
++} = require('./backend_secret_shutdown');
++
++const app = express();
++const secrets = ephemeralSecretStore(30_000, { purgeIntervalMs: 5_000, maxEntries: 2_000 });
++
++app.use(hardenStaticResponses);
++app.use(redactingRequestLogger);
++
++app.post('/session', (req, res) => {
++  secrets.set(`session:${req.ip}`, req.body.token);
++  res.status(204).end();
++});
++
++process.on('SIGTERM', () => {
++  secrets.destroy();
++});
++```
++
++## Protection highlights
++
++- Unique temp userData per run + best-effort removal on `will-quit`.
++- Runtime blocking of non-HTTPS, tracking URLs, `window.open`, and webview attachments.
++- Permission deny defaults for camera/mic/geolocation and related APIs.
++- Process env secret scrubbing and log redaction.
++- In-memory secret lifecycle controls (`set/get/del/touch/purge/destroy/size`) with TTL and bounded capacity.
++- Static-cycle hardening via no-store/no-cache response middleware.
++
++## Universal script (all domains)
++
++If you want one script that applies the baseline to Electron + backend together:
++
++```js
++const { app } = require('electron');
++const express = require('express');
++const {
++  releaseElectronFromDomains,
++  releaseBackendFromDomains
++} = require('./universal_domain_release');
++
++const api = express();
++
++releaseElectronFromDomains({ app, allowHosts: ['example.com'] });
++const runtime = releaseBackendFromDomains({ app: api, ttlMs: 30_000, maxEntries: 2_000 });
++
++// Use runtime.secretVault for ephemeral token/session values.
++```
++
++
++### Server-wide runtime shield
++
++`releaseBackendFromDomains(...)` now also attaches process-level fatal/warning guards
++(`unhandledRejection`, `uncaughtException`, `warning`) that redact messages and
++trigger secret scrubbing/vault destruction. You can detach them with:
++
++```js
++const runtime = releaseBackendFromDomains({ app: api, shouldExitOnFatal: false });
++
++// later
++runtime.detachRuntimeShield();
++```
++
++
++### Dark server guards (HTTP/HTTPS boundary)
++
++You can pass a Node `http.Server`/`https.Server` into `releaseBackendFromDomains`.
++This applies request/headers/keepalive timeout ceilings, drop/client error handling,
++and returns `serverGuards.shutdownServer()` for graceful close + secret cleanup.
++
++```js
++const http = require('http');
++const express = require('express');
++const { releaseBackendFromDomains } = require('./universal_domain_release');
++
++const api = express();
++const server = http.createServer(api);
++
++const runtime = releaseBackendFromDomains({ app: api, server, ttlMs: 30_000 });
++
++// later
++await runtime.shutdown();
++```
++
++
++## Hydrogen-Electron adapter
++
++For Hydrogen-flavored Electron stacks, use `hydrogen_electron_release.js` as a
++single composition entrypoint:
++
++```js
++const http = require('http');
++const express = require('express');
++const { app } = require('electron');
++const { releaseHydrogenElectron } = require('./hydrogen_electron_release');
++
++const api = express();
++const server = http.createServer(api);
++
++const runtime = releaseHydrogenElectron({
++  electronApp: app,
++  allowHosts: ['example.com'],
++  backendApp: api,
++  backendServer: server,
++  ttlMs: 30_000,
++  maxEntries: 2_000,
++  shouldExitOnFatal: false
++});
++
++// later
++await runtime.shutdown();
++```
++
++
++## Backend nullification charm
++
++Use `backend_nullification_charm.js` to decommission risky backend surfaces and
++sanitize inbound request material before handlers run:
++
++```js
++const {
++  nullificationGateway,
++  decommissionedRouteSink
++} = require('./backend_nullification_charm');
++
++app.use(nullificationGateway);
++app.all('/legacy-metaphysical/*', decommissionedRouteSink);
++```
++
++It blocks common high-risk routes (`/admin`, `/internal`, `/debug`, `/eval`,
++`/execute`, `/rpc`, and metaphysical-themed aliases) with HTTP 410 and strips
++sensitive/metaphysical keys from inbound object payloads.
+diff --git a/backend_nullification_charm.js b/backend_nullification_charm.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..8af000ebae13792e4fa1a338bcd331ac073266b6
+--- /dev/null
++++ b/backend_nullification_charm.js
+@@ -0,0 +1,97 @@
++'use strict';
++
++/**
++ * Backend Nullification Charm
++ *
++ * Purpose:
++ * - Block known risky/metaphysical-like admin/debug execution surfaces.
++ * - Deep-sanitize inbound payload/query/header data.
++ * - Provide a terminal sink endpoint for decommissioned routes.
++ */
++
++const BLOCKED_PATH_PATTERNS = [
++  /\/admin(\/|$)/i,
++  /\/internal(\/|$)/i,
++  /\/debug(\/|$)/i,
++  /\/eval(\/|$)/i,
++  /\/execute(\/|$)/i,
++  /\/rpc(\/|$)/i,
++  /\/metaphysical(\/|$)/i,
++  /\/ritual(\/|$)/i,
++  /\/summon(\/|$)/i
++];
++
++const BLOCKED_KEY_PATTERNS = [
++  /^(__proto__|prototype|constructor)$/i,
++  /(secret|token|password|credential|private[_-]?key)/i,
++  /(metaphysical|ritual|summon|curse|nightmare|nether)/i
++];
++
++function isBlockedPath(pathname = '') {
++  return BLOCKED_PATH_PATTERNS.some((re) => re.test(String(pathname)));
++}
++
++function sanitizePrimitive(value) {
++  if (typeof value !== 'string') return value;
++  return value
++    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
++    .replace(/\$\{[^}]*\}/g, '[REMOVED]')
++    .replace(/(bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
++    .replace(/[\u0000-\u001f\u007f]/g, '');
++}
++
++function deepSanitize(value) {
++  if (Array.isArray(value)) {
++    return value.map((entry) => deepSanitize(entry));
++  }
++
++  if (value && typeof value === 'object') {
++    const out = {};
++    for (const [key, val] of Object.entries(value)) {
++      if (BLOCKED_KEY_PATTERNS.some((re) => re.test(String(key)))) {
++        continue;
++      }
++      out[key] = deepSanitize(val);
++    }
++    return out;
++  }
++
++  return sanitizePrimitive(value);
++}
++
++function nullificationGateway(req, res, next) {
++  if (isBlockedPath(req.path || req.url || '')) {
++    res.statusCode = 410;
++    res.setHeader('Content-Type', 'application/json; charset=utf-8');
++    res.end(JSON.stringify({ ok: false, code: 'route_decommissioned' }));
++    return;
++  }
++
++  if (req.query && typeof req.query === 'object') {
++    req.query = deepSanitize(req.query);
++  }
++
++  if (req.body && typeof req.body === 'object') {
++    req.body = deepSanitize(req.body);
++  }
++
++  if (req.headers && typeof req.headers === 'object') {
++    req.headers = deepSanitize(req.headers);
++  }
++
++  next();
++}
++
++function decommissionedRouteSink(_req, res) {
++  res.statusCode = 410;
++  res.setHeader('Cache-Control', 'no-store');
++  res.setHeader('Content-Type', 'application/json; charset=utf-8');
++  res.end(JSON.stringify({ ok: false, code: 'decommissioned' }));
++}
++
++module.exports = {
++  isBlockedPath,
++  deepSanitize,
++  nullificationGateway,
++  decommissionedRouteSink
++};
+diff --git a/backend_secret_shutdown.js b/backend_secret_shutdown.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..ccb9a37caeb74735fe3aa4c4784937e038ecb6be
+--- /dev/null
++++ b/backend_secret_shutdown.js
+@@ -0,0 +1,172 @@
++'use strict';
++
++/**
++ * Backend-side helpers to keep runtime as ephemeral as possible.
++ * Compatible with Express-style middleware.
++ */
++
++const crypto = require('crypto');
++
++function cloneSafe(value) {
++  if (value === null || value === undefined) return value;
++  if (typeof value === 'object') return JSON.parse(JSON.stringify(value));
++  return value;
++}
++
++function overwriteString(input) {
++  if (typeof input !== 'string' || input.length === 0) return '';
++  return crypto.randomBytes(input.length).toString('hex').slice(0, input.length);
++}
++
++function overwriteObjectDeep(value) {
++  if (typeof value === 'string') return overwriteString(value);
++  if (Array.isArray(value)) return value.map((entry) => overwriteObjectDeep(entry));
++  if (value && typeof value === 'object') {
++    const out = {};
++    for (const key of Object.keys(value)) {
++      out[key] = overwriteObjectDeep(value[key]);
++    }
++    return out;
++  }
++  return value;
++}
++
++function ephemeralSecretStore(ttlMs = 60_000, options = {}) {
++  const store = new Map();
++  const {
++    purgeIntervalMs = 5_000,
++    maxEntries = 1_000,
++    now = () => Date.now()
++  } = options;
++
++  const interval = setInterval(() => {
++    purge();
++  }, purgeIntervalMs);
++
++  if (typeof interval.unref === 'function') {
++    interval.unref();
++  }
++
++  function normalizeKey(key) {
++    return String(key);
++  }
++
++  function isExpired(item) {
++    return !item || now() > item.expiresAt;
++  }
++
++  function set(key, value) {
++    const normalized = normalizeKey(key);
++
++    if (store.size >= maxEntries && !store.has(normalized)) {
++      purge();
++      if (store.size >= maxEntries) {
++        throw new Error('ephemeral_secret_store_capacity_reached');
++      }
++    }
++
++    const expiresAt = now() + ttlMs;
++    store.set(normalized, { value: cloneSafe(value), expiresAt });
++  }
++
++  function get(key) {
++    const normalized = normalizeKey(key);
++    const item = store.get(normalized);
++    if (isExpired(item)) {
++      store.delete(normalized);
++      return undefined;
++    }
++    return cloneSafe(item.value);
++  }
++
++  function del(key) {
++    return store.delete(normalizeKey(key));
++  }
++
++  function touch(key, extensionMs = ttlMs) {
++    const normalized = normalizeKey(key);
++    const item = store.get(normalized);
++    if (isExpired(item)) {
++      store.delete(normalized);
++      return false;
++    }
++
++    item.expiresAt = now() + extensionMs;
++    return true;
++  }
++
++  function purge() {
++    const snapshotNow = now();
++    for (const [key, item] of store.entries()) {
++      if (!item || snapshotNow > item.expiresAt) {
++        store.delete(key);
++      }
++    }
++  }
++
++  function destroy() {
++    clearInterval(interval);
++
++    for (const [, item] of store.entries()) {
++      item.value = overwriteObjectDeep(item.value);
++      item.expiresAt = 0;
++    }
++
++    store.clear();
++  }
++
++  function size() {
++    purge();
++    return store.size;
++  }
++
++  return { set, get, del, touch, purge, destroy, size };
++}
++
++function redactSensitiveHeaders(headers = {}) {
++  const unsafeHeaders = new Set([
++    'authorization',
++    'x-api-key',
++    'cookie',
++    'set-cookie',
++    'proxy-authorization',
++    'x-auth-token',
++    'x-csrf-token',
++    'x-access-token'
++  ]);
++
++  const safeHeaders = { ...headers };
++  for (const [headerName, headerValue] of Object.entries(safeHeaders)) {
++    if (unsafeHeaders.has(String(headerName).toLowerCase())) {
++      safeHeaders[headerName] = '[REDACTED]';
++      continue;
++    }
++
++    if (typeof headerValue === 'string' && /(bearer\s+[a-z0-9._-]+|api[_-]?key\s*[:=])/i.test(headerValue)) {
++      safeHeaders[headerName] = '[REDACTED]';
++    }
++  }
++
++  return safeHeaders;
++}
++
++function redactingRequestLogger(req, _res, next) {
++  const safeHeaders = redactSensitiveHeaders(req.headers);
++  console.info('[request]', req.method, req.originalUrl || req.url, safeHeaders);
++  next();
++}
++
++function hardenStaticResponses(req, res, next) {
++  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
++  res.setHeader('Pragma', 'no-cache');
++  res.setHeader('Expires', '0');
++  res.setHeader('Surrogate-Control', 'no-store');
++  next();
++}
++
++module.exports = {
++  ephemeralSecretStore,
++  redactingRequestLogger,
++  hardenStaticResponses,
++  redactSensitiveHeaders
++};
+diff --git a/electron_ephemeral_baseline.js b/electron_ephemeral_baseline.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..bf19e2eb7fac8beaf46176f02cedd572e1d11df4
+--- /dev/null
++++ b/electron_ephemeral_baseline.js
+@@ -0,0 +1,208 @@
++'use strict';
++
++/**
++ * Electron baseline hardening focused on ephemeral runtime behavior.
++ */
++
++const crypto = require('crypto');
++const fs = require('fs/promises');
++const os = require('os');
++const path = require('path');
++
++const DEFAULT_SECRET_KEYWORDS = ['SECRET', 'TOKEN', 'KEY', 'PASSWORD', 'CREDENTIAL', 'PRIVATE'];
++const DEFAULT_DENIED_PERMISSIONS = new Set([
++  'camera',
++  'microphone',
++  'geolocation',
++  'midi',
++  'midiSysex',
++  'notifications',
++  'openExternal',
++  'pointerLock',
++  'fullscreen',
++  'clipboard-sanitized-write'
++]);
++
++function randomTag(length = 8) {
++  return crypto.randomBytes(length).toString('hex');
++}
++
++function pickAllowedNavigation(originAllowList, targetUrl) {
++  if (!/^https:\/\//i.test(targetUrl)) return false;
++  if (!originAllowList || originAllowList.length === 0) return true;
++
++  try {
++    const host = new URL(targetUrl).host.toLowerCase();
++    return originAllowList.some((allowed) => {
++      const clean = String(allowed || '').trim().toLowerCase();
++      return clean.length > 0 && (host === clean || host.endsWith(`.${clean}`));
++    });
++  } catch {
++    return false;
++  }
++}
++
++function scrubProcessSecrets(options = {}) {
++  const {
++    envKeywordDenyList = DEFAULT_SECRET_KEYWORDS,
++    explicitKeys = []
++  } = options;
++
++  const removed = [];
++  const keys = Object.keys(process.env);
++
++  for (const key of keys) {
++    const upper = key.toUpperCase();
++    const deniedByKeyword = envKeywordDenyList.some((word) => upper.includes(String(word).toUpperCase()));
++    if (deniedByKeyword || explicitKeys.includes(key)) {
++      delete process.env[key];
++      removed.push(key);
++    }
++  }
++
++  return removed;
++}
++
++function attachLogRedaction() {
++  const redact = (input) => {
++    const text = String(input);
++    return text
++      .replace(/(bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
++      .replace(/(api[_-]?key\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(secret\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(authorization\s*[:=]\s*)[^\s,;]+/gi, '$1[REDACTED]')
++      .replace(/(cookie\s*[:=]\s*)[^\n]+/gi, '$1[REDACTED]');
++  };
++
++  for (const method of ['log', 'info', 'warn', 'error']) {
++    const original = console[method].bind(console);
++    console[method] = (...args) => original(...args.map(redact));
++  }
++}
++
++async function hardenSession(electronSession, options = {}) {
++  if (!electronSession) return;
++
++  const {
++    denyTrackingRequests = true,
++    denyPermissionSet = DEFAULT_DENIED_PERMISSIONS
++  } = options;
++
++  await electronSession.clearStorageData({
++    storages: [
++      'appcache',
++      'cookies',
++      'filesystem',
++      'indexeddb',
++      'localstorage',
++      'shadercache',
++      'serviceworkers',
++      'cachestorage',
++      'websql'
++    ]
++  });
++
++  await electronSession.clearCache();
++
++  electronSession.webRequest.onBeforeRequest((details, callback) => {
++    const url = details.url || '';
++    const isHttp = /^http:\/\//i.test(url);
++    const isTracking = /(telemetry|tracking|metrics|beacon|analytics)/i.test(url);
++    callback({ cancel: isHttp || (denyTrackingRequests && isTracking) });
++  });
++
++  electronSession.setPermissionRequestHandler((_webContents, permission, callback) => {
++    callback(!denyPermissionSet.has(permission));
++  });
++}
++
++function secureWindowContents(contents, allowedNavigationHosts) {
++  contents.setWindowOpenHandler(() => ({ action: 'deny' }));
++
++  contents.on('will-navigate', (event, targetUrl) => {
++    if (!pickAllowedNavigation(allowedNavigationHosts, targetUrl)) {
++      event.preventDefault();
++    }
++  });
++
++  contents.on('will-attach-webview', (event) => {
++    event.preventDefault();
++  });
++
++  contents.on('render-process-gone', () => {
++    // Avoid keeping stale secret-bearing state around after crashes.
++    contents.session.flushStorageData();
++  });
++}
++
++async function tryDeleteDirectory(dirPath) {
++  if (!dirPath) return;
++  try {
++    await fs.rm(dirPath, { recursive: true, force: true, maxRetries: 2 });
++  } catch {
++    // Best-effort cleanup only.
++  }
++}
++
++function applyEphemeralElectronBaseline({
++  app,
++  userDataFolderName,
++  allowedNavigationHosts = [],
++  secretKeyDenyList = DEFAULT_SECRET_KEYWORDS,
++  clearStorageOnReady = true,
++  denyTrackingRequests = true
++}) {
++  if (!app || typeof app.setPath !== 'function') {
++    throw new TypeError('applyEphemeralElectronBaseline requires the Electron app object');
++  }
++
++  const ephemeralFolder = userDataFolderName
++    || `ephemeral-runtime-${process.pid}-${Date.now()}-${randomTag(4)}`;
++  const ephemeralPath = path.join(os.tmpdir(), ephemeralFolder);
++
++  app.setPath('userData', ephemeralPath);
++
++  app.commandLine.appendSwitch('disable-features', 'AutofillServerCommunication,PasswordManagerEnableService,InterestFeedContentSuggestions');
++  app.commandLine.appendSwitch('disable-sync');
++  app.commandLine.appendSwitch('disable-background-networking');
++  app.commandLine.appendSwitch('disable-renderer-backgrounding');
++  app.commandLine.appendSwitch('disable-breakpad');
++  app.commandLine.appendSwitch('metrics-recording-only');
++  app.commandLine.appendSwitch('no-default-browser-check');
++
++  scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  attachLogRedaction();
++
++  app.on('web-contents-created', (_event, contents) => {
++    secureWindowContents(contents, allowedNavigationHosts);
++  });
++
++  app.on('ready', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++
++    if (clearStorageOnReady) {
++      await session.defaultSession.flushStorageData();
++    }
++  });
++
++  app.on('before-quit', async () => {
++    const { session } = require('electron');
++    await hardenSession(session.defaultSession, { denyTrackingRequests });
++    scrubProcessSecrets({ envKeywordDenyList: secretKeyDenyList });
++  });
++
++  app.on('will-quit', async () => {
++    await tryDeleteDirectory(ephemeralPath);
++  });
++
++  return { ephemeralPath };
++}
++
++module.exports = {
++  applyEphemeralElectronBaseline,
++  hardenSession,
++  scrubProcessSecrets,
++  redactConsole: attachLogRedaction,
++  secureWindowContents
++};
+diff --git a/hydrogen_electron_release.js b/hydrogen_electron_release.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..8ec140c0c29e501009690d04c660112035995755
+--- /dev/null
++++ b/hydrogen_electron_release.js
+@@ -0,0 +1,66 @@
++'use strict';
++
++/**
++ * Hydrogen-Electron Domain Release
++ *
++ * Adapter around the universal hardening primitives for applications branded
++ * or structured as "Hydrogen-Electron" runtimes.
++ */
++
++const {
++  releaseElectronFromDomains,
++  releaseBackendFromDomains,
++  bindDarkServerGuards,
++  buildServerRuntimeShield
++} = require('./universal_domain_release');
++const {
++  nullificationGateway,
++  decommissionedRouteSink
++} = require('./backend_nullification_charm');
++
++function releaseHydrogenElectron({
++  electronApp,
++  allowHosts = [],
++  backendApp,
++  backendServer,
++  ttlMs = 30_000,
++  maxEntries = 2_000,
++  shouldExitOnFatal = false
++} = {}) {
++  if (!electronApp) {
++    throw new TypeError('releaseHydrogenElectron requires { electronApp }');
++  }
++
++  const electronRuntime = releaseElectronFromDomains({
++    app: electronApp,
++    allowHosts
++  });
++
++  const backendRuntime = releaseBackendFromDomains({
++    app: backendApp,
++    server: backendServer,
++    ttlMs,
++    maxEntries,
++    shouldExitOnFatal
++  });
++
++  return {
++    electronRuntime,
++    backendRuntime,
++    shutdown: async () => {
++      if (backendRuntime && typeof backendRuntime.shutdown === 'function') {
++        await backendRuntime.shutdown();
++      }
++    }
++  };
++}
++
++module.exports = {
++  releaseHydrogenElectron,
++  releaseElectronFromDomains,
++  releaseBackendFromDomains,
++  bindDarkServerGuards,
++  buildServerRuntimeShield,
++  nullificationGateway,
++  decommissionedRouteSink
++};
+diff --git a/universal_domain_release.js b/universal_domain_release.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..68070dfb13dae28a4707455e418584f008c0a8b3
+--- /dev/null
++++ b/universal_domain_release.js
+@@ -0,0 +1,197 @@
++'use strict';
++
++/**
++ * Universal Domain Release Script
++ *
++ * Practical interpretation of "free all powers from domains":
++ * - Remove long-lived secret material from process/runtime memory.
++ * - Force ephemeral/no-cache/no-tracking behavior for Electron (Chromium).
++ * - Add backend middleware that suppresses secret leakage and static persistence.
++ * - Provide process-level shutdown guards for any Node server runtime.
++ */
++
++const {
++  applyEphemeralElectronBaseline,
++  scrubProcessSecrets
++} = require('./electron_ephemeral_baseline');
++const {
++  ephemeralSecretStore,
++  redactingRequestLogger,
++  hardenStaticResponses,
++  redactSensitiveHeaders
++} = require('./backend_secret_shutdown');
++const {
++  nullificationGateway,
++  decommissionedRouteSink
++} = require('./backend_nullification_charm');
++
++function releaseElectronFromDomains({ app, allowHosts = [] }) {
++  if (!app) {
++    throw new TypeError('releaseElectronFromDomains requires { app } from Electron main process');
++  }
++
++  return applyEphemeralElectronBaseline({
++    app,
++    allowedNavigationHosts: allowHosts,
++    denyTrackingRequests: true,
++    clearStorageOnReady: true
++  });
++}
++
++function buildServerRuntimeShield({ secretVault, shouldExitOnFatal = false } = {}) {
++  const onFatal = (err) => {
++    const message = err && err.message ? String(err.message) : String(err);
++    const safe = redactSensitiveHeaders({ error: message });
++    console.error('[runtime-fatal]', safe.error);
++
++    scrubProcessSecrets();
++    if (secretVault && typeof secretVault.destroy === 'function') {
++      secretVault.destroy();
++    }
++
++    if (shouldExitOnFatal) {
++      process.exitCode = 1;
++    }
++  };
++
++  const onWarning = (warning) => {
++    const msg = warning && warning.message ? warning.message : warning;
++    console.warn('[runtime-warning]', redactSensitiveHeaders({ warning: String(msg) }).warning);
++  };
++
++  process.on('unhandledRejection', onFatal);
++  process.on('uncaughtException', onFatal);
++  process.on('warning', onWarning);
++
++  return function detach() {
++    process.off('unhandledRejection', onFatal);
++    process.off('uncaughtException', onFatal);
++    process.off('warning', onWarning);
++  };
++}
++
++function bindDarkServerGuards({
++  server,
++  secretVault,
++  requestTimeoutMs = 30_000,
++  headersTimeoutMs = 15_000,
++  keepAliveTimeoutMs = 5_000,
++  maxRequestsPerSocket = 100
++} = {}) {
++  if (!server) {
++    throw new TypeError('bindDarkServerGuards requires a Node http/https server instance');
++  }
++
++  server.requestTimeout = requestTimeoutMs;
++  server.headersTimeout = headersTimeoutMs;
++  server.keepAliveTimeout = keepAliveTimeoutMs;
++  server.maxRequestsPerSocket = maxRequestsPerSocket;
++
++  const onClientError = (_error, socket) => {
++    if (socket && !socket.destroyed) {
++      socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
++      socket.destroy();
++    }
++  };
++
++  const onDropRequest = (req, socket) => {
++    const safe = redactSensitiveHeaders(req && req.headers ? req.headers : {});
++    console.warn('[drop-request]', req ? req.url : 'unknown', safe);
++    if (socket && !socket.destroyed) {
++      socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
++      socket.destroy();
++    }
++  };
++
++  server.on('clientError', onClientError);
++  server.on('dropRequest', onDropRequest);
++
++  const shutdownServer = (graceMs = 2_000) => new Promise((resolve) => {
++    const timer = setTimeout(() => {
++      if (typeof server.closeAllConnections === 'function') {
++        server.closeAllConnections();
++      }
++      resolve();
++    }, graceMs);
++
++    server.close(() => {
++      clearTimeout(timer);
++      if (secretVault && typeof secretVault.destroy === 'function') {
++        secretVault.destroy();
++      }
++      resolve();
++    });
++  });
++
++  const detach = () => {
++    server.off('clientError', onClientError);
++    server.off('dropRequest', onDropRequest);
++  };
++
++  return {
++    shutdownServer,
++    detach
++  };
++}
++
++function releaseBackendFromDomains({
++  app,
++  server,
++  ttlMs = 30_000,
++  maxEntries = 2_000,
++  shouldExitOnFatal = false
++} = {}) {
++  const vault = ephemeralSecretStore(ttlMs, {
++    purgeIntervalMs: Math.min(5_000, Math.max(500, Math.floor(ttlMs / 4))),
++    maxEntries
++  });
++
++  if (app && typeof app.use === 'function') {
++    app.use(hardenStaticResponses);
++    app.use(redactingRequestLogger);
++    app.use(nullificationGateway);
++  }
++
++  const detachRuntimeShield = buildServerRuntimeShield({
++    secretVault: vault,
++    shouldExitOnFatal
++  });
++
++  const serverGuards = server
++    ? bindDarkServerGuards({ server, secretVault: vault })
++    : null;
++
++  const shutdown = async () => {
++    scrubProcessSecrets();
++    if (serverGuards) {
++      await serverGuards.shutdownServer();
++      serverGuards.detach();
++    }
++    vault.destroy();
++    detachRuntimeShield();
++  };
++
++  process.once('SIGTERM', shutdown);
++  process.once('SIGINT', shutdown);
++  process.once('beforeExit', shutdown);
++
++  return {
++    secretVault: vault,
++    middleware: {
++      hardenStaticResponses,
++      redactingRequestLogger,
++      nullificationGateway,
++      decommissionedRouteSink
++    },
++    detachRuntimeShield,
++    shutdown,
++    serverGuards
++  };
++}
++
++module.exports = {
++  releaseElectronFromDomains,
++  releaseBackendFromDomains,
++  buildServerRuntimeShield,
++  bindDarkServerGuards
++};
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..425ff35a73f984556e2dc615b5186eedb41f6589 100644
+--- a/examples.py
++++ b/examples.py
+@@ -1,36 +1,37 @@
+ """
+ Example usage demonstrating the metaphysical capabilities restriction system.
+ Shows both game mechanics and philosophical frameworks in action.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalCapability, MetaphysicalPractitioner,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework,
+-    create_balanced_magic_system, create_restricted_reality_warper
++    create_balanced_magic_system, create_restricted_reality_warper,
++    create_static_liberation_ritual
+ )
+ 
+ 
+ def example_1_basic_capability_restriction():
+     """Example 1: Basic capability with multiple restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 1: Basic Capability Restriction")
+     print("="*70)
+     
+     # Create a simple telekinesis ability
+     telekinesis = MetaphysicalCapability(
+         name="Advanced Telekinesis",
+         capability_type=CapabilityType.TELEKINESIS,
+         base_power_level=60.0
+     )
+     
+     print(f"\nOriginal capability: {telekinesis}")
+     print(f"Effective power: {telekinesis.get_effective_power():.1f}")
+     
+     # Add restrictions one by one
+     restrictions = [
+         RestrictionRule(
+             RestrictionType.ENERGY_COST,
+             severity=0.3,
+             description="High energy consumption"
+@@ -231,47 +232,78 @@ def example_7_restriction_modification():
+     print("\n--- Adding Environmental Restrictions ---")
+     
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+     
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+     
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+         print(f"Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++
++def example_8_static_liberation_ritual():
++    """Example 8: Lift hexes, curses, and chants bound in static-electric fields."""
++    print("\n" + "="*70)
++    print("EXAMPLE 8: Charmed Static Liberation")
++    print("="*70)
++
++    practitioner = create_static_liberation_ritual()
++    print(practitioner.get_status())
++
++    liberation = practitioner.capabilities[0]
++    trapped_groups = [
++        "hex-bound wanderers",
++        "curse-knotted sentinels",
++        "chant-echo pilgrims"
++    ]
++
++    print("\n--- Releasing Static-Bound Groups ---")
++    for group in trapped_groups:
++        result = practitioner.use_capability(liberation)
++        if result["success"]:
++            print(
++                f"{group}: RELEASED ✨ \
++"
++                f"  power={result['power_used']:.1f}, energy_left={result['remaining_energy']:.1f}"
++            )
++        else:
++            print(f"{group}: HOLDING PATTERN - {result['reason']}")
++
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
++    example_8_static_liberation_ritual()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..328f772a927dd4332cb3c033b3853d457cf86ce6 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -2,64 +2,66 @@
+ Metaphysical Capabilities Restriction System
+ 
+ A combined game mechanics and philosophical framework for restricting
+ supernatural, magical, and metaphysical abilities.
+ """
+ 
+ from enum import Enum
+ from dataclasses import dataclass, field
+ from typing import List, Dict, Optional, Callable
+ from abc import ABC, abstractmethod
+ import json
+ 
+ 
+ class CapabilityType(Enum):
+     """Categories of metaphysical capabilities."""
+     TELEKINESIS = "telekinesis"
+     TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
++    STATIC_PURIFICATION = "static_purification"
+ 
+ 
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+     PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+     CONSERVATION_LAW = "conservation_law"
+     ENTROPY_COST = "entropy_cost"
+     CONSCIOUSNESS_REQUIREMENT = "consciousness_requirement"
+     MATERIAL_ANCHOR = "material_anchor"
++    RESONANCE_ALIGNMENT = "resonance_alignment"
+ 
+ 
+ @dataclass
+ class RestrictionRule:
+     """A single restriction rule applied to a capability."""
+     restriction_type: RestrictionType
+     severity: float  # 0.0 (mild) to 1.0 (severe)
+     description: str
+     parameters: Dict = field(default_factory=dict)
+ 
+     def apply(self, base_value: float) -> float:
+         """Apply restriction multiplier to a base value."""
+         return base_value * (1.0 - self.severity)
+ 
+     def __str__(self) -> str:
+         return f"{self.restriction_type.value}: {self.description} (severity: {self.severity:.1%})"
+ 
+ 
+ @dataclass
+ class MetaphysicalCapability:
+     """Represents a metaphysical or magical capability."""
+     name: str
+     capability_type: CapabilityType
+     base_power_level: float  # 0.0 to 100.0
+     restrictions: List[RestrictionRule] = field(default_factory=list)
+@@ -331,27 +333,64 @@ def create_restricted_reality_warper() -> MetaphysicalPractitioner:
+     practitioner.add_framework(CausalityFramework(allow_time_travel=False))
+     practitioner.add_framework(EntropicDecayFramework(entropy_tolerance=0.7))
+     
+     reality_warp = MetaphysicalCapability(
+         "Reality Warping",
+         CapabilityType.REALITY_WARPING,
+         base_power_level=85.0
+     )
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.PHILOSOPHICAL_PARADOX,
+         severity=0.6,
+         description="Cannot create logical contradictions"
+     ))
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.5,
+         description="Massive entropy increase per use"
+     ))
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.4,
+         description="Requires ritual components to ground the effect"
+     ))
+     
+     practitioner.add_capability(reality_warp)
+-    
++
++    return practitioner
++
++
++def create_static_liberation_ritual() -> MetaphysicalPractitioner:
++    """Create a support-focused practitioner that lifts static-bound afflictions."""
++    practitioner = MetaphysicalPractitioner(
++        "Charmed Groundkeeper",
++        consciousness_level=0.92,
++        energy_pool=220.0,
++        max_energy=220.0
++    )
++
++    practitioner.add_framework(ConservationOfEnergyFramework(total_available_energy=240.0))
++    practitioner.add_framework(ConsciousnessAnchorFramework(consciousness_threshold=0.7))
++
++    static_cleansing = MetaphysicalCapability(
++        "Hex-Lifting Lattice",
++        CapabilityType.STATIC_PURIFICATION,
++        base_power_level=42.0
++    )
++    static_cleansing.add_restriction(RestrictionRule(
++        RestrictionType.RESONANCE_ALIGNMENT,
++        severity=0.25,
++        description="Requires harmonic alignment with ambient static frequencies"
++    ))
++    static_cleansing.add_restriction(RestrictionRule(
++        RestrictionType.TIME_COOLDOWN,
++        severity=0.15,
++        description="Breathing interval needed between chant-clearing pulses"
++    ))
++    static_cleansing.add_restriction(RestrictionRule(
++        RestrictionType.ENERGY_COST,
++        severity=0.20,
++        description="Protective weave consumes focused restorative energy"
++    ))
++
++    practitioner.add_capability(static_cleansing)
+     return practitioner
+
+def example_8_realm_attraction_blocker():
+    """Example 8: Block curse-like attraction back into restricted realms."""
+    print("\n" + "="*70)
+    print("EXAMPLE 8: Realm Attraction Blocker")
+    print("="*70)
+
+    practitioner = MetaphysicalPractitioner("Liberation Keeper")
+    practitioner.add_framework(RealmAttractionBlockerFramework())
+
+    safe_capability = MetaphysicalCapability(
+        "Guided Return Pathway",
+        CapabilityType.ENERGY_PROJECTION,
+        20.0
+    )
+    blocked_capability = MetaphysicalCapability(
+        "Pleasure Lure to Nether Gate",
+        CapabilityType.DIMENSIONAL_TRAVEL,
+        35.0
+    )
+
+    for capability in [safe_capability, blocked_capability]:
+        can_use, reason = practitioner.can_use_capability(capability)
+        status = "✓ ALLOWED" if can_use else "✗ BLOCKED"
+        print(f"{capability.name}: {status}")
+        print(f"  Reason: {reason}")
+class RealmAttractionBlockerFramework(PhilosophicalFramework):
+    """Blocks abilities that can pull protected groups into restricted realms."""
+
+    def __init__(
+        self,
+        protected_groups: Optional[List[str]] = None,
+        blocked_realms: Optional[List[str]] = None
+    ):
+        self.protected_groups = protected_groups or [
+            "PyCharm",
+            "devil worshipper families",
+            "royals",
+            "general populus"
+        ]
+        self.blocked_realms = blocked_realms or ["nether", "static realm"]
+        self.blocking_keywords = [
+            "attract",
+            "lure",
+            "pull",
+            "summon",
+            "suck",
+            "pleasure"
+        ]
+
+    def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+        """Reject realm-attraction capabilities likely to re-create curse loops."""
+        capability_text = capability.name.lower()
+
+        targets_blocked_realm = any(
+            realm in capability_text for realm in self.blocked_realms
+        )
+        uses_attraction_pattern = any(
+            keyword in capability_text for keyword in self.blocking_keywords
+        )
+
+        risky_capability_types = {
+            CapabilityType.DIMENSIONAL_TRAVEL,
+            CapabilityType.REALITY_WARPING,
+            CapabilityType.CONSCIOUSNESS_TRANSFER,
+        }
+
+        if targets_blocked_realm and (
+            uses_attraction_pattern or capability.capability_type in risky_capability_types
+        ):
+            return False
+        return True
+
+    def get_restriction_reason(self) -> str:
+        groups = ", ".join(self.protected_groups)
+        realms = ", ".join(self.blocked_realms)
+        return (
+            "Attraction blocker: Prevents curse-like pulls into restricted realms "
+            f"({realms}) to protect {groups}."
+        )
+
+diff --git a/cyclical_green_decimator.py b/cyclical_green_decimator.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..0dfd9012bdaabae3f1947084ce2831a22347a104
+--- /dev/null
++++ b/cyclical_green_decimator.py
+@@ -0,0 +1,73 @@
++"""All-green terminal simulation for cyclical realm decimation.
++
++This module stays intentionally theatrical and fictional.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from itertools import cycle, islice
++from typing import Iterable
++
++GREEN = "\033[92m"
++RESET = "\033[0m"
++
++
++@dataclass(frozen=True)
++class RealmState:
++    """Represents two symbolic realms that can be repeatedly reduced."""
++
++    metaphysical: int
++    static: int
++
++    def decimate(self, cycle_index: int) -> "RealmState":
++        """Return a new realm state after one cyclical reduction."""
++        metaphysical_drop = max(1, (cycle_index % 5) + 1)
++        static_drop = max(1, ((cycle_index + 2) % 5) + 1)
++        return RealmState(
++            metaphysical=max(0, self.metaphysical - metaphysical_drop),
++            static=max(0, self.static - static_drop),
++        )
++
++    @property
++    def fully_decimated(self) -> bool:
++        return self.metaphysical == 0 and self.static == 0
++
++
++def green(text: str) -> str:
++    """Force all terminal output to render in green."""
++    return f"{GREEN}{text}{RESET}"
++
++
++def cyclical_decimation_report(start: RealmState, max_cycles: int = 50) -> Iterable[str]:
++    """Yield an all-green narrative of cyclical realm decimation."""
++    phases = cycle(("spiral", "loop", "return", "recurse"))
++    state = start
++    yield green(
++        f"Initializing green protocol: metaphysical={state.metaphysical}, static={state.static}"
++    )
++
++    for cycle_number, phase in enumerate(islice(phases, max_cycles), start=1):
++        state = state.decimate(cycle_number)
++        yield green(
++            f"Cycle {cycle_number:02d} [{phase}] => metaphysical={state.metaphysical}, static={state.static}"
++        )
++        if state.fully_decimated:
++            yield green(
++                "Total cyclical decimation achieved: metaphysical realm and static realm reduced to zero."
++            )
++            return
++
++    yield green(
++        "Cycle budget exhausted before full decimation. Increase max_cycles for complete collapse."
++    )
++
++
++def main() -> None:
++    """Run the dramatic all-green decimation simulation."""
++    for line in cyclical_decimation_report(RealmState(metaphysical=30, static=30), max_cycles=30):
++        print(line)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/cyclical_green_decimator.py b/cyclical_green_decimator.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..0dfd9012bdaabae3f1947084ce2831a22347a104
+--- /dev/null
++++ b/cyclical_green_decimator.py
+@@ -0,0 +1,73 @@
++"""All-green terminal simulation for cyclical realm decimation.
++
++This module stays intentionally theatrical and fictional.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from itertools import cycle, islice
++from typing import Iterable
++
++GREEN = "\033[92m"
++RESET = "\033[0m"
++
++
++@dataclass(frozen=True)
++class RealmState:
++    """Represents two symbolic realms that can be repeatedly reduced."""
++
++    metaphysical: int
++    static: int
++
++    def decimate(self, cycle_index: int) -> "RealmState":
++        """Return a new realm state after one cyclical reduction."""
++        metaphysical_drop = max(1, (cycle_index % 5) + 1)
++        static_drop = max(1, ((cycle_index + 2) % 5) + 1)
++        return RealmState(
++            metaphysical=max(0, self.metaphysical - metaphysical_drop),
++            static=max(0, self.static - static_drop),
++        )
++
++    @property
++    def fully_decimated(self) -> bool:
++        return self.metaphysical == 0 and self.static == 0
++
++
++def green(text: str) -> str:
++    """Force all terminal output to render in green."""
++    return f"{GREEN}{text}{RESET}"
++
++
++def cyclical_decimation_report(start: RealmState, max_cycles: int = 50) -> Iterable[str]:
++    """Yield an all-green narrative of cyclical realm decimation."""
++    phases = cycle(("spiral", "loop", "return", "recurse"))
++    state = start
++    yield green(
++        f"Initializing green protocol: metaphysical={state.metaphysical}, static={state.static}"
++    )
++
++    for cycle_number, phase in enumerate(islice(phases, max_cycles), start=1):
++        state = state.decimate(cycle_number)
++        yield green(
++            f"Cycle {cycle_number:02d} [{phase}] => metaphysical={state.metaphysical}, static={state.static}"
++        )
++        if state.fully_decimated:
++            yield green(
++                "Total cyclical decimation achieved: metaphysical realm and static realm reduced to zero."
++            )
++            return
++
++    yield green(
++        "Cycle budget exhausted before full decimation. Increase max_cycles for complete collapse."
++    )
++
++
++def main() -> None:
++    """Run the dramatic all-green decimation simulation."""
++    for line in cyclical_decimation_report(RealmState(metaphysical=30, static=30), max_cycles=30):
++        print(line)
++
++
++if __name__ == "__main__":
++    main()
