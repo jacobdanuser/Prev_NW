@@ -1,0 +1,4272 @@
+import time
+import json
+
+class SystemBooster:
+    def __init__(self):
+        self.cache = {}
+
+    def boost_performance(self, func):
+        """Decorator to cache the results of functions."""
+        def wrapper(*args):
+            if args in self.cache:
+                return self.cache[args]
+            result = func(*args)
+            self.cache[args] = result
+            return result
+        return wrapper
+
+    @boost_performance
+    def compute_heavy_task(self, x):
+        """Simulate a heavy computation task."""
+        time.sleep(2)  # Simulating time delay
+        return x ** 2
+
+    def reconstruct_code(self, script):
+        """Dynamically execute a script."""
+        exec(script)
+
+# Example usage
+booster = SystemBooster()
+
+# Using the system booster
+result = booster.compute_heavy_task(5)
+print(f"Result of heavy task: {result}")
+
+# Example of dynamic code reconstruction
+script = """
+def dynamic_function(x):
+    return x + 10
+print(dynamic_function(5))
+"""
+booster.reconstruct_code(script)
+import logging
+from typing import Any, Dict
+
+# Setting up logging
+logging.basicConfig(level=logging.INFO)
+
+class BeneficialSystem:
+    def __init__(self):
+        self.data_log = []
+
+    def log_action(self, action: str, result: Any) -> None:
+        """Log actions taken by the system."""
+        log_entry = {
+            'action': action,
+            'result': result
+        }
+        self.data_log.append(log_entry)
+        logging.info(f"Logged Action: {log_entry}")
+
+    def process_request(self, request: str) -> str:
+        """Process user requests in a natural manner."""
+        try:
+            # Simulate processing the request
+            response = self.handle_request(request)
+            self.log_action(request, response)
+            return response
+        except Exception as e:
+            logging.error(f"Error processing request: {e}")
+            return "An error occurred while processing your request."
+
+    def handle_request(self, request: str) -> str:
+        """Handle the request based on its content."""
+        if "help" in request:
+            return "How can I assist you today?"
+        elif "analyze" in request:
+            return "Analyzing systems for societal benefit..."
+        else:
+            return "Request not understood."
+
+    def display_logs(self) -> Dict[str, Any]:
+        """Display the logged actions."""
+        return self.data_log
+
+# Example usage
+beneficial_system = BeneficialSystem()
+
+# Example requests
+print(beneficial_system.process_request("help"))
+print(beneficial_system.process_request("analyze"))
+print(beneficial_system.process_request("unknown request"))
+
+# Displaying logs
+print(beneficial_system.display_logs())
+import hashlib
+import logging
+
+# Setting up logging for transparency
+logging.basicConfig(level=logging.INFO)
+
+class ProsperitySystem:
+    def __init__(self):
+        self.users = {}  # Store user credentials
+        self.user_data = {}  # Store user data
+        self.logged_in_user = None
+
+    def register_user(self, username: str, password: str) -> str:
+        """Register a new user with secure password hashing."""
+        if username in self.users:
+            return "Username already exists."
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        self.users[username] = hashed_password
+        self.user_data[username] = []
+        return "User registered successfully."
+
+    def login_user(self, username: str, password: str) -> str:
+        """Log in a user if credentials are correct."""
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
+        if self.users.get(username) == hashed_password:
+            self.logged_in_user = username
+            return "Login successful."
+        return "Invalid username or password."
+
+    def log_action(self, action: str) -> None:
+        """Log actions taken by the logged-in user."""
+        if self.logged_in_user:
+            self.user_data[self.logged_in_user].append(action)
+            logging.info(f"{self.logged_in_user} performed action: {action}")
+
+    def promote_beneficial_use(self) -> str:
+        """Encourage users to engage in positive actions."""
+        if self.logged_in_user:
+            self.log_action("Engaged in beneficial activity.")
+            return "Thank you for your positive contribution!"
+        return "Please log in to participate."
+
+    def check_user_data(self) -> str:
+        """Allow users to view their logged actions."""
+        if self.logged_in_user:
+            return self.user_data[self.logged_in_user]
+        return "Please log in to view your data."
+
+# Example usage
+prosperity_system = ProsperitySystem()
+
+# Registering users
+print(prosperity_system.register_user("user1", "password123"))
+print(prosperity_system.register_user("user2", "securepassword"))
+
+# Logging in users
+print(prosperity_system.login_user("user1", "password123"))
+
+# Promoting beneficial use
+print(prosperity_system.promote_beneficial_use())
+
+# Checking user data
+print(prosperity_system.check_user_data())
+import logging
+import time
+from collections import defaultdict
+
+# Setting up logging
+logging.basicConfig(level=logging.INFO)
+
+class ProtectiveSystem:
+    def __init__(self):
+        self.user_activity = defaultdict(list)  # Track user actions
+        self.suspicious_activity_detected = False
+
+    def log_activity(self, username: str, action: str) -> None:
+        """Log user activity for monitoring."""
+        self.user_activity[username].append(action)
+        logging.info(f"{username} performed action: {action}")
+
+    def monitor_activity(self, username: str) -> None:
+        """Monitor user activity for suspicious behavior."""
+        if len(self.user_activity[username]) > 5:  # Example threshold
+            self.suspicious_activity_detected = True
+            self.respond_to_suspicion(username)
+
+    def respond_to_suspicion(self, username: str) -> None:
+        """Respond to suspicious activity in a benign manner."""
+        logging.warning(f"Suspicious activity detected from {username}. Initiating protective measures.")
+        print(f"Alert: We noticed unusual activity from your account, {username}. Please verify your actions.")
+
+    def promote_positive_use(self, username: str) -> str:
+        """Encourage positive engagement with the system."""
+        self.log_activity(username, "Engaged in positive activity.")
+        return f"Thank you for your positive contribution, {username}! 🌟"
+
+    def display_user_activity(self, username: str) -> None:
+        """Display the logged activity of a user."""
+        print(f"Activity log for {username}: {self.user_activity[username]}")
+
+# Example usage
+protective_system = ProtectiveSystem()
+
+# Simulating user actions
+username = "user1"
+for action in ["login", "view", "edit", "logout", "view", "edit"]:
+    protective_system.log_activity(username, action)
+    protective_system.monitor_activity(username)
+
+# Promoting positive use
+print(protective_system.promote_positive_use(username))
+
+# Displaying user activity
+protective_system.display_user_activity(username)
+# Windows Hardening Pack (Admin)
+# Tested patterns for Win10/11. Review before running in enterprise environments.
+
+$ErrorActionPreference = "Stop"
+
+Write-Host "== Baseline: turn on firewall for all profiles =="
+Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True -DefaultInboundAction Block -DefaultOutboundAction Allow
+
+Write-Host "== Disable inbound remote admin surfaces (tune to your needs) =="
+# Remote Desktop off (enable only with NLA + allowlist rules)
+Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 1
+
+# Disable Remote Assistance
+Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Remote Assistance" -Name "fAllowToGetHelp" -Value 0
+
+# Disable WinRM (PowerShell remoting) unless you explicitly need it
+Stop-Service WinRM -ErrorAction SilentlyContinue
+Set-Service WinRM -StartupType Disabled -ErrorAction SilentlyContinue
+
+Write-Host "== SMB hardening =="
+# Disable SMBv1
+Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart -ErrorAction SilentlyContinue
+
+# Require SMB signing (helps prevent some MITM)
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name "RequireSecuritySignature" -Type DWord -Value 1
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" -Name "RequireSecuritySignature" -Type DWord -Value 1
+
+Write-Host "== Attack surface reduction-ish toggles (Defender) =="
+# Ensure Defender is on
+Set-MpPreference -DisableRealtimeMonitoring $false
+
+# Cloud-delivered protection + sample submission (good defaults)
+Set-MpPreference -MAPSReporting Advanced
+Set-MpPreference -SubmitSamplesConsent 1
+
+# Basic network protection (block)
+Set-MpPreference -EnableNetworkProtection Enabled
+
+Write-Host "== Logging: increase visibility =="
+# PowerShell Script Block Logging
+New-Item -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" -Force | Out-Null
+Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" -Name "EnableScriptBlockLogging" -Type DWord -Value 1
+
+# PowerShell Module Logging
+New-Item -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ModuleLogging" -Force | Out-Null
+Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ModuleLogging" -Name "EnableModuleLogging" -Type DWord -Value 1
+New-Item -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ModuleLogging\ModuleNames" -Force | Out-Null
+Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ModuleLogging\ModuleNames" -Name "*" -Value "*"
+
+Write-Host "== Optional: block common lateral-movement inbound ports on Public profile =="
+# This is conservative and helpful for laptops on public Wi-Fi
+$ports = @(135,137,138,139,445,3389)
+foreach ($p in $ports) {
+  New-NetFirewallRule -DisplayName "Block Inbound TCP $p (Public)" -Direction Inbound -Action Block `
+    -Protocol TCP -LocalPort $p -Profile Public -ErrorAction SilentlyContinue | Out-Null
+}
+
+Write-Host "== Done. Reboot recommended for SMB/feature changes. =="
+# Requires: gh auth login
+OWNER="your-org-or-user"
+REPO="your-repo"
+BRANCH="main"
+
+gh api -X PUT "repos/$OWNER/$REPO/branches/$BRANCH/protection" \
+  -f required_status_checks.strict=true \
+  -F required_pull_request_reviews.dismiss_stale_reviews=true \
+  -F required_pull_request_reviews.required_approving_review_count=1 \
+  -F enforce_admins=true \
+  -F required_linear_history=true \
+  -F allow_force_pushes=false \
+  -F allow_deletions=false
+name: security-gates
+on:
+  pull_request:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  build-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Basic dependency audit (Node example; add your stack equivalents)
+      - name: Node audit (if package-lock exists)
+        if: ${{ hashFiles('package-lock.json') != '' }}
+        run: |
+          npm ci
+          npm audit --audit-level=high
+
+      # Semgrep (fast, practical SAST)
+      - name: Semgrep scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: "p/ci"
+
+      # Trivy filesystem scan (secrets + misconfig + vulns)
+      - name: Trivy FS scan
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: fs
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+# Login
+az login
+
+# 1) See who has Owner/Contributor (reduce this)
+az role assignment list --all --query "[?roleDefinitionName=='Owner' || roleDefinitionName=='Contributor'].[principalName,roleDefinitionName,scope]" -o table
+
+# 2) Turn on Defender for Cloud (subscription)
+# (Choose plans for critical resources; requires permissions/billing)
+az security pricing list -o table
+
+# 3) Require MFA / Conditional Access is in Entra ID (portal), but you can at least list risky users/logins via logs externally.
+
+# 4) Lock critical resource groups (prevents accidental deletes/changes)
+SUB="<subscription-id>"
+RG="critical-rg"
+az lock create --name "rg-readonly-lock" --lock-type ReadOnly --resource-group "$RG"
+targetScope = 'subscription'
+
+param policyDefinitionId string
+param assignmentName string = 'deny-public-network-access'
+param location string = 'westus2'
+
+resource policyAssignment 'Microsoft.Authorization/policyAssignments@2022-06-01' = {
+  name: assignmentName
+  location: location
+  properties: {
+    displayName: 'Deny public network access where supported'
+    policyDefinitionId: policyDefinitionId
+    parameters: {}
+    enforcementMode: 'Default'
+  }
+}lockdown-pack/
+  README.md
+  windows/
+    harden.ps1
+  github/
+    apply-branch-protection.sh
+    workflows/
+      security-gates.yml
+  azure/
+    apply-locks.sh
+    baseline-policy.bicep
+    deploy-policy.sh
+# windows/harden.ps1
+# Run: PowerShell (Admin) -> Set-ExecutionPolicy Bypass -Scope Process -Force; .\harden.ps1
+# Defensive hardening for your local machine.
+
+$ErrorActionPreference = "Stop"
+
+function Say($m) { Write-Host "`n== $m ==" -ForegroundColor Cyan }
+
+Say "Firewall: ON, inbound deny-by-default"
+Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled True -DefaultInboundAction Block -DefaultOutboundAction Allow
+
+Say "Remote surfaces: disable RDP, Remote Assistance, WinRM"
+Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 1
+Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Remote Assistance" -Name "fAllowToGetHelp" -Value 0
+Stop-Service WinRM -ErrorAction SilentlyContinue
+Set-Service WinRM -StartupType Disabled -ErrorAction SilentlyContinue
+
+Say "SMB hardening: disable SMBv1 + require signing"
+Disable-WindowsOptionalFeature -Online -FeatureName SMB1Protocol -NoRestart -ErrorAction SilentlyContinue
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name "RequireSecuritySignature" -Type DWord -Value 1
+Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanWorkstation\Parameters" -Name "RequireSecuritySignature" -Type DWord -Value 1
+
+Say "Microsoft Defender: enable realtime + cloud + network protection"
+Set-MpPreference -DisableRealtimeMonitoring $false
+Set-MpPreference -MAPSReporting Advanced
+Set-MpPreference -SubmitSamplesConsent 1
+Set-MpPreference -EnableNetworkProtection Enabled
+
+Say "PowerShell logging: ScriptBlock + Module logging"
+New-Item -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" -Force | Out-Null
+Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ScriptBlockLogging" -Name "EnableScriptBlockLogging" -Type DWord -Value 1
+
+New-Item -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ModuleLogging" -Force | Out-Null
+Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ModuleLogging" -Name "EnableModuleLogging" -Type DWord -Value 1
+New-Item -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ModuleLogging\ModuleNames" -Force | Out-Null
+Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\PowerShell\ModuleLogging\ModuleNames" -Name "*" -Value "*"
+
+Say "Public Wi-Fi lateral-movement blocks: common inbound ports"
+$ports = @(135,137,138,139,445,3389)
+foreach ($p in $ports) {
+  New-NetFirewallRule -DisplayName "Block Inbound TCP $p (Public)" -Direction Inbound -Action Block `
+    -Protocol TCP -LocalPort $p -Profile Public -ErrorAction SilentlyContinue | Out-Null
+}
+
+Say "Done. REBOOT recommended (SMB feature changes)."
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Usage:
+#   OWNER=you REPO=repo BRANCH=main ./apply-branch-protection.sh
+: "${OWNER:?set OWNER}"
+: "${REPO:?set REPO}"
+: "${BRANCH:=main}"
+
+echo "Applying branch protection to $OWNER/$REPO:$BRANCH"
+
+# Requires: gh auth login
+gh api -X PUT "repos/$OWNER/$REPO/branches/$BRANCH/protection" \
+  -f required_status_checks.strict=true \
+  -F required_pull_request_reviews.dismiss_stale_reviews=true \
+  -F required_pull_request_reviews.required_approving_review_count=1 \
+  -F enforce_admins=true \
+  -F required_linear_history=true \
+  -F allow_force_pushes=false \
+  -F allow_deletions=false
+
+echo "Done."
+chmod +x github/apply-branch-protection.sh
+name: security-gates
+on:
+  pull_request:
+  push:
+    branches: [ "main" ]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node audit (if package-lock exists)
+        if: ${{ hashFiles('package-lock.json') != '' }}
+        run: |
+          npm ci
+          npm audit --audit-level=high
+
+      - name: Semgrep scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: "p/ci"
+
+      - name: Trivy FS scan (vulns + misconfig + secrets)
+        uses: aquasecurity/trivy-action@0.20.0
+        with:
+          scan-type: fs
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Usage:
+#   SUB=<subscription-id> RG=critical-rg ./apply-locks.sh
+: "${SUB:?set SUB}"
+: "${RG:?set RG}"
+
+az account set --subscription "$SUB"
+
+echo "Creating ReadOnly lock on resource group: $RG"
+az lock create --name "rg-readonly-lock" --lock-type ReadOnly --resource-group "$RG"
+
+echo "Listing locks on $RG"
+az lock list --resource-group "$RG" -o table
+chmod +x azure/apply-locks.sh
+targetScope = 'subscription'
+
+@description('Built-in policy definition resource ID (e.g., a deny public network access policy)')
+param policyDefinitionId string
+
+@description('Assignment name')
+param assignmentName string = 'baseline-deny-policy'
+
+@description('Location for the policy assignment identity metadata')
+param location string = 'westus2'
+
+resource policyAssignment 'Microsoft.Authorization/policyAssignments@2022-06-01' = {
+  name: assignmentName
+  location: location
+  properties: {
+    displayName: 'Baseline deny policy assignment'
+    policyDefinitionId: policyDefinitionId
+    parameters: {}
+    enforcementMode: 'Default'
+  }
+}
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Usage:
+#   SUB=<subscription-id> POLICY_DEF_ID="<built-in-policy-resource-id>" ./deploy-policy.sh
+: "${SUB:?set SUB}"
+: "${POLICY_DEF_ID:?set POLICY_DEF_ID}"
+
+az account set --subscription "$SUB"
+
+az deployment sub create \
+  --location westus2 \
+  --template-file azure/baseline-policy.bicep \
+  --parameters policyDefinitionId="$POLICY_DEF_ID"
+chmod +x azure/deploy-policy.sh
+# Lockdown Pack (Windows + GitHub + Azure)
+
+## 1) Windows hardening
+Run PowerShell as Administrator:
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force
+.\windows\harden.ps1
+gh auth login
+OWNER=your-user-or-org REPO=your-repo BRANCH=main ./github/apply-branch-protection.sh
+az login
+SUB=<subscription-id> RG=<critical-resource-group> ./azure/apply-locks.sh
+societal-platform/
+  azure.yaml
+  infra/
+    main.bicep
+  src/api/
+    app.py
+    requirements.txt
+  src/worker/
+    worker.py
+    requirements.txt
+name: societal-platform
+services:
+  api:
+    project: src/api
+    language: python
+    host: appservice
+  worker:
+    project: src/worker
+    language: python
+    host: functions
+targetScope = 'resourceGroup'
+
+param location string = resourceGroup().location
+param namePrefix string
+
+// Log Analytics (for diagnostics)
+resource law 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
+  name: '${namePrefix}-law'
+  location: location
+  properties: {
+    retentionInDays: 30
+  }
+}
+
+// Key Vault (store secrets only if unavoidable; prefer managed identity)
+resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
+  name: '${namePrefix}-kv'
+  location: location
+  properties: {
+    tenantId: subscription().tenantId
+    sku: { name: 'standard', family: 'A' }
+    enableRbacAuthorization: true
+    enabledForDeployment: false
+    enabledForTemplateDeployment: false
+    enabledForDiskEncryption: false
+  }
+}
+
+// Storage (queues / blobs / function state, etc.)
+resource stg 'Microsoft.Storage/storageAccounts@2023-01-01' = {
+  name: toLower('${namePrefix}stg${uniqueString(resourceGroup().id)}')
+  location: location
+  sku: { name: 'Standard_LRS' }
+  kind: 'StorageV2'
+  properties: {
+    minimumTlsVersion: 'TLS1_2'
+    supportsHttpsTrafficOnly: true
+  }
+}
+
+// Cosmos DB for NoSQL
+resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
+  name: '${namePrefix}-cosmos'
+  location: location
+  kind: 'GlobalDocumentDB'
+  properties: {
+    databaseAccountOfferType: 'Standard'
+    locations: [
+      { locationName: location, failoverPriority: 0 }
+    ]
+    consistencyPolicy: { defaultConsistencyLevel: 'Session' }
+    capabilities: [
+      { name: 'EnableServerless' }
+    ]
+  }
+}
+
+// Database + container
+resource db 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-05-15' = {
+  name: '${cosmos.name}/appdb'
+  properties: { resource: { id: 'appdb' } }
+}
+
+resource container 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
+  name: '${cosmos.name}/appdb/requests'
+  properties: {
+    resource: {
+      id: 'requests'
+      partitionKey: { paths: ['/tenantId'], kind: 'Hash' }
+      indexingPolicy: { indexingMode: 'consistent', includedPaths: [ { path: '/*' } ] }
+    }
+  }
+}
+
+// Diagnostics settings scaffold (apply to resources you care about)
+resource diagCosmos 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: '${namePrefix}-cosmos-diag'
+  scope: cosmos
+  properties: {
+    workspaceId: law.id
+    logs: [
+      // Enable relevant categories for your compliance needs
+    ]
+    metrics: [
+      { category: 'AllMetrics', enabled: true }
+    ]
+  }
+}
+
+output COSMOS_ENDPOINT string = cosmos.properties.documentEndpoint
+output STORAGE_ACCOUNT_NAME string = stg.name
+output KEYVAULT_NAME string = kv.name
+flask==3.0.2
+azure-identity==1.17.1
+azure-cosmos==4.7.0
+import os
+import uuid
+from datetime import datetime, timezone
+from flask import Flask, request, jsonify
+
+from azure.identity import DefaultAzureCredential
+from azure.cosmos import CosmosClient, PartitionKey
+
+app = Flask(__name__)
+
+COSMOS_ENDPOINT = os.environ["COSMOS_ENDPOINT"]
+DB_NAME = os.getenv("COSMOS_DB_NAME", "appdb")
+CONTAINER_NAME = os.getenv("COSMOS_CONTAINER_NAME", "requests")
+
+credential = DefaultAzureCredential()
+client = CosmosClient(COSMOS_ENDPOINT, credential=credential)
+
+db = client.create_database_if_not_exists(DB_NAME)
+container = db.create_container_if_not_exists(
+    id=CONTAINER_NAME,
+    partition_key=PartitionKey(path="/tenantId"),
+)
+
+@app.get("/healthz")
+def healthz():
+    return {"ok": True}
+
+@app.post("/requests")
+def create_request():
+    body = request.get_json(force=True)
+    tenant_id = body.get("tenantId", "public")
+    item = {
+        "id": str(uuid.uuid4()),
+        "tenantId": tenant_id,
+        "type": body.get("type", "general"),
+        "summary": body.get("summary", ""),
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "status": "new",
+        "meta": {
+            "channel": body.get("channel", "web"),
+        },
+    }
+    container.create_item(item)
+    return jsonify(item), 201
+
+@app.get("/requests/<tenant_id>")
+def list_requests(tenant_id: str):
+    q = "SELECT * FROM c WHERE c.tenantId = @tenantId ORDER BY c.createdAt DESC"
+    items = list(container.query_items(
+        query=q,
+        parameters=[{"name": "@tenantId", "value": tenant_id}],
+        enable_cross_partition_query=False,
+    ))
+    return jsonify(items)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
+azd auth login
+azd init
+azd up
+foundry-expansive-deploy/
+  deploy_all.sh
+  infra/
+    main.bicep
+    parameters.json
+#!/usr/bin/env bash
+set -euo pipefail
+
+# One-shot deployment for a Foundry-style AI platform on Azure.
+# Requirements: Azure CLI (az), Bicep (az bicep install), and permissions to create resources.
+
+: "${SUBSCRIPTION_ID:?Set SUBSCRIPTION_ID}"
+: "${RESOURCE_GROUP:?Set RESOURCE_GROUP}"
+: "${LOCATION:=westus2}"
+: "${NAME_PREFIX:=society}"
+: "${PARAM_FILE:=infra/parameters.json}"
+
+echo "== Login & select subscription =="
+az account set --subscription "$SUBSCRIPTION_ID"
+
+echo "== Create RG (idempotent) =="
+az group create -n "$RESOURCE_GROUP" -l "$LOCATION" >/dev/null
+
+echo "== Deploy baseline platform (Bicep) =="
+az deployment group create \
+  -g "$RESOURCE_GROUP" \
+  -f infra/main.bicep \
+  -p @"$PARAM_FILE" \
+  -p location="$LOCATION" \
+  -p namePrefix="$NAME_PREFIX"
+
+echo "== Post-deploy: print key outputs =="
+az deployment group show -g "$RESOURCE_GROUP" -n main --query properties.outputs -o jsonc || true
+
+echo "== Done =="
+echo "Next (optional hardening):"
+echo " - Turn on private endpoints + disable public access (data plane) where feasible"
+echo " - Enable PIM + Conditional Access (tenant-level) for truly ephemeral admin"
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "namePrefix": { "value": "society" },
+    "openAiLocation": { "value": "eastus" },
+    "enableApiManagement": { "value": true },
+    "enablePurview": { "value": true },
+    "enableDatabricks": { "value": false }
+  }
+}
+targetScope = 'resourceGroup'
+
+param location string = resourceGroup().location
+param namePrefix string
+
+@description('Azure OpenAI region (must support the resource)')
+param openAiLocation string = 'eastus'
+
+@description('Toggle optional services')
+param enableApiManagement bool = true
+param enablePurview bool = true
+param enableDatabricks bool = false
+
+// -------------------- Core identity/secrets/observability --------------------
+resource law 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
+  name: '${namePrefix}-law'
+  location: location
+  properties: { retentionInDays: 30 }
+}
+
+resource ai 'Microsoft.Insights/components@2020-02-02' = {
+  name: '${namePrefix}-appi'
+  location: location
+  kind: 'web'
+  properties: {
+    Application_Type: 'web'
+    WorkspaceResourceId: law.id
+  }
+}
+
+resource kv 'Microsoft.KeyVault/vaults@2023-07-01' = {
+  name: '${namePrefix}-kv'
+  location: location
+  properties: {
+    tenantId: subscription().tenantId
+    sku: { name: 'standard', family: 'A' }
+    enableRbacAuthorization: true
+  }
+}
+
+// -------------------- Data foundation: ADLS Gen2 + Cosmos --------------------
+resource stg 'Microsoft.Storage/storageAccounts@2023-01-01' = {
+  name: toLower('${namePrefix}dl${uniqueString(resourceGroup().id)}')
+  location: location
+  sku: { name: 'Standard_LRS' }
+  kind: 'StorageV2'
+  properties: {
+    isHnsEnabled: true // Data Lake Gen2
+    minimumTlsVersion: 'TLS1_2'
+    supportsHttpsTrafficOnly: true
+  }
+}
+
+resource cosmos 'Microsoft.DocumentDB/databaseAccounts@2024-05-15' = {
+  name: '${namePrefix}-cosmos'
+  location: location
+  kind: 'GlobalDocumentDB'
+  properties: {
+    databaseAccountOfferType: 'Standard'
+    locations: [
+      { locationName: location, failoverPriority: 0 }
+    ]
+    consistencyPolicy: { defaultConsistencyLevel: 'Session' }
+    capabilities: [
+      { name: 'EnableServerless' }
+    ]
+  }
+}
+
+resource cosmosDb 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases@2024-05-15' = {
+  name: '${cosmos.name}/appdb'
+  properties: { resource: { id: 'appdb' } }
+}
+
+resource cosmosContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/containers@2024-05-15' = {
+  name: '${cosmos.name}/appdb/requests'
+  properties: {
+    resource: {
+      id: 'requests'
+      partitionKey: { paths: ['/tenantId'], kind: 'Hash' }
+      indexingPolicy: { indexingMode: 'consistent', includedPaths: [ { path: '/*' } ] }
+    }
+  }
+}
+
+// -------------------- RAG retrieval layer: Azure AI Search --------------------
+resource search 'Microsoft.Search/searchServices@2023-11-01' = {
+  name: '${namePrefix}-search'
+  location: location
+  sku: { name: 'standard' }
+  properties: {
+    replicaCount: 1
+    partitionCount: 1
+    hostingMode: 'default'
+    publicNetworkAccess: 'Enabled'
+  }
+}
+
+// -------------------- Model endpoint: Azure OpenAI (Foundry Models category) --------------------
+resource openai 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
+  name: '${namePrefix}-openai'
+  location: openAiLocation
+  kind: 'OpenAI'
+  sku: { name: 'S0' }
+  properties: {
+    publicNetworkAccess: 'Enabled'
+  }
+}
+
+// -------------------- ML lifecycle: Azure Machine Learning workspace --------------------
+resource ml 'Microsoft.MachineLearningServices/workspaces@2024-04-01' = {
+  name: '${namePrefix}-ml'
+  location: location
+  identity: { type: 'SystemAssigned' }
+  properties: {
+    friendlyName: '${namePrefix}-ml'
+  }
+}
+
+// -------------------- Telemetry ingestion: Event Hubs namespace + hub --------------------
+resource ehns 'Microsoft.EventHub/namespaces@2024-01-01' = {
+  name: '${namePrefix}-eh'
+  location: location
+  sku: { name: 'Standard', tier: 'Standard', capacity: 1 }
+  properties: {
+    isAutoInflateEnabled: true
+    maximumThroughputUnits: 4
+  }
+}
+
+resource eh 'Microsoft.EventHub/namespaces/eventhubs@2024-01-01' = {
+  name: '${ehns.name}/telemetry'
+  properties: {
+    messageRetentionInDays: 3
+    partitionCount: 4
+  }
+}
+
+// -------------------- App front door: App Service + optional API Management --------------------
+resource plan 'Microsoft.Web/serverfarms@2023-12-01' = {
+  name: '${namePrefix}-plan'
+  location: location
+  sku: { name: 'P1v3', tier: 'PremiumV3' }
+}
+
+resource app 'Microsoft.Web/sites@2023-12-01' = {
+  name: '${namePrefix}-api'
+  location: location
+  properties: {
+    serverFarmId: plan.id
+    httpsOnly: true
+    siteConfig: {
+      appSettings: [
+        { name: 'APPINSIGHTS_INSTRUMENTATIONKEY', value: ai.properties.InstrumentationKey }
+        { name: 'COSMOS_ENDPOINT', value: cosmos.properties.documentEndpoint }
+        { name: 'SEARCH_ENDPOINT', value: 'https://${search.name}.search.windows.net' }
+        { name: 'OPENAI_ENDPOINT', value: openai.properties.endpoint }
+        { name: 'EVENTHUB_NAMESPACE', value: ehns.name }
+        { name: 'EVENTHUB_NAME', value: 'telemetry' }
+      ]
+    }
+  }
+}
+
+resource apim 'Microsoft.ApiManagement/service@2023-09-01-preview' = if (enableApiManagement) {
+  name: '${namePrefix}-apim'
+  location: location
+  sku: { name: 'Developer', capacity: 1 }
+  properties: {
+    publisherEmail: 'admin@example.com'
+    publisherName: 'Org'
+  }
+}
+
+// -------------------- Governance: Microsoft Purview account (optional) --------------------
+resource purview 'Microsoft.Purview/accounts@2021-07-01' = if (enablePurview) {
+  name: '${namePrefix}-purview'
+  location: location
+  identity: { type: 'SystemAssigned' }
+  properties: { publicNetworkAccess: 'Enabled' }
+}
+
+// -------------------- Optional: Databricks (often needs provider reg + workspace params) --------------------
+resource dbr 'Microsoft.Databricks/workspaces@2024-05-01' = if (enableDatabricks) {
+  name: '${namePrefix}-dbr'
+  location: location
+  sku: { name: 'standard' }
+  properties: {}
+}
+
+// -------------------- Diagnostics: route metrics to Log Analytics --------------------
+resource diagCosmos 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: '${namePrefix}-cosmos-diag'
+  scope: cosmos
+  properties: {
+    workspaceId: law.id
+    metrics: [ { category: 'AllMetrics', enabled: true } ]
+    logs: []
+  }
+}
+
+resource diagSearch 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: '${namePrefix}-search-diag'
+  scope: search
+  properties: {
+    workspaceId: law.id
+    metrics: [ { category: 'AllMetrics', enabled: true } ]
+    logs: []
+  }
+}
+
+output COSMOS_ENDPOINT string = cosmos.properties.documentEndpoint
+output SEARCH_ENDPOINT string = 'https://${search.name}.search.windows.net'
+output OPENAI_ENDPOINT string = openai.properties.endpoint
+output APP_URL string = 'https://${app.name}.azurewebsites.net'
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${SUBSCRIPTION_ID:?Set SUBSCRIPTION_ID}"
+OUT_DIR="${OUT_DIR:-out}"
+mkdir -p "$OUT_DIR"
+
+az account set --subscription "$SUBSCRIPTION_ID"
+
+echo "== Export resource providers (registration state) =="
+az provider list -o json > "$OUT_DIR/providers.json"  # :contentReference[oaicite:4]{index=4}
+
+echo "== Export providers + resource types (flattened) =="
+az provider list --query "[].{namespace:namespace,state:registrationState,types:resourceTypes[].resourceType}" -o json \
+  > "$OUT_DIR/provider_resource_types.json"  # :contentReference[oaicite:5]{index=5}
+
+echo "== Export just registered providers (quick view) =="
+az provider list --query "[?registrationState=='Registered'].namespace" -o tsv \
+  > "$OUT_DIR/registered_providers.txt"
+
+echo "== Done. Files written to: $OUT_DIR =="
+ls -la "$OUT_DIR"
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${SUBSCRIPTION_ID:?Set SUBSCRIPTION_ID}"
+: "${INITIATIVE_ID:?Set INITIATIVE_ID (a built-in initiative resource ID)}"
+: "${ASSIGNMENT_NAME:=baseline-guardrails}"
+: "${LOCATION:=westus2}"
+
+az account set --subscription "$SUBSCRIPTION_ID"
+
+# Assign a built-in initiative at subscription scope.
+# Find initiatives here (IDs vary by cloud/tenant): built-in initiatives index. :contentReference[oaicite:8]{index=8}
+az policy assignment create \
+  --name "$ASSIGNMENT_NAME" \
+  --display-name "Baseline Guardrails" \
+  --scope "/subscriptions/$SUBSCRIPTION_ID" \
+  --location "$LOCATION" \
+  --policy-set-definition "$INITIATIVE_ID"
+#!/usr/bin/env bash
+set -euo pipefail
+
+: "${SUBSCRIPTION_ID:?Set SUBSCRIPTION_ID}"
+
+az account set --subscription "$SUBSCRIPTION_ID"
+
+echo "WARNING: Registering all providers increases what can be used in this subscription."
+echo "Microsoft recommends registering providers only when ready to use them."  # :contentReference[oaicite:11]{index=11}
+
+# Get all namespaces
+mapfile -t namespaces < <(az provider list --query "[].namespace" -o tsv)  # :contentReference[oaicite:12]{index=12}
+
+for ns in "${namespaces[@]}"; do
+  echo "Registering $ns ..."
+  az provider register --namespace "$ns" >/dev/null || true
+done
+
+echo "Done. Check registration states with: az provider list"
+diff --git a/README.md b/README.md
+index 4d7ccaa8ce6e61c69d6948882582873badef63da..722167209b239001346ed02ac6e9e9e5dbfa5785 100644
+--- a/README.md
++++ b/README.md
+@@ -344724,26 +344724,44 @@ class MetaphysicalPractitioner:
+ 
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+         energy_cost = capability.base_power_level * 0.5
+         if self.energy_pool < energy_cost:
+             return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+ 
+         # Check consciousness
+         if self.consciousness_level < 0.5:
+             return False, "Consciousness level too low to maintain metaphysical connection."
+ 
+         # Check all philosophical frameworks
+         for framework in self.philosophical_frameworks:
+             if not framework.evaluate_restriction(capability):
+                 return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+ 
+         return True, "Capability can be used."
+ 
+     def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+         """Attempt to use a capability. Returns result details."""
+         can_use, reason = self.can_use_capability(capability)
+         
+-        result = {
+\ No newline at end of file
++        result = {
++---
++
++## Embedded Cloud Registry
++
++To include Azure and major cloud products directly in code, use `cloud_registry.py`.
++
++- Azure is modeled with detailed service categories (compute, storage, database, networking, security, AI/data, integration, DevOps).
++- Other major cloud providers are included as normalized product groups.
++- Access helpers:
++  - `list_providers()`
++  - `list_products(provider)`
++  - `count_products()`
++
++Run:
++
++```bash
++python cloud_registry.py
++```
+
+diff --git a/cloud_registry.py b/cloud_registry.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..0b342c0296284ead9098436a18ec279caecc0874
+--- /dev/null
++++ b/cloud_registry.py
+@@ -0,0 +1,215 @@
++"""Embedded cloud product registry.
++
++This module provides a single in-code structure containing Azure offerings and
++other major cloud product families so systems can reference them without an
++external dependency.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Dict, List
++
++
++@dataclass(frozen=True)
++class CloudProduct:
++    """A normalized cloud product entry."""
++
++    provider: str
++    category: str
++    name: str
++
++
++CLOUD_PRODUCTS: Dict[str, Dict[str, List[str]]] = {
++    "Azure": {
++        "Compute": [
++            "Virtual Machines",
++            "Virtual Machine Scale Sets",
++            "Azure Kubernetes Service",
++            "Azure Functions",
++            "Azure Container Apps",
++            "Azure Container Instances",
++            "App Service",
++            "Batch",
++            "Azure Spring Apps",
++            "Service Fabric",
++        ],
++        "Storage": [
++            "Blob Storage",
++            "Disk Storage",
++            "Files",
++            "Archive Storage",
++            "Data Lake Storage",
++            "Queue Storage",
++            "NetApp Files",
++        ],
++        "Databases": [
++            "Azure SQL Database",
++            "Azure SQL Managed Instance",
++            "Cosmos DB",
++            "Database for PostgreSQL",
++            "Database for MySQL",
++            "Managed Instance for Apache Cassandra",
++            "Cache for Redis",
++            "Azure Managed Instance for Apache Redis",
++        ],
++        "Networking": [
++            "Virtual Network",
++            "Load Balancer",
++            "Application Gateway",
++            "Front Door",
++            "VPN Gateway",
++            "ExpressRoute",
++            "Traffic Manager",
++            "DNS",
++            "Bastion",
++            "Firewall",
++            "NAT Gateway",
++            "CDN",
++            "Private Link",
++            "DDoS Protection",
++        ],
++        "IdentityAndSecurity": [
++            "Microsoft Entra ID",
++            "Key Vault",
++            "Defender for Cloud",
++            "Microsoft Sentinel",
++            "Azure Policy",
++            "Security Center",
++            "Confidential Computing",
++        ],
++        "DataAndAI": [
++            "Azure AI Foundry",
++            "Azure OpenAI Service",
++            "Azure AI Search",
++            "Azure Machine Learning",
++            "Azure Databricks",
++            "Synapse Analytics",
++            "Data Factory",
++            "Event Hubs",
++            "Stream Analytics",
++            "HDInsight",
++            "Microsoft Fabric",
++        ],
++        "IntegrationAndManagement": [
++            "API Management",
++            "Logic Apps",
++            "Service Bus",
++            "Event Grid",
++            "Automation",
++            "Monitor",
++            "Application Insights",
++            "Azure Arc",
++            "Resource Manager",
++            "Cost Management",
++        ],
++        "DevOps": [
++            "Azure DevOps",
++            "GitHub Actions",
++            "Container Registry",
++            "Deployment Environments",
++        ],
++    },
++    "AWS": {
++        "Core": [
++            "EC2",
++            "Lambda",
++            "ECS",
++            "EKS",
++            "S3",
++            "RDS",
++            "DynamoDB",
++            "VPC",
++            "CloudFront",
++            "IAM",
++            "CloudWatch",
++        ]
++    },
++    "Google Cloud": {
++        "Core": [
++            "Compute Engine",
++            "Google Kubernetes Engine",
++            "Cloud Run",
++            "Cloud Functions",
++            "Cloud Storage",
++            "Cloud SQL",
++            "BigQuery",
++            "Spanner",
++            "VPC",
++            "Cloud CDN",
++            "Cloud Monitoring",
++        ]
++    },
++    "Oracle Cloud": {
++        "Core": [
++            "Compute",
++            "Container Engine for Kubernetes",
++            "Functions",
++            "Object Storage",
++            "Autonomous Database",
++            "Virtual Cloud Network",
++        ]
++    },
++    "IBM Cloud": {
++        "Core": [
++            "Virtual Servers",
++            "Code Engine",
++            "Kubernetes Service",
++            "Object Storage",
++            "Db2",
++            "Cloud Databases",
++            "VPC",
++        ]
++    },
++    "Alibaba Cloud": {
++        "Core": [
++            "Elastic Compute Service",
++            "Container Service for Kubernetes",
++            "Function Compute",
++            "Object Storage Service",
++            "ApsaraDB",
++            "Virtual Private Cloud",
++        ]
++    },
++    "Cloudflare": {
++        "Core": [
++            "Workers",
++            "R2",
++            "KV",
++            "D1",
++            "Durable Objects",
++            "Zero Trust",
++            "CDN",
++            "WAF",
++        ]
++    },
++}
++
++
++def list_providers() -> List[str]:
++    """Return every cloud provider included in the embedded registry."""
++    return sorted(CLOUD_PRODUCTS)
++
++
++def list_products(provider: str) -> List[CloudProduct]:
++    """Return normalized product objects for the selected provider."""
++    groups = CLOUD_PRODUCTS.get(provider, {})
++    results: List[CloudProduct] = []
++    for category, names in groups.items():
++        results.extend(CloudProduct(provider=provider, category=category, name=name) for name in names)
++    return results
++
++
++def count_products() -> int:
++    """Count all embedded cloud product entries."""
++    return sum(
++        len(names)
++        for provider_categories in CLOUD_PRODUCTS.values()
++        for names in provider_categories.values()
++    )
++
++
++if __name__ == "__main__":
++    print(f"providers={len(list_providers())}, products={count_products()}")
++    for provider in list_providers():
++        print(f"- {provider}: {len(list_products(provider))} products")
+diff --git a/README.md b/README.md
+index 4d7ccaa8ce6e61c69d6948882582873badef63da..0dc06671c55a4f6838e6a40e59910b5759f6cd88 100644
+--- a/README.md
++++ b/README.md
+@@ -344724,26 +344724,69 @@ class MetaphysicalPractitioner:
+ 
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+         energy_cost = capability.base_power_level * 0.5
+         if self.energy_pool < energy_cost:
+             return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+ 
+         # Check consciousness
+         if self.consciousness_level < 0.5:
+             return False, "Consciousness level too low to maintain metaphysical connection."
+ 
+         # Check all philosophical frameworks
+         for framework in self.philosophical_frameworks:
+             if not framework.evaluate_restriction(capability):
+                 return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+ 
+         return True, "Capability can be used."
+ 
+     def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+         """Attempt to use a capability. Returns result details."""
+         can_use, reason = self.can_use_capability(capability)
+         
+-        result = {
+\ No newline at end of file
++        result = {
++---
++
++## Embedded Cloud Registry
++
++To include Azure and major cloud products directly in code, use `cloud_registry.py`.
++
++- Azure is modeled with detailed service categories (compute, storage, database, networking, security, AI/data, integration, DevOps).
++- Other major cloud providers are included as normalized product groups.
++- Access helpers:
++  - `list_providers()`
++  - `list_products(provider)`
++  - `count_products()`
++
++Run:
++
++```bash
++python cloud_registry.py
++```
++
++### Expanded cloud inclusion
++
++The embedded registry is now broader and more expressive, with:
++
++- Deeper Azure domain coverage (including IoT/Edge, governance/management, and developer tooling).
++- Additional major providers and extended product families.
++- Search and category helpers for richer local introspection.
++
++Programmatic entry points in `cloud_registry.py`:
++
++- `list_providers()`
++- `list_categories(provider)`
++- `list_products(provider)`
++- `search_products(query)`
++- `count_products(provider=None)`
++
++Example:
++
++```python
++from cloud_registry import list_providers, search_products
++
++print(list_providers())
++print(search_products("azure ai"))
++```
+diff --git a/cloud_registry.py b/cloud_registry.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..61bd4b266c56b52db17f605199bda2690b84a18b
+--- /dev/null
++++ b/cloud_registry.py
+@@ -0,0 +1,288 @@
++"""Extensive embedded cloud service registry.
++
++A single, dependency-free, in-code atlas of cloud products across major providers,
++with especially deep Azure coverage for systems that need local, embedded lookup.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Dict, Iterable, List
++
++
++@dataclass(frozen=True)
++class CloudProduct:
++    """Normalized cloud product record."""
++
++    provider: str
++    category: str
++    name: str
++
++
++# Provider -> Category -> Product names
++CLOUD_PRODUCTS: Dict[str, Dict[str, List[str]]] = {
++    "Azure": {
++        "Compute": [
++            "Virtual Machines",
++            "Virtual Machine Scale Sets",
++            "Azure Kubernetes Service",
++            "Azure Functions",
++            "Azure Container Apps",
++            "Azure Container Instances",
++            "App Service",
++            "Batch",
++            "Azure Spring Apps",
++            "Service Fabric",
++            "Azure VMware Solution",
++            "Azure Red Hat OpenShift",
++            "Azure CycleCloud",
++            "Azure Dedicated Host",
++        ],
++        "Storage": [
++            "Blob Storage",
++            "Disk Storage",
++            "Files",
++            "Archive Storage",
++            "Data Lake Storage",
++            "Queue Storage",
++            "NetApp Files",
++            "Elastic SAN",
++            "Azure Backup",
++            "Azure Site Recovery",
++        ],
++        "Databases": [
++            "Azure SQL Database",
++            "Azure SQL Managed Instance",
++            "SQL Server on Azure Virtual Machines",
++            "Cosmos DB",
++            "Database for PostgreSQL",
++            "Database for MySQL",
++            "Managed Instance for Apache Cassandra",
++            "Azure Cache for Redis",
++            "Azure Managed Instance for Apache Redis",
++            "Azure Database Migration Service",
++        ],
++        "Networking": [
++            "Virtual Network",
++            "Load Balancer",
++            "Application Gateway",
++            "Front Door",
++            "VPN Gateway",
++            "ExpressRoute",
++            "Traffic Manager",
++            "DNS",
++            "Bastion",
++            "Firewall",
++            "NAT Gateway",
++            "CDN",
++            "Private Link",
++            "DDoS Protection",
++            "Virtual WAN",
++            "Route Server",
++            "Azure Web PubSub",
++        ],
++        "IdentityAndSecurity": [
++            "Microsoft Entra ID",
++            "Microsoft Entra Domain Services",
++            "Key Vault",
++            "Defender for Cloud",
++            "Microsoft Sentinel",
++            "Azure Policy",
++            "Azure Confidential Computing",
++            "Microsoft Purview",
++            "Azure Managed HSM",
++            "Azure AD B2C",
++        ],
++        "DataAndAI": [
++            "Azure AI Foundry",
++            "Azure OpenAI Service",
++            "Azure AI Search",
++            "Azure Machine Learning",
++            "Azure Databricks",
++            "Synapse Analytics",
++            "Data Factory",
++            "Event Hubs",
++            "Stream Analytics",
++            "HDInsight",
++            "Microsoft Fabric",
++            "Azure Data Explorer",
++            "Azure AI Vision",
++            "Azure AI Speech",
++            "Azure AI Language",
++        ],
++        "IntegrationAndManagement": [
++            "API Management",
++            "Logic Apps",
++            "Service Bus",
++            "Event Grid",
++            "Automation",
++            "Monitor",
++            "Application Insights",
++            "Azure Arc",
++            "Azure Resource Manager",
++            "Azure Cost Management",
++            "Azure Lighthouse",
++            "Azure Advisor",
++            "Azure Chaos Studio",
++            "Azure Deployment Environments",
++        ],
++        "DeveloperAndDevOps": [
++            "Azure DevOps",
++            "GitHub Actions",
++            "Container Registry",
++            "Azure Developer CLI",
++            "Azure Load Testing",
++            "Azure API Center",
++        ],
++        "IoTAndEdge": [
++            "IoT Hub",
++            "IoT Central",
++            "Azure Digital Twins",
++            "Azure Sphere",
++            "Azure Stack HCI",
++            "Azure Stack Edge",
++        ],
++    },
++    "AWS": {
++        "Compute": ["EC2", "Lambda", "ECS", "EKS", "Fargate", "Batch", "Lightsail"],
++        "Storage": ["S3", "EBS", "EFS", "FSx", "Glacier"],
++        "Databases": ["RDS", "DynamoDB", "Aurora", "ElastiCache", "Neptune", "DocumentDB"],
++        "NetworkingAndSecurity": ["VPC", "CloudFront", "Route 53", "IAM", "WAF", "Shield"],
++        "DataAndAI": ["Redshift", "EMR", "Kinesis", "SageMaker", "Bedrock", "Athena"],
++        "Observability": ["CloudWatch", "X-Ray", "CloudTrail", "Config"],
++    },
++    "Google Cloud": {
++        "Compute": ["Compute Engine", "Google Kubernetes Engine", "Cloud Run", "Cloud Functions", "App Engine"],
++        "Storage": ["Cloud Storage", "Persistent Disk", "Filestore", "Archive Storage"],
++        "Databases": ["Cloud SQL", "Spanner", "Firestore", "Bigtable", "Memorystore"],
++        "NetworkingAndSecurity": ["VPC", "Cloud CDN", "Cloud Armor", "Cloud DNS", "Identity and Access Management"],
++        "DataAndAI": ["BigQuery", "Dataflow", "Pub/Sub", "Vertex AI", "Dataproc", "Looker"],
++        "Observability": ["Cloud Monitoring", "Cloud Logging", "Cloud Trace", "Security Command Center"],
++    },
++    "Oracle Cloud": {
++        "Core": [
++            "Compute",
++            "Container Engine for Kubernetes",
++            "Functions",
++            "Object Storage",
++            "Block Volumes",
++            "Autonomous Database",
++            "MySQL HeatWave",
++            "Virtual Cloud Network",
++            "OCI API Gateway",
++            "Observability and Management",
++        ]
++    },
++    "IBM Cloud": {
++        "Core": [
++            "Virtual Servers",
++            "Code Engine",
++            "Kubernetes Service",
++            "Object Storage",
++            "Db2",
++            "Cloud Databases",
++            "VPC",
++            "Watsonx",
++            "Event Streams",
++            "Cloud Monitoring",
++        ]
++    },
++    "Alibaba Cloud": {
++        "Core": [
++            "Elastic Compute Service",
++            "Container Service for Kubernetes",
++            "Function Compute",
++            "Object Storage Service",
++            "ApsaraDB",
++            "PolarDB",
++            "Virtual Private Cloud",
++            "DataWorks",
++            "MaxCompute",
++            "CloudMonitor",
++        ]
++    },
++    "Cloudflare": {
++        "Core": [
++            "Workers",
++            "R2",
++            "KV",
++            "D1",
++            "Durable Objects",
++            "Queues",
++            "Zero Trust",
++            "CDN",
++            "WAF",
++            "Magic Transit",
++        ]
++    },
++    "DigitalOcean": {
++        "Core": [
++            "Droplets",
++            "Kubernetes",
++            "Functions",
++            "Spaces",
++            "Volumes",
++            "Managed Databases",
++            "VPC",
++            "Load Balancers",
++            "Container Registry",
++            "App Platform",
++        ]
++    },
++}
++
++
++def list_providers() -> List[str]:
++    """Return every provider name included in the registry."""
++    return sorted(CLOUD_PRODUCTS)
++
++
++def list_categories(provider: str) -> List[str]:
++    """Return available categories for a given provider."""
++    return sorted(CLOUD_PRODUCTS.get(provider, {}))
++
++
++def iter_products(provider: str | None = None) -> Iterable[CloudProduct]:
++    """Yield products, optionally restricted to one provider."""
++    provider_names = [provider] if provider else list_providers()
++    for provider_name in provider_names:
++        for category, names in CLOUD_PRODUCTS.get(provider_name, {}).items():
++            for name in names:
++                yield CloudProduct(provider=provider_name, category=category, name=name)
++
++
++def list_products(provider: str) -> List[CloudProduct]:
++    """Return products for a provider as normalized records."""
++    return list(iter_products(provider))
++
++
++def search_products(query: str) -> List[CloudProduct]:
++    """Case-insensitive search across provider/category/name fields."""
++    needle = query.strip().lower()
++    if not needle:
++        return []
++    return [
++        product
++        for product in iter_products()
++        if needle in product.provider.lower()
++        or needle in product.category.lower()
++        or needle in product.name.lower()
++    ]
++
++
++def count_products(provider: str | None = None) -> int:
++    """Count products globally or for a specific provider."""
++    return len(list(iter_products(provider)))
++
++
++if __name__ == "__main__":
++    print(
++        "Cloud registry awakened: "
++        f"providers={len(list_providers())}, products={count_products()}"
++    )
++    for provider in list_providers():
++        print(
++            f"- {provider}: "
++            f"{len(list_categories(provider))} categories, "
++            f"{count_products(provider)} products"
++        )
+diff --git a/README.md b/README.md
+index 4d7ccaa8ce6e61c69d6948882582873badef63da..339421ba1948df23b4442b46723027c106f2e4d9 100644
+--- a/README.md
++++ b/README.md
+@@ -344724,26 +344724,93 @@ class MetaphysicalPractitioner:
+ 
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+         energy_cost = capability.base_power_level * 0.5
+         if self.energy_pool < energy_cost:
+             return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+ 
+         # Check consciousness
+         if self.consciousness_level < 0.5:
+             return False, "Consciousness level too low to maintain metaphysical connection."
+ 
+         # Check all philosophical frameworks
+         for framework in self.philosophical_frameworks:
+             if not framework.evaluate_restriction(capability):
+                 return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+ 
+         return True, "Capability can be used."
+ 
+     def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+         """Attempt to use a capability. Returns result details."""
+         can_use, reason = self.can_use_capability(capability)
+         
+-        result = {
+\ No newline at end of file
++        result = {
++---
++
++## Embedded Cloud Registry
++
++To include Azure and major cloud products directly in code, use `cloud_registry.py`.
++
++- Azure is modeled with detailed service categories (compute, storage, database, networking, security, AI/data, integration, DevOps).
++- Other major cloud providers are included as normalized product groups.
++- Access helpers:
++  - `list_providers()`
++  - `list_products(provider)`
++  - `count_products()`
++
++Run:
++
++```bash
++python cloud_registry.py
++```
++
++### Expanded cloud inclusion
++
++The embedded registry is now broader and more expressive, with:
++
++- Deeper Azure domain coverage (including IoT/Edge, governance/management, and developer tooling).
++- Additional major providers and extended product families.
++- Search and category helpers for richer local introspection.
++
++Programmatic entry points in `cloud_registry.py`:
++
++- `list_providers()`
++- `list_categories(provider)`
++- `list_products(provider)`
++- `search_products(query)`
++- `count_products(provider=None)`
++
++Example:
++
++```python
++from cloud_registry import list_providers, search_products
++
++print(list_providers())
++print(search_products("azure ai"))
++```
++
++### Embedded cloud data + datasets
++
++To restore broader cloud data coverage directly in-system, the module now includes:
++
++- `CLOUD_DATASETS`: provider → data platform → domain → dataset names.
++- Azure-focused data platforms (`Microsoft Fabric`, `Azure Databricks`, `Synapse Analytics`, `Azure Data Explorer`).
++- Additional provider data surfaces and multi-cloud canonical dataset domains.
++
++New dataset APIs:
++
++- `list_data_platforms(provider)`
++- `iter_datasets(provider=None)`
++- `search_datasets(query)`
++- `count_datasets(provider=None)`
++
++Example:
++
++```python
++from cloud_registry import search_products, search_datasets
++
++print(search_products("azure"))
++print(search_datasets("healthcare"))
++```
+diff --git a/cloud_registry.py b/cloud_registry.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..9bb869f9191699a98b95cc6cf84aaa9d54b046ed
+--- /dev/null
++++ b/cloud_registry.py
+@@ -0,0 +1,263 @@
++"""Extensive embedded cloud + dataset registry.
++
++A dependency-free, in-code atlas of:
++- Cloud providers and product families (with deep Azure coverage)
++- Cloud data stores and data platforms
++- Common cloud dataset domains and canonical dataset examples
++
++Designed for systems that need local embedded lookup without external APIs.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Dict, Iterable, List
++
++
++@dataclass(frozen=True)
++class CloudProduct:
++    """Normalized cloud product record."""
++
++    provider: str
++    category: str
++    name: str
++
++
++@dataclass(frozen=True)
++class DatasetRecord:
++    """Normalized dataset record for embedded system lookup."""
++
++    provider: str
++    data_platform: str
++    domain: str
++    dataset: str
++
++
++CLOUD_PRODUCTS: Dict[str, Dict[str, List[str]]] = {
++    "Azure": {
++        "Compute": [
++            "Virtual Machines", "Virtual Machine Scale Sets", "Azure Kubernetes Service",
++            "Azure Functions", "Azure Container Apps", "Azure Container Instances",
++            "App Service", "Batch", "Azure Spring Apps", "Service Fabric",
++            "Azure VMware Solution", "Azure Red Hat OpenShift", "Azure CycleCloud",
++            "Azure Dedicated Host",
++        ],
++        "Storage": [
++            "Blob Storage", "Disk Storage", "Files", "Archive Storage", "Data Lake Storage",
++            "Queue Storage", "NetApp Files", "Elastic SAN", "Azure Backup", "Azure Site Recovery",
++        ],
++        "Databases": [
++            "Azure SQL Database", "Azure SQL Managed Instance", "SQL Server on Azure Virtual Machines",
++            "Cosmos DB", "Database for PostgreSQL", "Database for MySQL",
++            "Managed Instance for Apache Cassandra", "Azure Cache for Redis",
++            "Azure Managed Instance for Apache Redis", "Azure Database Migration Service",
++        ],
++        "Networking": [
++            "Virtual Network", "Load Balancer", "Application Gateway", "Front Door", "VPN Gateway",
++            "ExpressRoute", "Traffic Manager", "DNS", "Bastion", "Firewall", "NAT Gateway", "CDN",
++            "Private Link", "DDoS Protection", "Virtual WAN", "Route Server", "Azure Web PubSub",
++        ],
++        "IdentityAndSecurity": [
++            "Microsoft Entra ID", "Microsoft Entra Domain Services", "Key Vault", "Defender for Cloud",
++            "Microsoft Sentinel", "Azure Policy", "Azure Confidential Computing", "Microsoft Purview",
++            "Azure Managed HSM", "Azure AD B2C",
++        ],
++        "DataAndAI": [
++            "Azure AI Foundry", "Azure OpenAI Service", "Azure AI Search", "Azure Machine Learning",
++            "Azure Databricks", "Synapse Analytics", "Data Factory", "Event Hubs", "Stream Analytics",
++            "HDInsight", "Microsoft Fabric", "Azure Data Explorer", "Azure AI Vision",
++            "Azure AI Speech", "Azure AI Language",
++        ],
++        "IntegrationAndManagement": [
++            "API Management", "Logic Apps", "Service Bus", "Event Grid", "Automation", "Monitor",
++            "Application Insights", "Azure Arc", "Azure Resource Manager", "Azure Cost Management",
++            "Azure Lighthouse", "Azure Advisor", "Azure Chaos Studio", "Azure Deployment Environments",
++        ],
++        "DeveloperAndDevOps": [
++            "Azure DevOps", "GitHub Actions", "Container Registry", "Azure Developer CLI",
++            "Azure Load Testing", "Azure API Center",
++        ],
++        "IoTAndEdge": [
++            "IoT Hub", "IoT Central", "Azure Digital Twins", "Azure Sphere", "Azure Stack HCI",
++            "Azure Stack Edge",
++        ],
++    },
++    "AWS": {
++        "Compute": ["EC2", "Lambda", "ECS", "EKS", "Fargate", "Batch", "Lightsail"],
++        "Storage": ["S3", "EBS", "EFS", "FSx", "Glacier"],
++        "Databases": ["RDS", "DynamoDB", "Aurora", "ElastiCache", "Neptune", "DocumentDB"],
++        "NetworkingAndSecurity": ["VPC", "CloudFront", "Route 53", "IAM", "WAF", "Shield"],
++        "DataAndAI": ["Redshift", "EMR", "Kinesis", "SageMaker", "Bedrock", "Athena"],
++        "Observability": ["CloudWatch", "X-Ray", "CloudTrail", "Config"],
++    },
++    "Google Cloud": {
++        "Compute": ["Compute Engine", "Google Kubernetes Engine", "Cloud Run", "Cloud Functions", "App Engine"],
++        "Storage": ["Cloud Storage", "Persistent Disk", "Filestore", "Archive Storage"],
++        "Databases": ["Cloud SQL", "Spanner", "Firestore", "Bigtable", "Memorystore"],
++        "NetworkingAndSecurity": ["VPC", "Cloud CDN", "Cloud Armor", "Cloud DNS", "Identity and Access Management"],
++        "DataAndAI": ["BigQuery", "Dataflow", "Pub/Sub", "Vertex AI", "Dataproc", "Looker"],
++        "Observability": ["Cloud Monitoring", "Cloud Logging", "Cloud Trace", "Security Command Center"],
++    },
++    "Oracle Cloud": {
++        "Core": [
++            "Compute", "Container Engine for Kubernetes", "Functions", "Object Storage", "Block Volumes",
++            "Autonomous Database", "MySQL HeatWave", "Virtual Cloud Network", "OCI API Gateway",
++            "Observability and Management",
++        ]
++    },
++    "IBM Cloud": {
++        "Core": [
++            "Virtual Servers", "Code Engine", "Kubernetes Service", "Object Storage", "Db2",
++            "Cloud Databases", "VPC", "Watsonx", "Event Streams", "Cloud Monitoring",
++        ]
++    },
++    "Alibaba Cloud": {
++        "Core": [
++            "Elastic Compute Service", "Container Service for Kubernetes", "Function Compute",
++            "Object Storage Service", "ApsaraDB", "PolarDB", "Virtual Private Cloud", "DataWorks",
++            "MaxCompute", "CloudMonitor",
++        ]
++    },
++    "Cloudflare": {
++        "Core": [
++            "Workers", "R2", "KV", "D1", "Durable Objects", "Queues", "Zero Trust", "CDN", "WAF",
++            "Magic Transit",
++        ]
++    },
++    "DigitalOcean": {
++        "Core": [
++            "Droplets", "Kubernetes", "Functions", "Spaces", "Volumes", "Managed Databases", "VPC",
++            "Load Balancers", "Container Registry", "App Platform",
++        ]
++    },
++}
++
++
++CLOUD_DATASETS: Dict[str, Dict[str, Dict[str, List[str]]]] = {
++    "Azure": {
++        "Microsoft Fabric": {
++            "Business Intelligence": ["Sales Insights Lakehouse", "Executive KPI Semantic Model", "Revenue Forecast Mart"],
++            "Operations": ["Supply Chain Telemetry Delta", "Factory Events Stream Mirror"],
++            "Finance": ["General Ledger Warehouse", "Cost Allocation Cube"],
++        },
++        "Azure Databricks": {
++            "Machine Learning": ["Feature Store - Customer360", "Churn Prediction Training Set", "Fraud Scoring Bronze/Silver/Gold"],
++            "IoT": ["Device Twin Event Lake", "Edge Metrics Timeseries"],
++            "Log Analytics": ["Security Audit Delta Tables", "Application Telemetry Curated"],
++        },
++        "Synapse Analytics": {
++            "Enterprise Data Warehouse": ["Orders Star Schema", "Procurement Fact Tables", "HR Workforce Mart"],
++            "Public Sector": ["Permit Processing Analytics", "Transit Ridership Warehouse"],
++        },
++        "Azure Data Explorer": {
++            "Time Series": ["Industrial Sensor Hot Cache", "Network Flow Metrics"],
++            "Observability": ["Distributed Trace Events", "Service Health KPI Materialization"],
++        },
++    },
++    "AWS": {
++        "S3 + Lake Formation": {
++            "Data Lake": ["Clickstream Raw Zone", "Marketing Curated Zone", "Unified Data Catalog"],
++            "Governance": ["Data Lineage Snapshots", "Access Audit Partitions"],
++        },
++        "Redshift": {
++            "Warehousing": ["Retail Sales Warehouse", "Customer Segmentation Mart"],
++            "Finance": ["PnL Reporting Model", "Treasury Risk Cube"],
++        },
++    },
++    "Google Cloud": {
++        "BigQuery": {
++            "Analytics": ["Web Funnel Dataset", "Attribution Modeling Dataset", "Experimentation Warehouse"],
++            "Geo": ["Mobility Heatmap Dataset", "Store Catchment Dataset"],
++        },
++        "Vertex AI": {
++            "ML Datasets": ["Image Annotation Dataset", "Document Classification Corpus"],
++        },
++    },
++    "MultiCloud": {
++        "CanonicalDomains": {
++            "Healthcare": ["Patient Outcome Registry", "Medical Imaging Catalog", "Clinical Trial Signals"],
++            "FinTech": ["Payment Event Ledger", "AML Monitoring Stream", "Risk Exposure Snapshot"],
++            "Retail": ["Basket Affinity Dataset", "Price Elasticity Matrix", "Store Inventory Delta"],
++            "Energy": ["Grid Load Forecast Dataset", "Outage Event Timeline", "Renewables Generation Time Series"],
++            "Public": ["Open Demographics Extract", "Transit Operations Feed", "Weather-Hazard Fusion Dataset"],
++        }
++    },
++}
++
++
++def list_providers() -> List[str]:
++    return sorted(CLOUD_PRODUCTS)
++
++
++def list_categories(provider: str) -> List[str]:
++    return sorted(CLOUD_PRODUCTS.get(provider, {}))
++
++
++def iter_products(provider: str | None = None) -> Iterable[CloudProduct]:
++    provider_names = [provider] if provider else list_providers()
++    for provider_name in provider_names:
++        for category, names in CLOUD_PRODUCTS.get(provider_name, {}).items():
++            for name in names:
++                yield CloudProduct(provider=provider_name, category=category, name=name)
++
++
++def list_products(provider: str) -> List[CloudProduct]:
++    return list(iter_products(provider))
++
++
++def search_products(query: str) -> List[CloudProduct]:
++    needle = query.strip().lower()
++    if not needle:
++        return []
++    return [
++        product
++        for product in iter_products()
++        if needle in product.provider.lower()
++        or needle in product.category.lower()
++        or needle in product.name.lower()
++    ]
++
++
++def list_data_platforms(provider: str) -> List[str]:
++    return sorted(CLOUD_DATASETS.get(provider, {}))
++
++
++def iter_datasets(provider: str | None = None) -> Iterable[DatasetRecord]:
++    provider_names = [provider] if provider else sorted(CLOUD_DATASETS)
++    for provider_name in provider_names:
++        for platform, domains in CLOUD_DATASETS.get(provider_name, {}).items():
++            for domain, datasets in domains.items():
++                for dataset in datasets:
++                    yield DatasetRecord(provider=provider_name, data_platform=platform, domain=domain, dataset=dataset)
++
++
++def search_datasets(query: str) -> List[DatasetRecord]:
++    needle = query.strip().lower()
++    if not needle:
++        return []
++    return [
++        row
++        for row in iter_datasets()
++        if needle in row.provider.lower()
++        or needle in row.data_platform.lower()
++        or needle in row.domain.lower()
++        or needle in row.dataset.lower()
++    ]
++
++
++def count_products(provider: str | None = None) -> int:
++    return len(list(iter_products(provider)))
++
++
++def count_datasets(provider: str | None = None) -> int:
++    return len(list(iter_datasets(provider)))
++
++
++if __name__ == "__main__":
++    print(f"Cloud registry awakened: providers={len(list_providers())}, products={count_products()}")
++    for provider in list_providers():
++        print(f"- {provider}: {len(list_categories(provider))} categories, {count_products(provider)} products")
++
++    print(f"\nData registry awakened: providers={len(sorted(CLOUD_DATASETS))}, datasets={count_datasets()}")
++    for provider in sorted(CLOUD_DATASETS):
++        print(f"- {provider}: {len(list_data_platforms(provider))} platforms, {count_datasets(provider)} datasets")
+
+azure-restore-kit/
+  scripts/
+    00_prereqs_check.sh
+    10_restore_cosmos.sh
+    20_restore_sql.sh
+    30_restore_storage_blobs.sh
+    40_restore_vm_or_files.sh
+    90_export_and_rehydrate.sh
+  config/
+    env.example
+    # Azure
+AZ_SUBSCRIPTION_ID="00000000-0000-0000-0000-000000000000"
+AZ_RESOURCE_GROUP="rg-prod"
+
+# Cosmos DB
+COSMOS_ACCOUNT_NAME="mycosmosprod"
+COSMOS_LOCATION="westus2"
+COSMOS_RESTORE_TIME_UTC="2026-02-21T20:15:00Z"
+COSMOS_RESTORE_TARGET_ACCOUNT="mycosmos-restore-20260221"
+
+# Azure SQL
+SQL_SERVER_NAME="myserver"
+SQL_DB_NAME="mydb"
+SQL_RESTORE_TIME_UTC="2026-02-21T20:15:00Z"
+SQL_RESTORE_DB_NAME="mydb_restore_20260221"
+
+# Storage
+STORAGE_ACCOUNT="mystorageprod"
+STORAGE_PITR_TIME_UTC="2026-02-21T20:15:00Z"
+STORAGE_CONTAINER="datasets"
+LOCAL_REHYDRATE_DIR="./rehydrated"
+#!/usr/bin/env bash
+set -euo pipefail
+
+command -v az >/dev/null || { echo "Azure CLI (az) is required."; exit 1; }
+
+# Login (interactive). For CI, use federated credentials / service principal.
+az account show >/dev/null 2>&1 || az login
+
+# Load env
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../config/env"
+
+az account set --subscription "$AZ_SUBSCRIPTION_ID"
+echo "OK: Logged in and set subscription $AZ_SUBSCRIPTION_ID"
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../config/env"
+
+az account set --subscription "$AZ_SUBSCRIPTION_ID"
+
+# NOTE: Cosmos PITR requires continuous backup mode and proper permissions.
+# Restores typically create a NEW account at the restore timestamp.
+echo "Starting Cosmos restore from $COSMOS_RESTORE_TIME_UTC ..."
+
+az cosmosdb restore \
+  --resource-group "$AZ_RESOURCE_GROUP" \
+  --account-name "$COSMOS_RESTORE_TARGET_ACCOUNT" \
+  --source-account "$COSMOS_ACCOUNT_NAME" \
+  --restore-timestamp "$COSMOS_RESTORE_TIME_UTC" \
+  --location "$COSMOS_LOCATION"
+
+echo "Cosmos restore requested. Verify in portal and test connectivity."
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../config/env"
+
+az account set --subscription "$AZ_SUBSCRIPTION_ID"
+
+echo "Restoring Azure SQL DB to $SQL_RESTORE_DB_NAME at $SQL_RESTORE_TIME_UTC ..."
+
+az sql db restore \
+  --resource-group "$AZ_RESOURCE_GROUP" \
+  --server "$SQL_SERVER_NAME" \
+  --name "$SQL_DB_NAME" \
+  --dest-name "$SQL_RESTORE_DB_NAME" \
+  --time "$SQL_RESTORE_TIME_UTC"
+
+echo "SQL restore started. Validate schema/data before cutover."
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../config/env"
+
+az account set --subscription "$AZ_SUBSCRIPTION_ID"
+
+echo "NOTE: PITR works at the storage account level and has prerequisites (versioning, change feed, soft delete)."
+echo "See Microsoft docs for PITR overview and management."
+
+# PITR is commonly triggered via portal/REST; CLI support varies by feature surface.
+# A practical automation-friendly approach is often:
+# - rely on versioning/snapshots/soft delete + targeted restore of objects
+# - or implement PITR via REST calls in a controlled runbook.
+
+echo "Example: list blob versions (useful for rollback-by-version):"
+az storage blob list \
+  --account-name "$STORAGE_ACCOUNT" \
+  --container-name "$STORAGE_CONTAINER" \
+  --include v \
+  --auth-mode login \
+  --output table
+
+echo "For full PITR, use the 'Point-in-time restore' capability per docs."
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/../config/env"
+
+mkdir -p "$LOCAL_REHYDRATE_DIR"
+
+echo "=== Example: export blobs to local ==="
+az storage blob download-batch \
+  --account-name "$STORAGE_ACCOUNT" \
+  --destination "$LOCAL_REHYDRATE_DIR/blobs" \
+  --source "$STORAGE_CONTAINER" \
+  --auth-mode login
+
+echo "=== Example: export SQL (requires sqlcmd/bcp or Data Factory) ==="
+echo "Tip: use Azure Data Factory copy, or bcp for tables, into CSV/Parquet in your local dir."
+
+echo "=== Example: Cosmos export ==="
+echo "Tip: use Azure Data Factory, Synapse Link, or an app-level export tool to pull from the restored Cosmos account."
+
+echo "Done. Your restored datasets are now rehydrated into $LOCAL_REHYDRATE_DIR"
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient
+import pyodbc
+
+# Blob Storage
+account_url = "https://<your_storage_account>.blob.core.windows.net"
+credential = DefaultAzureCredential()
+blob_service = BlobServiceClient(account_url=account_url, credential=credential)
+container_client = blob_service.get_container_client("restored-container")
+
+for blob in container_client.list_blobs():
+    print("Blob:", blob.name)
+
+# Azure SQL
+conn_str = (
+    "DRIVER={ODBC Driver 18 for SQL Server};"
+    "SERVER=tcp:<your-restored-sql>.database.windows.net,1433;"
+    "DATABASE=<db_name>;"
+    "UID=<user>;"
+    "PWD=<password>;"
+    "Encrypt=yes;TrustServerCertificate=no;"
+)
+with pyodbc.connect(conn_str) as conn:
+    cursor = conn.cursor()
+    cursor.execute("SELECT TOP 10 * FROM YourTable")
+    for row in cursor.fetchall():
+        print(row)
+import boto3
+import psycopg2
+
+# S3
+s3 = boto3.client("s3")
+bucket_name = "your-restored-bucket"
+
+resp = s3.list_objects_v2(Bucket=bucket_name)
+for obj in resp.get("Contents", []):
+    print("S3 object:", obj["Key"])
+
+# RDS (PostgreSQL)
+conn = psycopg2.connect(
+    host="your-restored-rds-endpoint.rds.amazonaws.com",
+    port=5432,
+    dbname="yourdb",
+    user="dbuser",
+    password="dbpassword",
+    sslmode="require",
+)
+with conn:
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM your_table LIMIT 10;")
+        for row in cur.fetchall():
+            print(row)
+from google.cloud import storage
+import sqlalchemy
+
+# Cloud Storage
+storage_client = storage.Client()
+bucket = storage_client.bucket("your-restored-bucket")
+for blob in bucket.list_blobs():
+    print("GCS object:", blob.name)
+
+# Cloud SQL (PostgreSQL via SQLAlchemy + Cloud SQL connector or public IP)
+db_user = "dbuser"
+db_pass = "dbpassword"
+db_name = "yourdb"
+db_host = "your-cloudsql-ip-or-connector"
+
+engine = sqlalchemy.create_engine(
+    f"postgresql+psycopg2://{db_user}:{db_pass}@{db_host}/{db_name}"
+)
+
+with engine.connect() as conn:
+    result = conn.execute(sqlalchemy.text("SELECT * FROM your_table LIMIT 10;"))
+    for row in result:
+        print(row)
+
+# cloud_clients/aws.py
+def get_s3_client():
+    import boto3
+    return boto3.client("s3")
+
+def list_restored_s3_objects(bucket):
+    s3 = get_s3_client()
+    return [o["Key"] for o in s3.list_objects_v2(Bucket=bucket).get("Contents", [])]
+
+from cloud_clients.aws import list_restored_s3_objects
+
+def sync_restored_data():
+    keys = list_restored_s3_objects("your-restored-bucket")
+    # embed into your logic: ETL, indexing, analytics, etc.
+    print(keys)
+pip install azure-identity azure-storage-blob pyodbc
+pip install boto3 psycopg2-binary
+pip install google-cloud-storage sqlalchemy psycopg2-binary
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient
+import pyodbc
+
+def get_azure_blob_container(account_name: str, container_name: str):
+    account_url = f"https://{account_name}.blob.core.windows.net"
+    credential = DefaultAzureCredential()
+    service = BlobServiceClient(account_url=account_url, credential=credential)
+    return service.get_container_client(container_name)
+
+def list_azure_blobs(account_name: str, container_name: str):
+    container = get_azure_blob_container(account_name, container_name)
+    return [b.name for b in container.list_blobs()]
+
+def query_azure_sql(server: str, db: str, user: str, password: str, sql: str):
+    conn_str = (
+        "DRIVER={ODBC Driver 18 for SQL Server};"
+        f"SERVER=tcp:{server}.database.windows.net,1433;"
+        f"DATABASE={db};UID={user};PWD={password};"
+        "Encrypt=yes;TrustServerCertificate=no;"
+    )
+    with pyodbc.connect(conn_str) as conn:
+        cur = conn.cursor()
+        cur.execute(sql)
+        return cur.fetchall()
+import boto3
+import psycopg2
+
+def list_s3_objects(bucket: str, prefix: str = ""):
+    s3 = boto3.client("s3")
+    resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+    return [o["Key"] for o in resp.get("Contents", [])]
+
+def query_rds_postgres(host: str, db: str, user: str, password: str, sql: str):
+    conn = psycopg2.connect(
+        host=host,
+        port=5432,
+        dbname=db,
+        user=user,
+        password=password,
+        sslmode="require",
+    )
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            return cur.fetchall()
+from google.cloud import storage
+import sqlalchemy
+
+def list_gcs_objects(bucket_name: str, prefix: str = ""):
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    return [b.name for b in bucket.list_blobs(prefix=prefix)]
+
+def query_cloudsql_postgres(host: str, db: str, user: str, password: str, sql: str):
+    engine = sqlalchemy.create_engine(
+        f"postgresql+psycopg2://{user}:{password}@{host}/{db}"
+    )
+    with engine.connect() as conn:
+        result = conn.execute(sqlalchemy.text(sql))
+        return list(result)
+# cloud_clients/__init__.py
+from .azure import list_azure_blobs, query_azure_sql
+from .aws import list_s3_objects, query_rds_postgres
+from .gcp import list_gcs_objects, query_cloudsql_postgres
+
+def sync_all_cloud_storage():
+    azure_files = list_azure_blobs("azureaccount", "restored-container")
+    aws_files = list_s3_objects("restored-bucket")
+    gcp_files = list_gcs_objects("restored-gcs-bucket")
+
+    return {
+        "azure": azure_files,
+        "aws": aws_files,
+        "gcp": gcp_files,
+    }
+pip install azure-identity azure-storage-blob pyodbc
+pip install boto3 psycopg2-binary
+pip install google-cloud-storage sqlalchemy psycopg2-binary
+azure:
+  storage:
+    - account: mystorageaccount
+      container: restored-container
+  sql:
+    - server: myazuresqlserver
+      database: mydb
+      user_env: AZURE_SQL_USER
+      password_env: AZURE_SQL_PASSWORD
+
+aws:
+  s3:
+    - bucket: my-restored-bucket
+      prefix: ""
+  rds:
+    - host: my-rds-endpoint.rds.amazonaws.com
+      database: mydb
+      user_env: AWS_RDS_USER
+      password_env: AWS_RDS_PASSWORD
+
+gcp:
+  gcs:
+    - bucket: my-restored-gcs-bucket
+      prefix: ""
+  cloudsql:
+    - host: my-cloudsql-ip-or-connector
+      database: mydb
+      user_env: GCP_SQL_USER
+      password_env: GCP_SQL_PASSWORD
+# cloud_clients/azure.py
+import os
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient
+import pyodbc
+
+def _get_azure_credential():
+    return DefaultAzureCredential()
+
+def list_azure_blobs(account_name: str, container_name: str, prefix: str = ""):
+    account_url = f"https://{account_name}.blob.core.windows.net"
+    credential = _get_azure_credential()
+    service = BlobServiceClient(account_url=account_url, credential=credential)
+    container = service.get_container_client(container_name)
+    return [b.name for b in container.list_blobs(name_starts_with=prefix)]
+
+def query_azure_sql(server: str, database: str, user_env: str, password_env: str, sql: str):
+    user = os.environ[user_env]
+    password = os.environ[password_env]
+    conn_str = (
+        "DRIVER={ODBC Driver 18 for SQL Server};"
+        f"SERVER=tcp:{server}.database.windows.net,1433;"
+        f"DATABASE={database};UID={user};PWD={password};"
+        "Encrypt=yes;TrustServerCertificate=no;"
+    )
+    with pyodbc.connect(conn_str) as conn:
+        cur = conn.cursor()
+        cur.execute(sql)
+        return cur.fetchall()
+# cloud_clients/aws.py
+import os
+import boto3
+import psycopg2
+
+def list_s3_objects(bucket: str, prefix: str = ""):
+    s3 = boto3.client("s3")
+    resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+    return [o["Key"] for o in resp.get("Contents", [])]
+
+def query_rds_postgres(host: str, database: str, user_env: str, password_env: str, sql: str):
+    user = os.environ[user_env]
+    password = os.environ[password_env]
+    conn = psycopg2.connect(
+        host=host,
+        port=5432,
+        dbname=database,
+        user=user,
+        password=password,
+        sslmode="require",
+    )
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            return cur.fetchall()
+# cloud_clients/gcp.py
+import os
+from google.cloud import storage
+import sqlalchemy
+
+def list_gcs_objects(bucket_name: str, prefix: str = ""):
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    return [b.name for b in bucket.list_blobs(prefix=prefix)]
+
+def query_cloudsql_postgres(host: str, database: str, user_env: str, password_env: str, sql: str):
+    user = os.environ[user_env]
+    password = os.environ[password_env]
+    engine = sqlalchemy.create_engine(
+        f"postgresql+psycopg2://{user}:{password}@{host}/{database}"
+    )
+    with engine.connect() as conn:
+        result = conn.execute(sqlalchemy.text(sql))
+        return list(result)
+# orchestrator.py
+import yaml
+from cloud_clients.azure import list_azure_blobs, query_azure_sql
+from cloud_clients.aws import list_s3_objects, query_rds_postgres
+from cloud_clients.gcp import list_gcs_objects, query_cloudsql_postgres
+
+def load_config(path: str = "cloud_inventory.yaml"):
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+def sync_all_storage(cfg):
+    results = {"azure": [], "aws": [], "gcp": []}
+
+    for s in cfg.get("azure", {}).get("storage", []):
+        results["azure"].extend(
+            list_azure_blobs(s["account"], s["container"], s.get("prefix", ""))
+        )
+
+    for s in cfg.get("aws", {}).get("s3", []):
+        results["aws"].extend(
+            list_s3_objects(s["bucket"], s.get("prefix", ""))
+        )
+
+    for s in cfg.get("gcp", {}).get("gcs", []):
+        results["gcp"].extend(
+            list_gcs_objects(s["bucket"], s.get("prefix", ""))
+        )
+
+    return results
+
+def run_health_checks(cfg):
+    checks = {"azure_sql": [], "aws_rds": [], "gcp_sql": []}
+
+    for db in cfg.get("azure", {}).get("sql", []):
+        rows = query_azure_sql(
+            db["server"], db["database"], db["user_env"], db["password_env"],
+            "SELECT 1"
+        )
+        checks["azure_sql"].append(rows)
+
+    for db in cfg.get("aws", {}).get("rds", []):
+        rows = query_rds_postgres(
+            db["host"], db["database"], db["user_env"], db["password_env"],
+            "SELECT 1"
+        )
+        checks["aws_rds"].append(rows)
+
+    for db in cfg.get("gcp", {}).get("cloudsql", []):
+        rows = query_cloudsql_postgres(
+            db["host"], db["database"], db["user_env"], db["password_env"],
+            "SELECT 1"
+        )
+        checks["gcp_sql"].append(rows)
+
+    return checks
+
+if __name__ == "__main__":
+    cfg = load_config()
+    storage_state = sync_all_storage(cfg)
+    db_checks = run_health_checks(cfg)
+    print("Storage:", storage_state)
+    print("DB checks:", db_checks)
+# analytics_orchestrator.py
+def run_all_analytics():
+    # Azure: trigger Data Factory pipeline
+    # AWS: start Glue job / Athena query
+    # GCP: run BigQuery query / Dataflow job
+    # (Implement each using the respective SDKs and your config)
+    pass
+your-project/
+  cloud_inventory.yaml
+  cloud_clients/
+    __init__.py
+    azure.py
+    aws.py
+    gcp.py
+  orchestrator.py
+  analytics_orchestrator.py  # optional, for later
+
+azure:
+  storage:
+    - account: mystorageaccount
+      container: restored-container
+      prefix: ""          # optional
+  sql:
+    - server: myazuresqlserver
+      database: mydb
+      user_env: AZURE_SQL_USER
+      password_env: AZURE_SQL_PASSWORD
+
+aws:
+  s3:
+    - bucket: my-restored-bucket
+      prefix: ""          # optional
+  rds:
+    - host: my-rds-endpoint.rds.amazonaws.com
+      database: mydb
+      user_env: AWS_RDS_USER
+      password_env: AWS_RDS_PASSWORD
+
+gcp:
+  gcs:
+    - bucket: my-restored-gcs-bucket
+      prefix: ""          # optional
+  cloudsql:
+    - host: my-cloudsql-ip-or-connector
+      database: mydb
+      user_env: GCP_SQL_USER
+      password_env: GCP_SQL_PASSWORD
+pip install azure-identity azure-storage-blob pyodbc
+pip install boto3 psycopg2-binary
+pip install google-cloud-storage sqlalchemy psycopg2-binary pyyaml
+export AZURE_SQL_USER="..."
+export AZURE_SQL_PASSWORD="..."
+export AWS_RDS_USER="..."
+export AWS_RDS_PASSWORD="..."
+export GCP_SQL_USER="..."
+export GCP_SQL_PASSWORD="..."
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
+# cloud_clients/azure.py
+import os
+from typing import List, Any
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient
+import pyodbc
+
+def _get_azure_credential():
+    return DefaultAzureCredential()
+
+def list_azure_blobs(account_name: str, container_name: str, prefix: str = "") -> List[str]:
+    account_url = f"https://{account_name}.blob.core.windows.net"
+    credential = _get_azure_credential()
+    service = BlobServiceClient(account_url=account_url, credential=credential)
+    container = service.get_container_client(container_name)
+    return [b.name for b in container.list_blobs(name_starts_with=prefix)]
+
+def query_azure_sql(
+    server: str,
+    database: str,
+    user_env: str,
+    password_env: str,
+    sql: str,
+) -> list[tuple[Any, ...]]:
+    user = os.environ[user_env]
+    password = os.environ[password_env]
+    conn_str = (
+        "DRIVER={ODBC Driver 18 for SQL Server};"
+        f"SERVER=tcp:{server}.database.windows.net,1433;"
+        f"DATABASE={database};UID={user};PWD={password};"
+        "Encrypt=yes;TrustServerCertificate=no;"
+    )
+    with pyodbc.connect(conn_str) as conn:
+        cur = conn.cursor()
+        cur.execute(sql)
+        return cur.fetchall()
+# cloud_clients/aws.py
+import os
+from typing import List, Any
+import boto3
+import psycopg2
+
+def list_s3_objects(bucket: str, prefix: str = "") -> List[str]:
+    s3 = boto3.client("s3")
+    resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+    return [o["Key"] for o in resp.get("Contents", [])]
+
+def query_rds_postgres(
+    host: str,
+    database: str,
+    user_env: str,
+    password_env: str,
+    sql: str,
+) -> list[tuple[Any, ...]]:
+    user = os.environ[user_env]
+    password = os.environ[password_env]
+    conn = psycopg2.connect(
+        host=host,
+        port=5432,
+        dbname=database,
+        user=user,
+        password=password,
+        sslmode="require",
+    )
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            return cur.fetchall()
+# cloud_clients/gcp.py
+import os
+from typing import List, Any
+from google.cloud import storage
+import sqlalchemy
+
+def list_gcs_objects(bucket_name: str, prefix: str = "") -> List[str]:
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    return [b.name for b in bucket.list_blobs(prefix=prefix)]
+
+def query_cloudsql_postgres(
+    host: str,
+    database: str,
+    user_env: str,
+    password_env: str,
+    sql: str,
+) -> list[tuple[Any, ...]]:
+    user = os.environ[user_env]
+    password = os.environ[password_env]
+    engine = sqlalchemy.create_engine(
+        f"postgresql+psycopg2://{user}:{password}@{host}/{database}"
+    )
+    with engine.connect() as conn:
+        result = conn.execute(sqlalchemy.text(sql))
+        return list(result)
+# cloud_clients/__init__.py
+from .azure import list_azure_blobs, query_azure_sql
+from .aws import list_s3_objects, query_rds_postgres
+from .gcp import list_gcs_objects, query_cloudsql_postgres
+
+__all__ = [
+    "list_azure_blobs",
+    "query_azure_sql",
+    "list_s3_objects",
+    "query_rds_postgres",
+    "list_gcs_objects",
+    "query_cloudsql_postgres",
+]
+# orchestrator.py
+import yaml
+from cloud_clients import (
+    list_azure_blobs,
+    query_azure_sql,
+    list_s3_objects,
+    query_rds_postgres,
+    list_gcs_objects,
+    query_cloudsql_postgres,
+)
+
+def load_config(path: str = "cloud_inventory.yaml") -> dict:
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+def sync_all_storage(cfg: dict) -> dict:
+    results = {"azure": [], "aws": [], "gcp": []}
+
+    for s in cfg.get("azure", {}).get("storage", []):
+        results["azure"].extend(
+            list_azure_blobs(
+                s["account"],
+                s["container"],
+                s.get("prefix", ""),
+            )
+        )
+
+    for s in cfg.get("aws", {}).get("s3", []):
+        results["aws"].extend(
+            list_s3_objects(
+                s["bucket"],
+                s.get("prefix", ""),
+            )
+        )
+
+    for s in cfg.get("gcp", {}).get("gcs", []):
+        results["gcp"].extend(
+            list_gcs_objects(
+                s["bucket"],
+                s.get("prefix", ""),
+            )
+        )
+
+    return results
+
+def run_db_health_checks(cfg: dict) -> dict:
+    checks = {"azure_sql": [], "aws_rds": [], "gcp_sql": []}
+
+    for db in cfg.get("azure", {}).get("sql", []):
+        rows = query_azure_sql(
+            db["server"],
+            db["database"],
+            db["user_env"],
+            db["password_env"],
+            "SELECT 1",
+        )
+        checks["azure_sql"].append(rows)
+
+    for db in cfg.get("aws", {}).get("rds", []):
+        rows = query_rds_postgres(
+            db["host"],
+            db["database"],
+            db["user_env"],
+            db["password_env"],
+            "SELECT 1",
+        )
+        checks["aws_rds"].append(rows)
+
+    for db in cfg.get("gcp", {}).get("cloudsql", []):
+        rows = query_cloudsql_postgres(
+            db["host"],
+            db["database"],
+            db["user_env"],
+            db["password_env"],
+            "SELECT 1",
+        )
+        checks["gcp_sql"].append(rows)
+
+    return checks
+
+def main():
+    cfg = load_config()
+    storage_state = sync_all_storage(cfg)
+    db_checks = run_db_health_checks(cfg)
+
+    print("=== Storage objects ===")
+    for cloud, objs in storage_state.items():
+        print(f"{cloud}: {len(objs)} objects")
+        for o in objs[:10]:
+            print(f"  - {o}")
+        if len(objs) > 10:
+            print(f"  ... (+{len(objs) - 10} more)")
+
+    print("\n=== DB health checks (SELECT 1) ===")
+    for k, v in db_checks.items():
+        print(k, "->", v)
+
+if __name__ == "__main__":
+    main()
+azure:
+  storage:
+    - account: mystorageaccount
+      container: restored-container
+      prefix: ""
+  sql:
+    - server: myazuresqlserver
+      database: mydb
+      user_env: AZURE_SQL_USER
+      password_env: AZURE_SQL_PASSWORD
+  queues:
+    - namespace: myservicebusns
+      queue: myqueue
+  secrets:
+    - vault_name: my-key-vault
+  compute:
+    - name: my-app-service
+      url: https://my-app-service.azurewebsites.net
+
+aws:
+  s3:
+    - bucket: my-restored-bucket
+      prefix: ""
+  rds:
+    - host: my-rds-endpoint.rds.amazonaws.com
+      database: mydb
+      user_env: AWS_RDS_USER
+      password_env: AWS_RDS_PASSWORD
+  queues:
+    - queue_url: https://sqs.us-east-1.amazonaws.com/123456789012/myqueue
+  secrets:
+    - name: my/secret/name
+  compute:
+    - name: my-ecs-service
+      endpoint_env: AWS_SERVICE_ENDPOINT  # e.g., ALB URL
+
+gcp:
+  gcs:
+    - bucket: my-restored-gcs-bucket
+      prefix: ""
+  cloudsql:
+    - host: my-cloudsql-ip-or-connector
+      database: mydb
+      user_env: GCP_SQL_USER
+      password_env: GCP_SQL_PASSWORD
+  queues:
+    - project_id: my-project
+      subscription: my-subscription
+  secrets:
+    - project_id: my-project
+      secret_id: my-secret
+  compute:
+    - name: my-cloud-run-service
+      url: https://my-cloud-run-service-xyz.a.run.app
+pip install azure-servicebus azure-keyvault-secrets
+# cloud_clients/azure.py
+import os
+from typing import List, Any
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient
+from azure.servicebus import ServiceBusClient
+from azure.keyvault.secrets import SecretClient
+import pyodbc
+import requests
+
+def _get_azure_credential():
+    return DefaultAzureCredential()
+
+# Storage (already had)
+def list_azure_blobs(account_name: str, container_name: str, prefix: str = "") -> List[str]:
+    account_url = f"https://{account_name}.blob.core.windows.net"
+    credential = _get_azure_credential()
+    service = BlobServiceClient(account_url=account_url, credential=credential)
+    container = service.get_container_client(container_name)
+    return [b.name for b in container.list_blobs(name_starts_with=prefix)]
+
+# SQL (already had)
+def query_azure_sql(server: str, database: str, user_env: str, password_env: str, sql: str) -> list[tuple[Any, ...]]:
+    user = os.environ[user_env]
+    password = os.environ[password_env]
+    conn_str = (
+        "DRIVER={ODBC Driver 18 for SQL Server};"
+        f"SERVER=tcp:{server}.database.windows.net,1433;"
+        f"DATABASE={database};UID={user};PWD={password};"
+        "Encrypt=yes;TrustServerCertificate=no;"
+    )
+    with pyodbc.connect(conn_str) as conn:
+        cur = conn.cursor()
+        cur.execute(sql)
+        return cur.fetchall()
+
+# Queues (Service Bus)
+def peek_servicebus_messages(namespace: str, queue: str, max_messages: int = 10) -> list[str]:
+    credential = _get_azure_credential()
+    fully_qualified_namespace = f"{namespace}.servicebus.windows.net"
+    with ServiceBusClient(fully_qualified_namespace, credential) as client:
+        receiver = client.get_queue_receiver(queue_name=queue, max_wait_time=5)
+        with receiver:
+            messages = receiver.peek_messages(max_message_count=max_messages)
+            return [str(m) for m in messages]
+
+# Secrets (Key Vault)
+def list_keyvault_secrets(vault_name: str) -> list[str]:
+    credential = _get_azure_credential()
+    vault_url = f"https://{vault_name}.vault.azure.net"
+    client = SecretClient(vault_url=vault_url, credential=credential)
+    return [s.name for s in client.list_properties_of_secrets()]
+
+# Compute endpoints (e.g., App Service)
+def call_azure_compute_endpoint(url: str, timeout: int = 5) -> tuple[int, str]:
+    resp = requests.get(url, timeout=timeout)
+    return resp.status_code, resp.text[:500]
+pip install requests
+# cloud_clients/aws.py
+import os
+from typing import List, Any
+import boto3
+import psycopg2
+import requests
+
+# S3 (already had)
+def list_s3_objects(bucket: str, prefix: str = "") -> List[str]:
+    s3 = boto3.client("s3")
+    resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+    return [o["Key"] for o in resp.get("Contents", [])]
+
+# RDS (already had)
+def query_rds_postgres(host: str, database: str, user_env: str, password_env: str, sql: str) -> list[tuple[Any, ...]]:
+    user = os.environ[user_env]
+    password = os.environ[password_env]
+    conn = psycopg2.connect(
+        host=host,
+        port=5432,
+        dbname=database,
+        user=user,
+        password=password,
+        sslmode="require",
+    )
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            return cur.fetchall()
+
+# Queues (SQS)
+def peek_sqs_messages(queue_url: str, max_messages: int = 10) -> list[str]:
+    sqs = boto3.client("sqs")
+    resp = sqs.receive_message(
+        QueueUrl=queue_url,
+        MaxNumberOfMessages=max_messages,
+        WaitTimeSeconds=1,
+        VisibilityTimeout=1,
+    )
+    messages = resp.get("Messages", [])
+    return [m["Body"] for m in messages]
+
+# Secrets (Secrets Manager)
+def list_secrets_manager_names() -> list[str]:
+    sm = boto3.client("secretsmanager")
+    secrets = []
+    paginator = sm.get_paginator("list_secrets")
+    for page in paginator.paginate():
+        for s in page.get("SecretList", []):
+            secrets.append(s["Name"])
+    return secrets
+
+# Compute endpoints (e.g., ALB/EC2/containers behind URL)
+def call_aws_compute_endpoint(endpoint_url: str, timeout: int = 5) -> tuple[int, str]:
+    resp = requests.get(endpoint_url, timeout=timeout)
+    return resp.status_code, resp.text[:500]
+pip install google-cloud-pubsub google-cloud-secret-manager
+# cloud_clients/gcp.py
+import os
+from typing import List, Any
+from google.cloud import storage, pubsub_v1, secretmanager
+import sqlalchemy
+import requests
+
+# GCS (already had)
+def list_gcs_objects(bucket_name: str, prefix: str = "") -> List[str]:
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    return [b.name for b in bucket.list_blobs(prefix=prefix)]
+
+# Cloud SQL (already had)
+def query_cloudsql_postgres(host: str, database: str, user_env: str, password_env: str, sql: str) -> list[tuple[Any, ...]]:
+    user = os.environ[user_env]
+    password = os.environ[password_env]
+    engine = sqlalchemy.create_engine(
+        f"postgresql+psycopg2://{user}:{password}@{host}/{database}"
+    )
+    with engine.connect() as conn:
+        result = conn.execute(sqlalchemy.text(sql))
+        return list(result)
+
+# Queues (Pub/Sub)
+def pull_pubsub_messages(project_id: str, subscription: str, max_messages: int = 10) -> list[str]:
+    subscriber = pubsub_v1.SubscriberClient()
+    subscription_path = subscriber.subscription_path(project_id, subscription)
+    response = subscriber.pull(
+        request={"subscription": subscription_path, "max_messages": max_messages},
+        timeout=5,
+    )
+    messages = [m.message.data.decode("utf-8") for m in response.received_messages]
+    # We don't ack here to keep it "peek-like"
+    return messages
+
+# Secrets (Secret Manager)
+def list_secret_manager_secrets(project_id: str) -> list[str]:
+    client = secretmanager.SecretManagerServiceClient()
+    parent = f"projects/{project_id}"
+    return [s.name for s in client.list_secrets(request={"parent": parent})]
+
+# Compute endpoints (Cloud Run, GCE behind URL, etc.)
+def call_gcp_compute_endpoint(url: str, timeout: int = 5) -> tuple[int, str]:
+    resp = requests.get(url, timeout=timeout)
+    return resp.status_code, resp.text[:500]
+# orchestrator.py
+import yaml
+from cloud_clients import (
+    list_azure_blobs,
+    query_azure_sql,
+    list_s3_objects,
+    query_rds_postgres,
+    list_gcs_objects,
+    query_cloudsql_postgres,
+)
+from cloud_clients.azure import peek_servicebus_messages, list_keyvault_secrets, call_azure_compute_endpoint
+from cloud_clients.aws import peek_sqs_messages, list_secrets_manager_names, call_aws_compute_endpoint
+from cloud_clients.gcp import pull_pubsub_messages, list_secret_manager_secrets, call_gcp_compute_endpoint
+
+def load_config(path: str = "cloud_inventory.yaml") -> dict:
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+def inspect_storage(cfg: dict) -> dict:
+    results = {"azure": [], "aws": [], "gcp": []}
+
+    for s in cfg.get("azure", {}).get("storage", []):
+        results["azure"].extend(
+            list_azure_blobs(s["account"], s["container"], s.get("prefix", ""))
+        )
+
+    for s in cfg.get("aws", {}).get("s3", []):
+        results["aws"].extend(
+            list_s3_objects(s["bucket"], s.get("prefix", ""))
+        )
+
+    for s in cfg.get("gcp", {}).get("gcs", []):
+        results["gcp"].extend(
+            list_gcs_objects(s["bucket"], s.get("prefix", ""))
+        )
+
+    return results
+
+def inspect_databases(cfg: dict) -> dict:
+    checks = {"azure_sql": [], "aws_rds": [], "gcp_sql": []}
+
+    for db in cfg.get("azure", {}).get("sql", []):
+        checks["azure_sql"].append(
+            query_azure_sql(db["server"], db["database"], db["user_env"], db["password_env"], "SELECT 1")
+        )
+
+    for db in cfg.get("aws", {}).get("rds", []):
+        checks["aws_rds"].append(
+            query_rds_postgres(db["host"], db["database"], db["user_env"], db["password_env"], "SELECT 1")
+        )
+
+    for db in cfg.get("gcp", {}).get("cloudsql", []):
+        checks["gcp_sql"].append(
+            query_cloudsql_postgres(db["host"], db["database"], db["user_env"], db["password_env"], "SELECT 1")
+        )
+
+    return checks
+
+def inspect_queues(cfg: dict) -> dict:
+    results = {"azure": [], "aws": [], "gcp": []}
+
+    for q in cfg.get("azure", {}).get("queues", []):
+        msgs = peek_servicebus_messages(q["namespace"], q["queue"], max_messages=5)
+        results["azure"].append({"queue": q["queue"], "messages": msgs})
+
+    for q in cfg.get("aws", {}).get("queues", []):
+        msgs = peek_sqs_messages(q["queue_url"], max_messages=5)
+        results["aws"].append({"queue_url": q["queue_url"], "messages": msgs})
+
+    for q in cfg.get("gcp", {}).get("queues", []):
+        msgs = pull_pubsub_messages(q["project_id"], q["subscription"], max_messages=5)
+        results["gcp"].append({"subscription": q["subscription"], "messages": msgs})
+
+    return results
+
+def inspect_secrets(cfg: dict) -> dict:
+    results = {"azure": [], "aws": [], "gcp": []}
+
+    for s in cfg.get("azure", {}).get("secrets", []):
+        names = list_keyvault_secrets(s["vault_name"])
+        results["azure"].append({"vault": s["vault_name"], "secrets": names})
+
+    # AWS: listing all secrets (global, not per-config entry)
+    if cfg.get("aws", {}).get("secrets"):
+        results["aws"] = list_secrets_manager_names()
+
+    for s in cfg.get("gcp", {}).get("secrets", []):
+        names = list_secret_manager_secrets(s["project_id"])
+        results["gcp"].append({"project": s["project_id"], "secrets": names})
+
+    return results
+
+def inspect_compute(cfg: dict) -> dict:
+    results = {"azure": [], "aws": [], "gcp": []}
+
+    for c in cfg.get("azure", {}).get("compute", []):
+        status, body = call_azure_compute_endpoint(c["url"])
+        results["azure"].append({"name": c["name"], "status": status})
+
+    for c in cfg.get("aws", {}).get("compute", []):
+        endpoint = c.get("endpoint_env")
+        if endpoint:
+            url = os.environ.get(endpoint, "")
+            if url:
+                status, body = call_aws_compute_endpoint(url)
+                results["aws"].append({"name": c["name"], "status": status})
+
+    for c in cfg.get("gcp", {}).get("compute", []):
+        status, body = call_gcp_compute_endpoint(c["url"])
+        results["gcp"].append({"name": c["name"], "status": status})
+
+    return results
+
+def main():
+    cfg = load_config()
+
+    storage = inspect_storage(cfg)
+    dbs = inspect_databases(cfg)
+    queues = inspect_queues(cfg)
+    secrets = inspect_secrets(cfg)
+    compute = inspect_compute(cfg)
+
+    print("=== STORAGE ===")
+    print(storage)
+    print("\n=== DATABASES ===")
+    print(dbs)
+    print("\n=== QUEUES ===")
+    print(queues)
+    print("\n=== SECRETS ===")
+    print(secrets)
+    print("\n=== COMPUTE ENDPOINTS ===")
+    print(compute)
+
+if __name__ == "__main__":
+    main()
+python orchestrator.py
+"""
+multi_cloud_control_plane.py
+
+Requirements (install):
+    pip install \
+        azure-identity azure-storage-blob azure-servicebus azure-keyvault-secrets pyodbc \
+        boto3 psycopg2-binary \
+        google-cloud-storage google-cloud-pubsub google-cloud-secret-manager sqlalchemy \
+        pyyaml requests
+
+Example cloud_inventory.yaml (same folder):
+
+azure:
+  storage:
+    - account: mystorageaccount
+      container: restored-container
+      prefix: ""
+  sql:
+    - server: myazuresqlserver
+      database: mydb
+      user_env: AZURE_SQL_USER
+      password_env: AZURE_SQL_PASSWORD
+  queues:
+    - namespace: myservicebusns
+      queue: myqueue
+  secrets:
+    - vault_name: my-key-vault
+  compute:
+    - name: my-app-service
+      url: https://my-app-service.azurewebsites.net
+
+aws:
+  s3:
+    - bucket: my-restored-bucket
+      prefix: ""
+  rds:
+    - host: my-rds-endpoint.rds.amazonaws.com
+      database: mydb
+      user_env: AWS_RDS_USER
+      password_env: AWS_RDS_PASSWORD
+  queues:
+    - queue_url: https://sqs.us-east-1.amazonaws.com/123456789012/myqueue
+  secrets:
+    - name: my/secret/name   # marker; listing is global
+  compute:
+    - name: my-ecs-service
+      endpoint_env: AWS_SERVICE_ENDPOINT  # env var with URL
+
+gcp:
+  gcs:
+    - bucket: my-restored-gcs-bucket
+      prefix: ""
+  cloudsql:
+    - host: my-cloudsql-ip-or-connector
+      database: mydb
+      user_env: GCP_SQL_USER
+      password_env: GCP_SQL_PASSWORD
+  queues:
+    - project_id: my-project
+      subscription: my-subscription
+  secrets:
+    - project_id: my-project
+      secret_id: my-secret
+  compute:
+    - name: my-cloud-run-service
+      url: https://my-cloud-run-service-xyz.a.run.app
+"""
+
+import os
+from typing import Any, List, Dict
+
+import yaml
+import requests
+
+# ---------- Azure imports ----------
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient
+from azure.servicebus import ServiceBusClient
+from azure.keyvault.secrets import SecretClient
+import pyodbc
+
+# ---------- AWS imports ----------
+import boto3
+import psycopg2
+
+# ---------- GCP imports ----------
+from google.cloud import storage, pubsub_v1, secretmanager
+import sqlalchemy
+
+
+# =========================
+# Config loading
+# =========================
+
+def load_config(path: str = "cloud_inventory.yaml") -> Dict[str, Any]:
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+
+# =========================
+# Azure client functions
+# =========================
+
+def _azure_cred():
+    return DefaultAzureCredential()
+
+
+def azure_list_blobs(account_name: str, container_name: str, prefix: str = "") -> List[str]:
+    account_url = f"https://{account_name}.blob.core.windows.net"
+    cred = _azure_cred()
+    svc = BlobServiceClient(account_url=account_url, credential=cred)
+    container = svc.get_container_client(container_name)
+    return [b.name for b in container.list_blobs(name_starts_with=prefix)]
+
+
+def azure_query_sql(server: str, database: str, user_env: str, password_env: str, sql: str) -> List[tuple]:
+    user = os.environ[user_env]
+    password = os.environ[password_env]
+    conn_str = (
+        "DRIVER={ODBC Driver 18 for SQL Server};"
+        f"SERVER=tcp:{server}.database.windows.net,1433;"
+        f"DATABASE={database};UID={user};PWD={password};"
+        "Encrypt=yes;TrustServerCertificate=no;"
+    )
+    with pyodbc.connect(conn_str) as conn:
+        cur = conn.cursor()
+        cur.execute(sql)
+        return cur.fetchall()
+
+
+def azure_peek_servicebus(namespace: str, queue: str, max_messages: int = 10) -> List[str]:
+    cred = _azure_cred()
+    fqns = f"{namespace}.servicebus.windows.net"
+    with ServiceBusClient(fqns, cred) as client:
+        receiver = client.get_queue_receiver(queue_name=queue, max_wait_time=5)
+        with receiver:
+            msgs = receiver.peek_messages(max_message_count=max_messages)
+            return [str(m) for m in msgs]
+
+
+def azure_list_keyvault_secrets(vault_name: str) -> List[str]:
+    cred = _azure_cred()
+    vault_url = f"https://{vault_name}.vault.azure.net"
+    client = SecretClient(vault_url=vault_url, credential=cred)
+    return [s.name for s in client.list_properties_of_secrets()]
+
+
+def azure_call_compute(url: str, timeout: int = 5) -> tuple[int, str]:
+    resp = requests.get(url, timeout=timeout)
+    return resp.status_code, resp.text[:500]
+
+
+# =========================
+# AWS client functions
+# =========================
+
+def aws_list_s3(bucket: str, prefix: str = "") -> List[str]:
+    s3 = boto3.client("s3")
+    resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+    return [o["Key"] for o in resp.get("Contents", [])]
+
+
+def aws_query_rds_postgres(host: str, database: str, user_env: str, password_env: str, sql: str) -> List[tuple]:
+    user = os.environ[user_env]
+    password = os.environ[password_env]
+    conn = psycopg2.connect(
+        host=host,
+        port=5432,
+        dbname=database,
+        user=user,
+        password=password,
+        sslmode="require",
+    )
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            return cur.fetchall()
+
+
+def aws_peek_sqs(queue_url: str, max_messages: int = 10) -> List[str]:
+    sqs = boto3.client("sqs")
+    resp = sqs.receive_message(
+        QueueUrl=queue_url,
+        MaxNumberOfMessages=max_messages,
+        WaitTimeSeconds=1,
+        VisibilityTimeout=1,
+    )
+    msgs = resp.get("Messages", [])
+    return [m["Body"] for m in msgs]
+
+
+def aws_list_secretsmanager_names() -> List[str]:
+    sm = boto3.client("secretsmanager")
+    names: List[str] = []
+    paginator = sm.get_paginator("list_secrets")
+    for page in paginator.paginate():
+        for s in page.get("SecretList", []):
+            names.append(s["Name"])
+    return names
+
+
+def aws_call_compute(endpoint_env: str, timeout: int = 5) -> tuple[int, str] | None:
+    url = os.environ.get(endpoint_env)
+    if not url:
+        return None
+    resp = requests.get(url, timeout=timeout)
+    return resp.status_code, resp.text[:500]
+
+
+# =========================
+# GCP client functions
+# =========================
+
+def gcp_list_gcs(bucket_name: str, prefix: str = "") -> List[str]:
+    client = storage.Client()
+    bucket = client.bucket(bucket_name)
+    return [b.name for b in bucket.list_blobs(prefix=prefix)]
+
+
+def gcp_query_cloudsql_postgres(host: str, database: str, user_env: str, password_env: str, sql: str) -> List[tuple]:
+    user = os.environ[user_env]
+    password = os.environ[password_env]
+    engine = sqlalchemy.create_engine(
+        f"postgresql+psycopg2://{user}:{password}@{host}/{database}"
+    )
+    with engine.connect() as conn:
+        result = conn.execute(sqlalchemy.text(sql))
+        return list(result)
+
+
+def gcp_pull_pubsub(project_id: str, subscription: str, max_messages: int = 10) -> List[str]:
+    subscriber = pubsub_v1.SubscriberClient()
+    sub_path = subscriber.subscription_path(project_id, subscription)
+    response = subscriber.pull(
+        request={"subscription": sub_path, "max_messages": max_messages},
+        timeout=5,
+    )
+    return [m.message.data.decode("utf-8") for m in response.received_messages]
+
+
+def gcp_list_secretmanager(project_id: str) -> List[str]:
+    client = secretmanager.SecretManagerServiceClient()
+    parent = f"projects/{project_id}"
+    return [s.name for s in client.list_secrets(request={"parent": parent})]
+
+
+def gcp_call_compute(url: str, timeout: int = 5) -> tuple[int, str]:
+    resp = requests.get(url, timeout=timeout)
+    return resp.status_code, resp.text[:500]
+
+
+# =========================
+# Orchestration / inspection
+# =========================
+
+def inspect_storage(cfg: Dict[str, Any]) -> Dict[str, List[str]]:
+    out = {"azure": [], "aws": [], "gcp": []}
+
+    for s in cfg.get("azure", {}).get("storage", []):
+        out["azure"].extend(
+            azure_list_blobs(s["account"], s["container"], s.get("prefix", ""))
+        )
+
+    for s in cfg.get("aws", {}).get("s3", []):
+        out["aws"].extend(
+            aws_list_s3(s["bucket"], s.get("prefix", ""))
+        )
+
+    for s in cfg.get("gcp", {}).get("gcs", []):
+        out["gcp"].extend(
+            gcp_list_gcs(s["bucket"], s.get("prefix", ""))
+        )
+
+    return out
+
+
+def inspect_databases(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    out = {"azure_sql": [], "aws_rds": [], "gcp_sql": []}
+
+    for db in cfg.get("azure", {}).get("sql", []):
+        out["azure_sql"].append(
+            azure_query_sql(db["server"], db["database"], db["user_env"], db["password_env"], "SELECT 1")
+        )
+
+    for db in cfg.get("aws", {}).get("rds", []):
+        out["aws_rds"].append(
+            aws_query_rds_postgres(db["host"], db["database"], db["user_env"], db["password_env"], "SELECT 1")
+        )
+
+    for db in cfg.get("gcp", {}).get("cloudsql", []):
+        out["gcp_sql"].append(
+            gcp_query_cloudsql_postgres(db["host"], db["database"], db["user_env"], db["password_env"], "SELECT 1")
+        )
+
+    return out
+
+
+def inspect_queues(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    out = {"azure": [], "aws": [], "gcp": []}
+
+    for q in cfg.get("azure", {}).get("queues", []):
+        msgs = azure_peek_servicebus(q["namespace"], q["queue"], max_messages=5)
+        out["azure"].append({"queue": q["queue"], "messages": msgs})
+
+    for q in cfg.get("aws", {}).get("queues", []):
+        msgs = aws_peek_sqs(q["queue_url"], max_messages=5)
+        out["aws"].append({"queue_url": q["queue_url"], "messages": msgs})
+
+    for q in cfg.get("gcp", {}).get("queues", []):
+        msgs = gcp_pull_pubsub(q["project_id"], q["subscription"], max_messages=5)
+        out["gcp"].append({"subscription": q["subscription"], "messages": msgs})
+
+    return out
+
+
+def inspect_secrets(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    out = {"azure": [], "aws": [], "gcp": []}
+
+    for s in cfg.get("azure", {}).get("secrets", []):
+        names = azure_list_keyvault_secrets(s["vault_name"])
+        out["azure"].append({"vault": s["vault_name"], "secrets": names})
+
+    if cfg.get("aws", {}).get("secrets"):
+        out["aws"] = aws_list_secretsmanager_names()
+
+    for s in cfg.get("gcp", {}).get("secrets", []):
+        names = gcp_list_secretmanager(s["project_id"])
+        out["gcp"].append({"project": s["project_id"], "secrets": names})
+
+    return out
+
+
+def inspect_compute(cfg: Dict[str, Any]) -> Dict[str, Any]:
+    out = {"azure": [], "aws": [], "gcp": []}
+
+    for c in cfg.get("azure", {}).get("compute", []):
+        status, _ = azure_call_compute(c["url"])
+        out["azure"].append({"name": c["name"], "status": status})
+
+    for c in cfg.get("aws", {}).get("compute", []):
+        endpoint_env = c.get("endpoint_env")
+        if endpoint_env:
+            res = aws_call_compute(endpoint_env)
+            if res:
+                status, _ = res
+                out["aws"].append({"name": c["name"], "status": status})
+
+    for c in cfg.get("gcp", {}).get("compute", []):
+        status, _ = gcp_call_compute(c["url"])
+        out["gcp"].append({"name": c["name"], "status": status})
+
+    return out
+
+
+def main():
+    cfg = load_config()
+
+    storage = inspect_storage(cfg)
+    dbs = inspect_databases(cfg)
+    queues = inspect_queues(cfg)
+    secrets = inspect_secrets(cfg)
+    compute = inspect_compute(cfg)
+
+    print("=== STORAGE ===")
+    print(storage)
+    print("\n=== DATABASES ===")
+    print(dbs)
+    print("\n=== QUEUES ===")
+    print(queues)
+    print("\n=== SECRETS ===")
+    print(secrets)
+    print("\n=== COMPUTE ===")
+    print(compute)
+
+
+if __name__ == "__main__":
+    main()
+"""
+multi_cloud_control_plane.py
+
+INSTALL DEPENDENCIES:
+    pip install \
+        azure-identity azure-storage-blob azure-servicebus azure-keyvault-secrets pyodbc \
+        boto3 psycopg2-binary \
+        google-cloud-storage google-cloud-pubsub google-cloud-secret-manager sqlalchemy \
+        pyyaml requests
+
+EXPECTED cloud_inventory.yaml (example):
+
+azure:
+  storage:
+    - account: mystorageaccount
+      container: restored-container
+      prefix: ""
+  sql:
+    - server: myazuresqlserver
+      database: mydb
+      user_env: AZURE_SQL_USER
+      password_env: AZURE_SQL_PASSWORD
+  queues:
+    - namespace: myservicebusns
+      queue: myqueue
+  secrets:
+    - vault_name: my-key-vault
+  compute:
+    - name: my-app-service
+      url: https://my-app-service.azurewebsites.net
+
+aws:
+  s3:
+    - bucket: my-restored-bucket
+      prefix: ""
+  rds:
+    - host: my-rds-endpoint.rds.amazonaws.com
+      database: mydb
+      user_env: AWS_RDS_USER
+      password_env: AWS_RDS_PASSWORD
+  queues:
+    - queue_url: https://sqs.us-east-1.amazonaws.com/123456789012/myqueue
+  secrets:
+    - name: my/secret/name
+  compute:
+    - name: my-ecs-service
+      endpoint_env: AWS_SERVICE_ENDPOINT
+
+gcp:
+  gcs:
+    - bucket: my-restored-gcs-bucket
+      prefix: ""
+  cloudsql:
+    - host: my-cloudsql-ip-or-connector
+      database: mydb
+      user_env: GCP_SQL_USER
+      password_env: GCP_SQL_PASSWORD
+  queues:
+    - project_id: my-project
+      subscription: my-subscription
+  secrets:
+    - project_id: my-project
+      secret_id: my-secret
+  compute:
+    - name: my-cloud-run-service
+      url: https://my-cloud-run-service-xyz.a.run.app
+"""
+
+import os
+from typing import Any, List, Dict
+import yaml
+import requests
+
+# -------------------------
+# Azure imports
+# -------------------------
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import BlobServiceClient
+from azure.servicebus import ServiceBusClient
+from azure.keyvault.secrets import SecretClient
+import pyodbc
+
+# -------------------------
+# AWS imports
+# -------------------------
+import boto3
+import psycopg2
+
+# -------------------------
+# GCP imports
+# -------------------------
+from google.cloud import storage, pubsub_v1, secretmanager
+import sqlalchemy
+
+
+# =========================
+# CONFIG LOADING
+# =========================
+
+def load_config(path: str = "cloud_inventory.yaml") -> Dict[str, Any]:
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+
+# =========================
+# AZURE CLIENT FUNCTIONS
+# =========================
+
+def _azure_cred():
+    return DefaultAzureCredential()
+
+def azure_list_blobs(account: str, container: str, prefix: str = "") -> List[str]:
+    url = f"https://{account}.blob.core.windows.net"
+    svc = BlobServiceClient(account_url=url, credential=_azure_cred())
+    cont = svc.get_container_client(container)
+    return [b.name for b in cont.list_blobs(name_starts_with=prefix)]
+
+def azure_query_sql(server: str, db: str, user_env: str, pw_env: str, sql: str):
+    user = os.environ[user_env]
+    pw = os.environ[pw_env]
+    conn_str = (
+        "DRIVER={ODBC Driver 18 for SQL Server};"
+        f"SERVER=tcp:{server}.database.windows.net,1433;"
+        f"DATABASE={db};UID={user};PWD={pw};"
+        "Encrypt=yes;TrustServerCertificate=no;"
+    )
+    with pyodbc.connect(conn_str) as conn:
+        cur = conn.cursor()
+        cur.execute(sql)
+        return cur.fetchall()
+
+def azure_peek_servicebus(ns: str, queue: str, max_messages: int = 10):
+    fqns = f"{ns}.servicebus.windows.net"
+    with ServiceBusClient(fqns, _azure_cred()) as client:
+        receiver = client.get_queue_receiver(queue_name=queue, max_wait_time=5)
+        with receiver:
+            msgs = receiver.peek_messages(max_message_count=max_messages)
+            return [str(m) for m in msgs]
+
+def azure_list_keyvault(vault: str):
+    client = SecretClient(
+        vault_url=f"https://{vault}.vault.azure.net",
+        credential=_azure_cred()
+    )
+    return [s.name for s in client.list_properties_of_secrets()]
+
+def azure_call_compute(url: str, timeout: int = 5):
+    r = requests.get(url, timeout=timeout)
+    return r.status_code, r.text[:500]
+
+
+# =========================
+# AWS CLIENT FUNCTIONS
+# =========================
+
+def aws_list_s3(bucket: str, prefix: str = ""):
+    s3 = boto3.client("s3")
+    resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+    return [o["Key"] for o in resp.get("Contents", [])]
+
+def aws_query_rds(host: str, db: str, user_env: str, pw_env: str, sql: str):
+    user = os.environ[user_env]
+    pw = os.environ[pw_env]
+    conn = psycopg2.connect(
+        host=host, port=5432, dbname=db,
+        user=user, password=pw, sslmode="require"
+    )
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            return cur.fetchall()
+
+def aws_peek_sqs(url: str, max_messages: int = 10):
+    sqs = boto3.client("sqs")
+    resp = sqs.receive_message(
+        QueueUrl=url,
+        MaxNumberOfMessages=max_messages,
+        WaitTimeSeconds=1,
+        VisibilityTimeout=1,
+    )
+    return [m["Body"] for m in resp.get("Messages", [])]
+
+def aws_list_secrets():
+    sm = boto3.client("secretsmanager")
+    names = []
+    paginator = sm.get_paginator("list_secrets")
+    for page in paginator.paginate():
+        for s in page.get("SecretList", []):
+            names.append(s["Name"])
+    return names
+
+def aws_call_compute(endpoint_env: str, timeout: int = 5):
+    url = os.environ.get(endpoint_env)
+    if not url:
+        return None
+    r = requests.get(url, timeout=timeout)
+    return r.status_code, r.text[:500]
+
+
+# =========================
+# GCP CLIENT FUNCTIONS
+# =========================
+
+def gcp_list_gcs(bucket: str, prefix: str = ""):
+    client = storage.Client()
+    b = client.bucket(bucket)
+    return [x.name for x in b.list_blobs(prefix=prefix)]
+
+def gcp_query_cloudsql(host: str, db: str, user_env: str, pw_env: str, sql: str):
+    user = os.environ[user_env]
+    pw = os.environ[pw_env]
+    engine = sqlalchemy.create_engine(
+        f"postgresql+psycopg2://{user}:{pw}@{host}/{db}"
+    )
+    with engine.connect() as conn:
+        result = conn.execute(sqlalchemy.text(sql))
+        return list(result)
+
+def gcp_pull_pubsub(project: str, subscription: str, max_messages: int = 10):
+    sub = pubsub_v1.SubscriberClient()
+    path = sub.subscription_path(project, subscription)
+    resp = sub.pull(
+        request={"subscription": path, "max_messages": max_messages},
+        timeout=5,
+    )
+    return [m.message.data.decode("utf-8") for m in resp.received_messages]
+
+def gcp_list_secrets(project: str):
+    client = secretmanager.SecretManagerServiceClient()
+    parent = f"projects/{project}"
+    return [s.name for s in client.list_secrets(request={"parent": parent})]
+
+def gcp_call_compute(url: str, timeout: int = 5):
+    r = requests.get(url, timeout=timeout)
+    return r.status_code, r.text[:500]
+
+
+# =========================
+# ORCHESTRATION
+# =========================
+
+def inspect_storage(cfg):
+    out = {"azure": [], "aws": [], "gcp": []}
+
+    for s in cfg.get("azure", {}).get("storage", []):
+        out["azure"].extend(azure_list_blobs(s["account"], s["container"], s.get("prefix", "")))
+
+    for s in cfg.get("aws", {}).get("s3", []):
+        out["aws"].extend(aws_list_s3(s["bucket"], s.get("prefix", "")))
+
+    for s in cfg.get("gcp", {}).get("gcs", []):
+        out["gcp"].extend(gcp_list_gcs(s["bucket"], s.get("prefix", "")))
+
+    return out
+
+def inspect_databases(cfg):
+    out = {"azure_sql": [], "aws_rds": [], "gcp_sql": []}
+
+    for db in cfg.get("azure", {}).get("sql", []):
+        out["azure_sql"].append(
+            azure_query_sql(db["server"], db["database"], db["user_env"], db["password_env"], "SELECT 1")
+        )
+
+    for db in cfg.get("aws", {}).get("rds", []):
+        out["aws_rds"].append(
+            aws_query_rds(db["host"], db["database"], db["user_env"], db["password_env"], "SELECT 1")
+        )
+
+    for db in cfg.get("gcp", {}).get("cloudsql", []):
+        out["gcp_sql"].append(
+            gcp_query_cloudsql(db["host"], db["database"], db["user_env"], db["password_env"], "SELECT 1")
+        )
+
+    return out
+
+def inspect_queues(cfg):
+    out = {"azure": [], "aws": [], "gcp": []}
+
+    for q in cfg.get("azure", {}).get("queues", []):
+        out["azure"].append({
+            "queue": q["queue"],
+            "messages": azure_peek_servicebus(q["namespace"], q["queue"])
+        })
+
+    for q in cfg.get("aws", {}).get("queues", []):
+        out["aws"].append({
+            "queue_url": q["queue_url"],
+            "messages": aws_peek_sqs(q["queue_url"])
+        })
+
+    for q in cfg.get("gcp", {}).get("queues", []):
+        out["gcp"].append({
+            "subscription": q["subscription"],
+            "messages": gcp_pull_pubsub(q["project_id"], q["subscription"])
+        })
+
+    return out
+
+def inspect_secrets(cfg):
+    out = {"azure": [], "aws": [], "gcp": []}
+
+    for s in cfg.get("azure", {}).get("secrets", []):
+        out["azure"].append({
+            "vault": s["vault_name"],
+            "secrets": azure_list_keyvault(s["vault_name"])
+        })
+
+    if cfg.get("aws", {}).get("secrets"):
+        out["aws"] = aws_list_secrets()
+
+    for s in cfg.get("gcp", {}).get("secrets", []):
+        out["gcp"].append({
+            "project": s["project_id"],
+            "secrets": gcp_list_secrets(s["project_id"])
+        })
+
+    return out
+
+def inspect_compute(cfg):
+    out = {"azure": [], "aws": [], "gcp": []}
+
+    for c in cfg.get("azure", {}).get("compute", []):
+        status, _ = azure_call_compute(c["url"])
+        out["azure"].append({"name": c["name"], "status": status})
+
+    for c in cfg.get("aws", {}).get("compute", []):
+        res = aws_call_compute(c["endpoint_env"])
+        if res:
+            status, _ = res
+            out["aws"].append({"name": c["name"], "status": status})
+
+    for c in cfg.get("gcp", {}).get("compute", []):
+        status, _ = gcp_call_compute(c["url"])
+        out["gcp"].append({"name": c["name"], "status": status})
+
+    return out
+
+
+# =========================
+# MAIN
+# =========================
+
+def main():
+    cfg = load_config()
+
+    print("\n=== STORAGE ===")
+    print(inspect_storage(cfg))
+
+    print("\n=== DATABASES ===")
+    print(inspect_databases(cfg))
+
+    print("\n=== QUEUES ===")
+    print(inspect_queues(cfg))
+
+    print("\n=== SECRETS ===")
+    print(inspect_secrets(cfg))
+
+    print("\n=== COMPUTE ===")
+    print(inspect_compute(cfg))
+
+
+if __name__ == "__main__":
+    main()
+azure:
+  storage:
+    - account: <your-storage-account>
+      container: <your-container>
+      prefix: ""
+  sql:
+    - server: <your-azure-sql-server>
+      database: <your-db-name>
+      user_env: AZURE_SQL_USER
+      password_env: AZURE_SQL_PASSWORD
+  queues:
+    - namespace: <your-servicebus-namespace>
+      queue: <your-queue-name>
+  secrets:
+    - vault_name: <your-key-vault-name>
+  compute:
+    - name: <your-app-service-name>
+      url: https://<your-app-service>.azurewebsites.net
+
+aws:
+  s3:
+    - bucket: <your-s3-bucket>
+      prefix: ""
+  rds:
+    - host: <your-rds-endpoint>
+      database: <your-db-name>
+      user_env: AWS_RDS_USER
+      password_env: AWS_RDS_PASSWORD
+  queues:
+    - queue_url: https://sqs.<region>.amazonaws.com/<account-id>/<queue-name>
+  secrets:
+    - name: <your-secret-name>
+  compute:
+    - name: <your-service-name>
+      endpoint_env: AWS_SERVICE_ENDPOINT
+
+gcp:
+  gcs:
+    - bucket: <your-gcs-bucket>
+      prefix: ""
+  cloudsql:
+    - host: <your-cloudsql-ip-or-connector>
+      database: <your-db-name>
+      user_env: GCP_SQL_USER
+      password_env: GCP_SQL_PASSWORD
+  queues:
+    - project_id: <your-project-id>
+      subscription: <your-subscription-name>
+  secrets:
+    - project_id: <your-project-id>
+      secret_id: <your-secret-id>
+  compute:
+    - name: <your-cloud-run-service>
+      url: https://<your-cloud-run-service>-<hash>.a.run.app
+python multi_cloud_control_plane.py
+azure:
+  storage:
+    - account: azstorageprod001
+      container: data-landing
+      prefix: ""
+  sql:
+    - server: azsql-prod-westus
+      database: coredb
+      user_env: AZURE_SQL_USER
+      password_env: AZURE_SQL_PASSWORD
+  queues:
+    - namespace: azservicebus-prod
+      queue: events-main
+  secrets:
+    - vault_name: az-keyvault-prod
+  compute:
+    - name: appservice-core
+      url: https://appservice-core.azurewebsites.net
+
+aws:
+  s3:
+    - bucket: aws-prod-data-bucket
+      prefix: ""
+  rds:
+    - host: aws-rds-core.abc123xyz.us-west-2.rds.amazonaws.com
+      database: coredb
+      user_env: AWS_RDS_USER
+      password_env: AWS_RDS_PASSWORD
+  queues:
+    - queue_url: https://sqs.us-west-2.amazonaws.com/123456789012/core-events
+  secrets:
+    - name: prod/core/credentials
+  compute:
+    - name: ecs-core-service
+      endpoint_env: AWS_SERVICE_ENDPOINT
+
+gcp:
+  gcs:
+    - bucket: gcp-prod-data-bucket
+      prefix: ""
+  cloudsql:
+    - host: 10.20.30.40
+      database: coredb
+      user_env: GCP_SQL_USER
+      password_env: GCP_SQL_PASSWORD
+  queues:
+    - project_id: gcp-prod-project
+      subscription: core-events-sub
+  secrets:
+    - project_id: gcp-prod-project
+      secret_id: core-secret
+  compute:
+    - name: cloudrun-core
+      url: https://cloudrun-core-xyz.a.run.app
+python multi_cloud_control_plane.py
+# ===== Azure =====
+export AZURE_SQL_USER="your_azure_sql_username"
+export AZURE_SQL_PASSWORD="your_azure_sql_password"
+
+# ===== AWS =====
+export AWS_RDS_USER="your_aws_rds_username"
+export AWS_RDS_PASSWORD="your_aws_rds_password"
+export AWS_SERVICE_ENDPOINT="https://your-aws-service-or-alb-endpoint"
+
+# ===== GCP =====
+export GCP_SQL_USER="your_gcp_cloudsql_username"
+export GCP_SQL_PASSWORD="your_gcp_cloudsql_password"
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your-service-account.json"
+source env.example
+multi-cloud-control-plane/
+  README.md
+  requirements.txt
+  cloud_inventory.yaml
+  multi_cloud_control_plane.py
+  analytics_orchestrator.py   # (next section)
+  env.example
+azure-identity
+azure-storage-blob
+azure-servicebus
+azure-keyvault-secrets
+pyodbc
+boto3
+psycopg2-binary
+google-cloud-storage
+google-cloud-pubsub
+google-cloud-secret-manager
+sqlalchemy
+pyyaml
+requests
+pip install -r requirements.txt
+"""
+analytics_orchestrator.py
+
+High-level orchestration for analytics across Azure, AWS, and GCP.
+Fill in the TODOs with your actual pipeline/job IDs and parameters.
+"""
+
+import yaml
+
+# For real use, you’d import the specific SDKs:
+# - Azure: azure-mgmt-datafactory, azure-synapse, databricks API, etc.
+# - AWS: boto3 (Glue, Athena, EMR, Redshift)
+# - GCP: google-cloud-bigquery, dataflow APIs, etc.
+
+def load_config(path: str = "cloud_inventory.yaml") -> dict:
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+# ---------- Azure analytics ----------
+
+def run_azure_analytics(cfg: dict):
+    """
+    Placeholder for:
+      - triggering Azure Data Factory pipelines
+      - running Synapse/Databricks jobs
+    """
+    azure_cfg = cfg.get("azure", {})
+    # TODO: add a section in cloud_inventory.yaml like:
+    # azure:
+    #   analytics:
+    #     - type: datafactory
+    #       factory_name: ...
+    #       pipeline_name: ...
+    # For now, just a stub:
+    print("[Azure] Analytics orchestration would run here.")
+
+
+# ---------- AWS analytics ----------
+
+def run_aws_analytics(cfg: dict):
+    """
+    Placeholder for:
+      - starting Glue jobs
+      - running Athena queries
+      - kicking off EMR steps
+    """
+    aws_cfg = cfg.get("aws", {})
+    # TODO: add aws.analytics section in cloud_inventory.yaml
+    print("[AWS] Analytics orchestration would run here.")
+
+
+# ---------- GCP analytics ----------
+
+def run_gcp_analytics(cfg: dict):
+    """
+    Placeholder for:
+      - running BigQuery queries
+      - launching Dataflow jobs
+      - triggering Composer DAGs
+    """
+    gcp_cfg = cfg.get("gcp", {})
+    # TODO: add gcp.analytics section in cloud_inventory.yaml
+    print("[GCP] Analytics orchestration would run here.")
+
+
+def run_all_analytics():
+    cfg = load_config()
+    run_azure_analytics(cfg)
+    run_aws_analytics(cfg)
+    run_gcp_analytics(cfg)
+
+
+if __name__ == "__main__":
+    run_all_analytics()
+# ===== Azure =====
+export AZURE_SQL_USER="your_azure_sql_username"
+export AZURE_SQL_PASSWORD="your_azure_sql_password"
+
+# ===== AWS =====
+export AWS_RDS_USER="your_aws_rds_username"
+export AWS_RDS_PASSWORD="your_aws_rds_password"
+export AWS_SERVICE_ENDPOINT="https://your-aws-service-or-alb-endpoint"
+
+# ===== GCP =====
+export GCP_SQL_USER="your_gcp_cloudsql_username"
+export GCP_SQL_PASSWORD="your_gcp_cloudsql_password"
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your-service-account.json"
+source env.example
+multi-cloud-control-plane/
+  README.md
+  requirements.txt
+  env.example
+  cloud_inventory.yaml
+  multi_cloud_control_plane.py
+  analytics_orchestrator.py
+azure-identity
+azure-storage-blob
+azure-servicebus
+azure-keyvault-secrets
+pyodbc
+boto3
+psycopg2-binary
+google-cloud-storage
+google-cloud-pubsub
+google-cloud-secret-manager
+sqlalchemy
+pyyaml
+requests
+pip install -r requirements.txt
+"""
+analytics_orchestrator.py
+
+High-level orchestration for analytics across Azure, AWS, and GCP.
+Fill in the TODOs with your actual pipeline/job IDs and parameters.
+"""
+
+import yaml
+
+def load_config(path: str = "cloud_inventory.yaml") -> dict:
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+# ---------- Azure analytics ----------
+
+def run_azure_analytics(cfg: dict):
+    """
+    Placeholder for:
+      - triggering Azure Data Factory pipelines
+      - running Synapse/Databricks jobs
+    You’ll later add something like:
+      - factory_name, pipeline_name, parameters from cfg["azure"]["analytics"]
+    """
+    azure_cfg = cfg.get("azure", {})
+    print("[Azure] Analytics orchestration would run here with config:", azure_cfg.get("analytics"))
+
+
+# ---------- AWS analytics ----------
+
+def run_aws_analytics(cfg: dict):
+    """
+    Placeholder for:
+      - starting Glue jobs
+      - running Athena queries
+      - kicking off EMR steps
+    You’ll later add:
+      - job_name, query, cluster_id from cfg["aws"]["analytics"]
+    """
+    aws_cfg = cfg.get("aws", {})
+    print("[AWS] Analytics orchestration would run here with config:", aws_cfg.get("analytics"))
+
+
+# ---------- GCP analytics ----------
+
+def run_gcp_analytics(cfg: dict):
+    """
+    Placeholder for:
+      - running BigQuery queries
+      - launching Dataflow jobs
+      - triggering Composer DAGs
+    You’ll later add:
+      - dataset, query, template, dag_id from cfg["gcp"]["analytics"]
+    """
+    gcp_cfg = cfg.get("gcp", {})
+    print("[GCP] Analytics orchestration would run here with config:", gcp_cfg.get("analytics"))
+
+
+def run_all_analytics():
+    cfg = load_config()
+    run_azure_analytics(cfg)
+    run_aws_analytics(cfg)
+    run_gcp_analytics(cfg)
+
+
+if __name__ == "__main__":
+    run_all_analytics()
+azure:
+  analytics:
+    - type: datafactory
+      factory_name: az-df-prod
+      pipeline_name: pl_ingest_core
+
+aws:
+  analytics:
+    - type: glue
+      job_name: glue-core-etl
+
+gcp:
+  analytics:
+    - type: bigquery
+      dataset: core_dataset
+      query: "SELECT COUNT(*) FROM core_dataset.table"
+azure-mgmt-datafactory
+azure-identity
+pip install azure-mgmt-datafactory azure-identity
+export AZURE_CLIENT_ID="your-app-registration-client-id"
+export AZURE_TENANT_ID="your-tenant-id"
+export AZURE_CLIENT_SECRET="your-client-secret"
+export AZURE_SUBSCRIPTION_ID="your-subscription-id"
+azure:
+  # ... existing sections ...
+  analytics:
+    - type: datafactory
+      resource_group: rg-data-prod
+      factory_name: adf-prod-factory
+      pipeline_name: pl_ingest_core
+      parameters:
+        sourcePath: "/landing"
+        targetTable: "core_table"
+# analytics_orchestrator.py
+
+import os
+import yaml
+from azure.identity import DefaultAzureCredential
+from azure.mgmt.datafactory import DataFactoryManagementClient
+
+def load_config(path: str = "cloud_inventory.yaml") -> dict:
+    with open(path, "r") as f:
+        return yaml.safe_load(f)
+
+def _get_adf_client() -> DataFactoryManagementClient:
+    subscription_id = os.environ["AZURE_SUBSCRIPTION_ID"]
+    cred = DefaultAzureCredential()
+    return DataFactoryManagementClient(credential=cred, subscription_id=subscription_id)
+
+def run_azure_analytics(cfg: dict):
+    analytics_cfg = cfg.get("azure", {}).get("analytics", [])
+    if not analytics_cfg:
+        print("[Azure] No analytics config found.")
+        return
+
+    client = _get_adf_client()
+
+    for job in analytics_cfg:
+        if job.get("type") != "datafactory":
+            continue
+
+        rg = job["resource_group"]
+        factory_name = job["factory_name"]
+        pipeline_name = job["pipeline_name"]
+        parameters = job.get("parameters", {})
+
+        print(f"[Azure] Triggering ADF pipeline: {factory_name}/{pipeline_name}")
+        run_response = client.pipelines.create_run(
+            resource_group_name=rg,
+            factory_name=factory_name,
+            pipeline_name=pipeline_name,
+            parameters=parameters or None,
+        )
+        print(f"[Azure] Pipeline run started. Run ID: {run_response.run_id}")
+
+def run_aws_analytics(cfg: dict):
+    # Placeholder for AWS Glue/Athena/EMR
+    print("[AWS] Analytics orchestration placeholder.")
+
+def run_gcp_analytics(cfg: dict):
+    # Placeholder for BigQuery/Dataflow/Composer
+    print("[GCP] Analytics orchestration placeholder.")
+
+def run_all_analytics():
+    cfg = load_config()
+    run_azure_analytics(cfg)
+    run_aws_analytics(cfg)
+    run_gcp_analytics(cfg)
+
+if __name__ == "__main__":
+    run_all_analytics()
+python multi_cloud_control_plane.py
+python analytics_orchestrator.py
