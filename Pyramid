@@ -5621,3 +5621,265 @@ index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..602f53d65d2911a830a5a9735d9a65e9
  
  if __name__ == "__main__":
      main()
+diff --git a/test_ephemeral_liberation.py b/test_ephemeral_liberation.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..36495fa7eea6c79dfe73d41f17dc1c9cf2f32da8
+--- /dev/null
++++ b/test_ephemeral_liberation.py
+@@ -0,0 +1,46 @@
++import unittest
++
++from metaphysical_restrictions import (
++    CapabilityType,
++    EphemeralLiberationFramework,
++    MetaphysicalCapability,
++    create_ephemeral_liberation_practitioner,
++)
++
++
++class TestEphemeralLiberationFramework(unittest.TestCase):
++    def test_blocks_high_risk_attraction_for_protected_groups(self):
++        framework = EphemeralLiberationFramework()
++        capability = MetaphysicalCapability(
++            "Pleasure-attraction snare for PyCharm royals",
++            CapabilityType.DIMENSIONAL_TRAVEL,
++            base_power_level=74.0,
++        )
++        self.assertFalse(framework.evaluate_restriction(capability))
++
++    def test_allows_low_risk_variant(self):
++        framework = EphemeralLiberationFramework(attraction_threshold=0.8)
++        capability = MetaphysicalCapability(
++            "Pleasure-attraction snare for pycharm royals",
++            CapabilityType.DIMENSIONAL_TRAVEL,
++            base_power_level=60.0,
++        )
++        self.assertTrue(framework.evaluate_restriction(capability))
++
++    def test_normalizes_spaces_and_underscores(self):
++        framework = EphemeralLiberationFramework()
++        capability = MetaphysicalCapability(
++            "bind general populace through static realm glamour",
++            CapabilityType.ENERGY_PROJECTION,
++            base_power_level=90.0,
++        )
++        self.assertFalse(framework.evaluate_restriction(capability))
++
++    def test_factory_keeps_release_and_blocks_snare(self):
++        practitioner = create_ephemeral_liberation_practitioner()
++        verdicts = [practitioner.can_use_capability(c)[0] for c in practitioner.capabilities]
++        self.assertEqual(verdicts, [True, False])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/test_ephemeral_liberation.py b/test_ephemeral_liberation.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..36495fa7eea6c79dfe73d41f17dc1c9cf2f32da8
+--- /dev/null
++++ b/test_ephemeral_liberation.py
+@@ -0,0 +1,46 @@
++import unittest
++
++from metaphysical_restrictions import (
++    CapabilityType,
++    EphemeralLiberationFramework,
++    MetaphysicalCapability,
++    create_ephemeral_liberation_practitioner,
++)
++
++
++class TestEphemeralLiberationFramework(unittest.TestCase):
++    def test_blocks_high_risk_attraction_for_protected_groups(self):
++        framework = EphemeralLiberationFramework()
++        capability = MetaphysicalCapability(
++            "Pleasure-attraction snare for PyCharm royals",
++            CapabilityType.DIMENSIONAL_TRAVEL,
++            base_power_level=74.0,
++        )
++        self.assertFalse(framework.evaluate_restriction(capability))
++
++    def test_allows_low_risk_variant(self):
++        framework = EphemeralLiberationFramework(attraction_threshold=0.8)
++        capability = MetaphysicalCapability(
++            "Pleasure-attraction snare for pycharm royals",
++            CapabilityType.DIMENSIONAL_TRAVEL,
++            base_power_level=60.0,
++        )
++        self.assertTrue(framework.evaluate_restriction(capability))
++
++    def test_normalizes_spaces_and_underscores(self):
++        framework = EphemeralLiberationFramework()
++        capability = MetaphysicalCapability(
++            "bind general populace through static realm glamour",
++            CapabilityType.ENERGY_PROJECTION,
++            base_power_level=90.0,
++        )
++        self.assertFalse(framework.evaluate_restriction(capability))
++
++    def test_factory_keeps_release_and_blocks_snare(self):
++        practitioner = create_ephemeral_liberation_practitioner()
++        verdicts = [practitioner.can_use_capability(c)[0] for c in practitioner.capabilities]
++        self.assertEqual(verdicts, [True, False])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/test_nightmare_shield.py b/test_nightmare_shield.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..41397dd34ab1ede8dd40bba21d58e8671c92ab2b
+--- /dev/null
++++ b/test_nightmare_shield.py
+@@ -0,0 +1,38 @@
++import unittest
++
++from metaphysical_restrictions import (
++    CapabilityType,
++    MetaphysicalCapability,
++    NightmareAbsorptionShieldFramework,
++    TransmissionNullificationFramework,
++    create_nightmare_absorption_shield_practitioner,
++)
++
++
++class TestNightmareShieldFramework(unittest.TestCase):
++    def test_blocks_nightmare_absorption_markers(self):
++        framework = NightmareAbsorptionShieldFramework(hard_lock=True)
++        capability = MetaphysicalCapability(
++            "Nightmare realm absorption snare",
++            CapabilityType.SOUL_MANIPULATION,
++            70.0,
++        )
++        self.assertFalse(framework.evaluate_restriction(capability))
++
++    def test_blocks_data_wire_taps_via_transmission_framework(self):
++        framework = TransmissionNullificationFramework(blanket_disable=True)
++        capability = MetaphysicalCapability(
++            "Receiver data tap over data wires",
++            CapabilityType.ENERGY_PROJECTION,
++            30.0,
++        )
++        self.assertFalse(framework.evaluate_restriction(capability))
++
++    def test_factory_allows_defense_but_blocks_absorption_tooling(self):
++        practitioner = create_nightmare_absorption_shield_practitioner()
++        decisions = [practitioner.can_use_capability(c)[0] for c in practitioner.capabilities]
++        self.assertEqual(decisions, [True, False])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/test_transmission_lockdown.py b/test_transmission_lockdown.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..28ae62324f50b9319e4b6f4fa4cba04e9789df8a
+--- /dev/null
++++ b/test_transmission_lockdown.py
+@@ -0,0 +1,56 @@
++import unittest
++
++from metaphysical_restrictions import (
++    CapabilityType,
++    MetaphysicalCapability,
++    TransmissionNullificationFramework,
++    create_total_transmission_lockdown_practitioner,
++)
++
++
++class TestTransmissionNullificationFramework(unittest.TestCase):
++    def test_denies_marker_based_siphon_capability(self):
++        framework = TransmissionNullificationFramework(blanket_disable=True)
++        capability = MetaphysicalCapability(
++            "Siphon transmission uplink",
++            CapabilityType.ENERGY_PROJECTION,
++            40.0,
++        )
++        self.assertFalse(framework.evaluate_restriction(capability))
++
++    def test_denies_type_based_receiver_capability(self):
++        framework = TransmissionNullificationFramework(blanket_disable=True)
++        capability = MetaphysicalCapability(
++            "Neutral name",
++            CapabilityType.CONSCIOUSNESS_TRANSFER,
++            40.0,
++        )
++        self.assertFalse(framework.evaluate_restriction(capability))
++
++    def test_allows_non_transmission_capability(self):
++        framework = TransmissionNullificationFramework(blanket_disable=True)
++        capability = MetaphysicalCapability(
++            "Local shielding pulse",
++            CapabilityType.ENERGY_PROJECTION,
++            40.0,
++        )
++        self.assertTrue(framework.evaluate_restriction(capability))
++
++
++    def test_denies_data_wire_and_tap_markers(self):
++        framework = TransmissionNullificationFramework(blanket_disable=True)
++        capability = MetaphysicalCapability(
++            "Telemetry receiver on data wires with tap",
++            CapabilityType.ENERGY_PROJECTION,
++            40.0,
++        )
++        self.assertFalse(framework.evaluate_restriction(capability))
++
++    def test_factory_has_one_allowed_and_one_disabled(self):
++        practitioner = create_total_transmission_lockdown_practitioner()
++        decisions = [practitioner.can_use_capability(c)[0] for c in practitioner.capabilities]
++        self.assertEqual(decisions, [True, False])
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/test_universal_magic_retention.py b/test_universal_magic_retention.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f31c5533f8fab3f9a632e49bd1a241f0dc8a15f4
+--- /dev/null
++++ b/test_universal_magic_retention.py
+@@ -0,0 +1,46 @@
++import unittest
++
++from metaphysical_restrictions import (
++    CapabilityType,
++    MetaphysicalCapability,
++    UniversalAntiSiphonFramework,
++    create_universal_magic_retention_practitioner,
++)
++
++
++class TestUniversalMagicRetention(unittest.TestCase):
++    def test_blocks_magic_siphon_into_internet_vectors(self):
++        framework = UniversalAntiSiphonFramework(hard_lock=True)
++        capability = MetaphysicalCapability(
++            "upload charm magic to internet relay",
++            CapabilityType.ENERGY_PROJECTION,
++            55.0,
++        )
++        self.assertFalse(framework.evaluate_restriction(capability))
++
++    def test_blocks_exfil_vectors_for_transfer_types(self):
++        framework = UniversalAntiSiphonFramework(hard_lock=True)
++        capability = MetaphysicalCapability(
++            "network uplink channel",
++            CapabilityType.CONSCIOUSNESS_TRANSFER,
++            42.0,
++        )
++        self.assertFalse(framework.evaluate_restriction(capability))
++
++    def test_allows_grounded_non_exfil_magic(self):
++        framework = UniversalAntiSiphonFramework(hard_lock=True)
++        capability = MetaphysicalCapability(
++            "grounded ritual charm circle",
++            CapabilityType.ENERGY_PROJECTION,
++            35.0,
++        )
++        self.assertTrue(framework.evaluate_restriction(capability))
++
++    def test_factory_allows_local_cast_and_blocks_internet_siphon(self):
++        practitioner = create_universal_magic_retention_practitioner()
++        decisions = [practitioner.can_use_capability(c)[0] for c in practitioner.capabilities]
++        self.assertEqual(decisions, [True, False])
++
++
++if __name__ == "__main__":
++    unittest.main()
