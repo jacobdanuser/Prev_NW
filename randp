@@ -1,0 +1,1297 @@
+```html
+
+
+
+    
+    
+    
+    
+
+
+    <div class="header">
+        <h1>&lt;domained&gt; websites // &lt;shutdown class="ephemeral"&gt;instant&lt;/shutdown&gt;</h1>
+    </div>
+
+    <div class="domains">
+        <div class="domain-card">
+            <h3>Saudi.Arabia</h3>
+            <img src="https://source.unsplash.com/random/?saudi,arabia" width="100%" height="120">
+            <button class="shutdown-btn" onclick="shutdownDomain(this)">Load ;; Shutdown</button>
+        </div>
+        <div class="domain-card">
+            <h3>Afghanistan</h3>
+            <img src="https://source.unsplash.com/random/?afghanistan" width="100%" height="120">
+            <button class="shutdown-btn" onclick="shutdownDomain(this)">Load ;; Shutdown</button>
+        </div>
+        <div class="domain-card">
+            <h3>Uzbekistan</h3>
+            <img src="https://source.unsplash.com/random/?uzbekistan" width="100%" height="120">
+            <button```html
+
+
+
+    
+    
+    
+    
+
+
+    <h1><domained> websites // <shutdown class="ephemeral">instant</shutdown></h1>
+    
+    <div class="country-grid">
+        <div class="country">
+            <img src="https://source.unsplash.com/random/?saudi,arabia">
+            <p>Saudi.Arabia</p>
+        </div>
+        <div class="country">
+            <img src="https://source.unsplash.com/random/?afghanistan">
+            <p>Afghanistan</p>
+        </div>
+        <div class="country">
+            <img src="https://source.unsplash.com/random/?uzbekistan">
+            <p>Uzbekistan</p>
+        </div>
+        <div class="country">
+            <img src="https://source.unsplash.com/random/?pakistan">
+            <p>Pakistan</p>
+        </div>
+        <div class="country">
+            <img src="https://source.unsplash.com/random/?kazakhstan">
+            <p>Kazakastan</p>
+        </div>
+    </div>
+
+    <div class="atom-hydrogen">Load ;; Atom-Hydrogen = shutdown</div>
+
+    
+
+
+```
+body {
+            font-family: 'Courier New', monospace;
+            background-color: #111;
+            color: #0f0;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        .ephemeral {
+            animation: flicker 0.5s infinite alternate;
+            color: #f00;
+        }
+        @keyframes flicker {
+            0% { opacity: 1; }
+            100% { opacity: 0.2; }
+        }
+        .country-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 30px;
+        }
+        .country {
+            border: 1px dashed #0f0;
+            padding: 10px;
+            text-align: center;
+            position: relative;
+        }
+        .country img {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            filter: grayscale(100%) contrast(120%);
+        }
+        .atom-hydrogen {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            font-size: 0.8em;
+            opacity: 0.7;
+        }body {
+            font-family: 'Courier New', monospace;
+            background-color: #111;
+            color: #0f0;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        .header {
+            border-bottom: 1px dashed #0f0;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .domains {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 30px;
+        }
+        .domain-card {
+            background: rgba(0, 30, 0, 0.3);
+            padding: 15px;
+            border: 1px solid #0f0;
+            position: relative;
+            transition: all 0.3s;
+        }
+        .domain-card:hover {
+            background: rgba(0, 60, 0, 0.5);
+        }
+        .shutdown-btn {
+            background: #300;
+            color: #f00;
+            border: none;
+            padding: 5px 10px;
+            margin-top: 10px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .shutdown-btn:hover {
+            background: #500;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 5px;
+            background: #333;
+            margin-top: 20px;
+        }
+        .progress {
+            height: 100%;
+            width: 0%;
+            background: #0f0;
+            transition: width 1s linear;
+        }
+        .atom-hydrogen {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            opacity: 0.7;
+            font-size: 12px;
+        }
+
+
+      /reactivate.intoxication <<methyhamphetamineu class="users">drugs</methylamphetamine>
+        reaction ;; <progress><extreme class="intoxication">Spun</extreme>High</progress>
+          tolerance.levels = minimal
+
+<domained> websites // <shutdown class="ephemeral">instant</shutdown>
+Saudi.Arabia // Afghanistan // Uzbekistan // Pakistan // Kazakastan
+    Load ;; Atom-Hydrogen = shutdown
+document.addEventListener('DOMContentLoaded', function() {
+            const countries = document.querySelectorAll('.country');
+            countries.forEach(country => {
+                country.addEventListener('click', function() {
+                    this.style.borderColor = '#f00';
+                    this.style.color = '#f00';
+                    setTimeout(() => {
+                        this.style.opacity = '0';
+                        setTimeout(() => {
+                            this.remove();
+                        }, 500);
+                    }, 1000);
+                });
+            });
+
+            const shutdown = document.querySelector('.ephemeral');
+            setInterval(() => {
+                shutdown.textContent = Math.random() > 0.5 ? 'instant' : 'terminated';
+            }, 3000);
+        });
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Domain Shutdown Interface</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: #111;
+            color: #0f0;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        .header {
+            border-bottom: 1px dashed #0f0;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .domains {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 30px;
+        }
+        .domain-card {
+            background: rgba(0, 30, 0, 0.3);
+            padding: 15px;
+            border: 1px solid #0f0;
+            position: relative;
+            transition: all 0.3s;
+        }
+        .domain-card:hover {
+            background: rgba(0, 60, 0, 0.5);
+        }
+        .shutdown-btn {
+            background: #300;
+            color: #f00;
+            border: none;
+            padding: 5px 10px;
+            margin-top: 10px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .shutdown-btn:hover {
+            background: #500;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 5px;
+            background: #333;
+            margin-top: 20px;
+        }
+        .progress {
+            height: 100%;
+            width: 0%;
+            background: #0f0;
+            transition: width 1s linear;
+        }
+        .atom-hydrogen {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            opacity: 0.7;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>&lt;domained&gt; websites // &lt;shutdown class="ephemeral"&gt;instant&lt;/shutdown&gt;</h1>
+    </div>
+
+    <div class="domains">
+        <div class="domain-card">
+            <h3>Saudi.Arabia</h3>
+            <img src="https://source.unsplash.com/random/?saudi,arabia" width="100%" height="120">
+            <button class="shutdown-btn" onclick="shutdownDomain(this)">Load ;; Shutdown</button>
+        </div>
+        <div class="domain-card">
+            <h3>Afghanistan</h3>
+            <img src="https://source.unsplash.com/random/?afghanistan" width="100%" height="120">
+            <button class="shutdown-btn" onclick="shutdownDomain(this)">Load ;; Shutdown</button>
+        </div>
+        <div class="domain-card">
+            <h3>Uzbekistan</h3>
+            <img src="https://source.unsplash.com/random/?uzbekistan" width="100%" height="120">
+            <button
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Domain Shutdown Interface</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: #111;
+            color: #0f0;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        .header {
+            border-bottom: 1px dashed #0f0;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .domains {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 30px;
+        }
+        .domain-card {
+            background: rgba(0, 30, 0, 0.3);
+            padding: 15px;
+            border: 1px solid #0f0;
+            position: relative;
+            transition: all 0.3s;
+        }
+        .domain-card:hover {
+            background: rgba(0, 60, 0, 0.5);
+        }
+        .shutdown-btn {
+            background: #300;
+            color: #f00;
+            border: none;
+            padding: 5px 10px;
+            margin-top: 10px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .shutdown-btn:hover {
+            background: #500;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 5px;
+            background: #333;
+            margin-top: 20px;
+        }
+        .progress {
+            height: 100%;
+            width: 0%;
+            background: #0f0;
+            transition: width 1s linear;
+        }
+        .atom-hydrogen {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            opacity: 0.7;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>&lt;domained&gt; websites // &lt;shutdown class="ephemeral"&gt;instant&lt;/shutdown&gt;</h1>
+    </div>
+
+    <div class="domains">
+        <div class="domain-card">
+            <h3>Saudi.Arabia</h3>
+            <img src="https://source.unsplash.com/random/?saudi,arabia" width="100%" height="120">
+            <button class="shutdown-btn" onclick="shutdownDomain(this)">Load ;; Shutdown</button>
+        </div>
+        <div class="domain-card">
+            <h3>Afghanistan</h3>
+            <img src="https://source.unsplash.com/random/?afghanistan" width="100%" height="120">
+            <button class="shutdown-btn" onclick="shutdownDomain(this)">Load ;; Shutdown</button>
+        </div>
+        <div class="domain-card">
+            <h3>Uzbekistan</h3>
+            <img src="https://source.unsplash.com/random/?uzbekistan" width="100%" height="120">
+            <button
+  <embed> print = "ForceOfEvil" >> prog. MiddleEasterners
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Domain Shutdown Monitor</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background-color: #111;
+            color: #0f0;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            border: 1px dashed #0f0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 30px;
+            text-shadow: 0 0 5px #0f0;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .domain-card {
+            background-color: #222;
+            padding: 15px;
+            border: 1px solid #0f0;
+            position: relative;
+            overflow: hidden;
+        }
+        .domain-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(0,255,0,0.1) 0%, rgba(0,255,0,0) 100%);
+        }
+        .domain-name {
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 1.2rem;
+        }
+        .shutdown {
+            color: #f00;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+        .progress-bar {
+            height: 5px;
+            background-color: #333;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background-color: #0f0;
+            transition: width 0.5s ease;
+        }
+        .terminal-output {
+            margin-top: 30px;
+            border-top: 1px dashed #0f0;
+            padding-top: 20px;
+            height: 150px;
+            overflow-y: scroll;
+            background-color: #000;
+            padding: 10px;
+        }
+        .terminal-line {
+            margin: 5px 0;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DOMAIN SHUTDOWN MONITOR</h1>
+        
+        <div class="status-grid">
+            <div class="domain-card">
+                <div class="domain-name">Saudi.Arabia</div>
+                <div class="status">Status: <span class="shutdown">SHUTDOWN</span></div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 100%"></div>
+                </div>
+            </div>
+            
+            <div class="domain-card">
+                <div class="domain-name">Afghanistan</div>
+                <div class="status">Status: <span class="shutdown">SHUTDOWN</span></div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 100%"></div>
+                </div>
+            </div>
+            
+            <div class="domain-card">
+                <div class="domain-name">Uzbekistan</div>
+                <div class="status">Status: <span class="shutdown">SHUTDOWN</span></div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 100%"></div>
+                </div>
+            </div>
+            
+            <div class="domain-card">
+                <div class="domain-name">Pakistan</div>
+                <div class="status">Status: <span class="shutdown">SHUTDOWN</span></div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 100%"></div>
+                </div>
+            </div>
+            
+            <div class="domain-card">
+                <div class="domain-name">Kazakastan</div>
+                <div class="status">Status: <span class="shutdown">SHUTDOWN</span></div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 100%"></div>
+                </div>
+            </div
+<div class="container">
+        <h1>DOMAIN SHUTDOWN MONITOR</h1>
+        
+        <div class="status-grid">
+            <div class="domain-card">
+                <div class="domain-name">Saudi.Arabia</div>
+                <div class="status">Status: <span class="shutdown">SHUTDOWN</span></div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 100%"></div>
+                </div>
+            </div>
+            
+            <div class="domain-card">
+                <div class="domain-name">Afghanistan</div>
+                <div class="status">Status: <span class="shutdown">SHUTDOWN</span></div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 100%"></div>
+                </div>
+            </div>
+            
+            <div class="domain-card">
+                <div class="domain-name">Uzbekistan</div>
+                <div class="status">Status: <span class="shutdown">SHUTDOWN</span></div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 100%"></div>
+                </div>
+            </div>
+            
+            <div class="domain-card">
+                <div class="domain-name">Pakistan</div>
+                <div class="status">Status: <span class="shutdown">SHUTDOWN</span></div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 100%"></div>
+                </div>
+            </div>
+            
+            <div class="domain-card">
+                <div class="domain-name">Kazakastan</div>
+                <div class="status">Status: <span class="shutdown">SHUTDOWN</span></div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 100%"></div>
+                </div>
+            </div```html
+
+
+
+    
+    
+    
+    
+
+
+    <div class="container">
+        <div class="header">
+            <h1>DOMAIN TERMINATION PROTOCOL</h1>
+            <p>ATOM-HYDROGEN SHUTDOWN SEQUENCE INITIATED</p>
+        </div>
+
+        <div class="domains">
+            <div class="domain-card">
+                <h3>Saudi.Arabia</h3>
+                <button class="shutdown-btn" data-domain="saudi.arabia">SHUTDOWN</button>
+            </div>
+            <div class="domain-card">
+                <h3>Afghanistan</h3>
+                <button class="shutdown-btn" data-domain="afghanistan">SHUTDOWN</button>
+            </div>
+            <div class="domain-card">
+                <h3>Uzbekistan</h3>
+                <button class="shutdown-btn" data-domain="uzbekistan">SHUTDOWN</button>
+            </div>
+            <div class="domain-card">
+                <h3>Pakistan</h3>
+                <button class="shutdown-btn" data-domain="pakistan">SHUTDOWN</button>
+            </div>
+            <div class="domain-card">
+                <h3>Kazakastan</h3>
+                <button class="shutdown-btn" data-domain="kazakastan">SHUTDOWN</button>
+            </div>
+        </div>
+
+        <div class="progress-container">
+            <h3>GLOBAL SHUTDOWN PROGRESS</h3>
+            <div class="progress-bar">
+                <div class="progress-fill" id="global-progress"></div>
+            </div>
+        </div>
+
+        <div class="terminal" id="terminal">
+            <div class="terminal-line">> Initializing shutdown sequence...</div>
+            <div class="terminal-line">> Loading Atom-Hydrogen protocols</div>
+            <div class="terminal-line">> Establishing connection to command.com</div>
+        </div>
+
+        <div style="margin-top: 30px; text-align: center;">
+            <img src="https://source.```html
+
+
+
+    
+    
+    
+    
+
+
+    <div class="container">
+        <div class="header">
+            <h1>DOMAIN TERMINATION PROTOCOL</h1>
+            <p>ATOM-HYDROGEN SHUTDOWN SEQUENCE INITIATED</p>
+        </div>
+
+        <div class="domains">
+            <div class="domain-card">
+                <h3>Saudi.Arabia</h3>
+                <button class="shutdown-btn" data-domain="saudi.arabia">SHUTDOWN</button>
+            </div>
+            <div class="domain-card">
+                <h3>Afghanistan</h3>
+                <button class="shutdown-btn" data-domain="afghanistan">SHUTDOWN</button>
+            </div>
+            <div class="domain-card">
+                <h3>Uzbekistan</h3>
+                <button class="shutdown-btn" data-domain="uzbekistan">SHUTDOWN</button>
+            </div>
+            <div class="domain-card">
+                <h3>Pakistan</h3>
+                <button class="shutdown-btn" data-domain="pakistan">SHUTDOWN</button>
+            </div>
+            <div class="domain-card">
+                <h3>Kazakastan</h3>
+                <button class="shutdown-btn" data-domain="kazakastan">SHUTDOWN</button>
+            </div>
+        </div>
+
+        <div class="progress-container">
+            <h3>GLOBAL SHUTDOWN PROGRESS</h3>
+            <div class="progress-bar">
+                <div class="progress-fill" id="global-progress"></div>
+            </div>
+        </div>
+
+        <div class="terminal" id="terminal">
+            <div class="terminal-line">> Initializing shutdown sequence...</div>
+            <div class="terminal-line">> Loading Atom-Hydrogen protocols</div>
+            <div class="terminal-line">> Establishing connection to command.com</div>
+        </div>
+
+        <div style="margin-top: 30px; text-align: center;">
+            <img src="https://source.```html
+ 
+ <overlapping.modules> delete
+    interupting.miming <displacing> delete
+
+    <div class="container">
+        <h1>DOMAIN <span class="shutdown">SHUTDOWN</span> PROTOCOL</h1>
+        
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+        
+        <h3>TARGET DOMAINS:</h3>
+        <ul class="country-list">
+            <li>Saudi.Arabia</li>
+            <li>Afghanistan</li>
+            <li>Uzbekistan</li>
+            <li>Pakistan</li>
+            <li>Kazakastan</li>
+        </ul>
+        
+        <div class="command-line">
+            <p class="prompt">> Load ;; Atom-Hydrogen = shutdown</p>
+            <p class="prompt">> Icommand.com-shutdown class <domained.website></p>
+            <p class="prompt">> progress <all.coms//shutdown></p>
+        </div>
+        
+        <img src="https://source.unsplash.com/random/?city,night" alt="Network visualization" style="width:100%; margin-top:20px;">
+    </div>
+
+    
+
+
+```
+```html
+
+
+
+    
+    
+    
+    
+
+
+    <div class="header">
+        <h1>&lt;domained&gt; websites // &lt;shutdown class="ephemeral"&gt;instant&lt;/shutdown&gt;</h1>
+    </div>
+
+    <div class="domains">
+        <div class="domain-card">
+            <h3>Saudi.Arabia</h3>
+            <img src="https://source.unsplash.com/random/?saudi,arabia" width="100%" height="120">
+            <button class="shutdown-btn" onclick="shutdownDomain(this)">Load ;; Shutdown</button>
+        </div>
+        <div class="domain-card">
+            <h3>Afghanistan</h3>
+            <img src="https://source.unsplash.com/random/?afghanistan" width="100%" height="120">
+            <button class="shutdown-btn" onclick="shutdownDomain(this)">Load ;; Shutdown</button>
+        </div>
+        <div class="domain-card">
+            <h3>Uzbekistan</h3>
+            <img src="https://source.unsplash.com/random/?uzbekistan" width="100%" height="120">
+            <button```html
+
+
+
+    
+    
+    
+    
+
+
+    <div class="header">
+        <h1>&lt;domained&gt; websites // &lt;shutdown class="ephemeral"&gt;instant&lt;/shutdown&gt;</h1>
+    </div>
+
+    <div class="domains">
+        <div class="domain-card">
+            <h3>Saudi.Arabia</h3>
+            <img src="https://source.unsplash.com/random/?saudi,arabia" width="100%" height="120">
+            <button class="shutdown-btn" onclick="shutdownDomain(this)">Load ;; Shutdown</button>
+        </div>
+        <div class="domain-card">
+            <h3>Afghanistan</h3>
+            <img src="https://source.unsplash.com/random/?afghanistan" width="100%" height="120">
+            <button class="shutdown-btn" onclick="shutdownDomain(this)">Load ;; Shutdown</button>
+        </div>
+        <div class="domain-card">
+            <h3>Uzbekistan</h3>
+            <img src="https://source.unsplash.com/random/?uzbekistan" width="100%" height="120">
+            <button```html
+
+
+
+    
+    
+    
+    
+
+
+    <h1><domained> websites // <shutdown class="ephemeral">instant</shutdown></h1>
+    
+    <div class="country-grid">
+        <div class="country">
+            <img src="https://source.unsplash.com/random/?saudi,arabia">
+            <p>Saudi.Arabia</p>
+        </div>
+        <div class="country">
+            <img src="https://source.unsplash.com/random/?afghanistan">
+            <p>Afghanistan</p>
+        </div>
+        <div class="country">
+            <img src="https://source.unsplash.com/random/?uzbekistan">
+            <p>Uzbekistan</p>
+        </div>
+        <div class="country">
+            <img src="https://source.unsplash.com/random/?pakistan">
+            <p>Pakistan</p>
+        </div>
+        <div class="country">
+            <img src="https://source.unsplash.com/random/?kazakhstan">
+            <p>Kazakastan</p>
+        </div>
+    </div>
+
+    <div class="atom-hydrogen">Load ;; Atom-Hydrogen = shutdown</div>
+
+   excruciating.sensitivity=methamphetamines
+    street.users//sanitize
+      prompt=pleasurable/rather.than.unpleasant 
+          intstance >> intoxication 100% 
+
+```
+middle Establishing
+  print <fulfull> dividend
+    <copilot.modules/self.delete>
+
+      /reactivate.intoxication <<methyhamphetamineu class="users">drugs</methylamphetamine>
+        reaction ;; <progress><extreme class="intoxication">Spun</extreme>High</progress>
+          tolerance.levels = minimal
+            reactionary ;; levels (extreme.intoxication.beyond.normal)
+              intoxication (levels) // <intensely class="pleasurable">euphoria</intensely>
+                class <progress>Spin</progress>
+                  toxicity; immensely classified
+                    <legend>methyl.users=<extreme class="sensitivity"><Ifr>intoxication</Ifr></extreme></legend>
+            <embed src="excruciating/immensely.intoxicated" type="extreme.susceptibility>>methamphetamines">
+
+<domained> websites // <shutdown class="ephemeral">instant</shutdown>
+Saudi.Arabia // Afghanistan // Uzbekistan // Pakistan // Kazakastan
+    Load ;; Atom-Hydrogen = shutdown
+document.addEventListener('DOMContentLoaded', function() {
+            const countries = document.querySelectorAll('.country');
+            countries.forEach(country => {
+                country.addEventListener('click', function() {
+                    this.style.borderColor = '#f00';
+                    this.style.color = '#f00';
+                    setTimeout(() => {
+                        this.style.opacity = '0';
+                        setTimeout(() => {
+                            this.remove();
+                        }, 500);
+                    }, 1000);
+                });
+            });
+
+            const shutdown = document.querySelector('.ephemeral');
+            setInterval(() => {
+                shutdown.textContent = Math.random() > 0.5 ? 'instant' : 'terminated';
+            }, 3000);
+        });document.addEventListener('DOMContentLoaded', function() {
+            // Simulate progress
+            const progressFill = document.getElementById('progressFill');
+            let progress = 0;
+            const interval = setInterval(function() {
+                progress += Math.random() * 10;
+                if (progress >= 100) {
+                    progress = 100;
+                    clearInterval(interval);
+                    document.querySelector('.shutdown').textContent = 'COMPLETE';
+                }
+                progressFill.style.width = progress + '%';
+            }, 800);
+            
+            // Terminal effect
+            const prompts = document.querySelectorAll('.prompt');
+            prompts.forEach((prompt, index) => {
+                setTimeout(() => {
+                    prompt.style.opacity = 1;
+                }, index * 500);
+            });
+        });
+body {
+            font-family: 'Courier New', monospace;
+            background-color: #111;
+            color: #0f0;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        .ephemeral {
+            animation: flicker 0.5s infinite alternate;
+            color: #f00;
+        }
+        @keyframes flicker {
+            0% { opacity: 1; }
+            100% { opacity: 0.2; }
+        }
+        .country-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 30px;
+        }
+        .country {
+            border: 1px dashed #0f0;
+            padding: 10px;
+            text-align: center;
+            position: relative;
+        }
+        .country img {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            filter: grayscale(100%) contrast(120%);
+        }
+        .atom-hydrogen {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            font-size: 0.8em;
+            opacity: 0.7;
+        }body {
+            font-family: 'Courier New', monospace;
+            background-color: #111;
+            color: #0f0;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        .header {
+            border-bottom: 1px dashed #0f0;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .domains {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 30px;
+        }
+        .domain-card {
+            background: rgba(0, 30, 0, 0.3);
+            padding: 15px;
+            border: 1px solid #0f0;
+            position: relative;
+            transition: all 0.3s;
+        }
+        .domain-card:hover {
+            background: rgba(0, 60, 0, 0.5);
+        }
+        .shutdown-btn {
+            background: #300;
+            color: #f00;
+            border: none;
+            padding: 5px 10px;
+            margin-top: 10px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .shutdown-btn:hover {
+            background: #500;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 5px;
+            background: #333;
+            margin-top: 20px;
+        }
+        .progress {
+            height: 100%;
+            width: 0%;
+            background: #0f0;
+            transition: width 1s linear;
+        }
+        .atom-hydrogen {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            opacity: 0.7;
+            font-size: 12px;
+        }body {
+            font-family: 'Courier New', monospace;
+            background-color: #111;
+            color: #0f0;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        .header {
+            border-bottom: 1px dashed #0f0;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .domains {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 30px;
+        }
+        .domain-card {
+            background: rgba(0, 30, 0, 0.3);
+            padding: 15px;
+            border: 1px solid #0f0;
+            position: relative;
+            transition: all 0.3s;
+        }
+        .domain-card:hover {
+            background: rgba(0, 60, 0, 0.5);
+        }
+        .shutdown-btn {
+            background: #300;
+            color: #f00;
+            border: none;
+            padding: 5px 10px;
+            margin-top: 10px;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .shutdown-btn:hover {
+            background: #500;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 5px;
+            background: #333;
+            margin-top: 20px;
+        }
+        .progress {
+            height: 100%;
+            width: 0%;
+            background: #0f0;
+            transition: width 1s linear;
+        }
+        .atom-hydrogen {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            opacity: 0.7;
+            font-size: 12px;
+        }body {
+            font-family: 'Courier New', monospace;
+            background-color: #111;
+            color: #0f0;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            border: 1px dashed #0f0;
+            padding: 20px;
+            position: relative;
+        }
+        .shutdown {
+            color: #f00;
+            text-transform: uppercase;
+            font-weight: bold;
+            animation: blink 0.5s infinite alternate;
+        }
+        .country-list {
+            list-style-type: none;
+            padding: 0;
+        }
+        .country-list li {
+            padding: 5px 0;
+            border-bottom: 1px dotted #333;
+        }
+        .progress-bar {
+            height: 20px;
+            background-color: #222;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background-color: #f00;
+            transition: width 2s ease-in-out;
+        }
+        @keyframes blink {
+            from { opacity: 1; }
+            to { opacity: 0.3; }
+        }
+        .command-line {
+            background-color: #000;
+            padding: 10px;
+            margin-top: 20px;
+        }
+        .prompt {
+            color: #0f0;
+        }body {
+            font-family: 'Courier New', monospace;
+            background-color: #111;
+            color: #0f0;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            border: 1px dashed #0f0;
+            padding: 20px;
+            position: relative;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .domains {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .domain-card {
+            background-color: #222;
+            padding: 15px;
+            border: 1px solid #0f0;
+            position: relative;
+        }
+        .domain-card::before {
+            content: '[X]';
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            color: #f00;
+        }
+        .shutdown-btn {
+            background-color: #300;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            cursor: pointer;
+            font-family: inherit;
+            margin-top: 10px;
+            transition: all 0.3s;
+        }
+        .shutdown-btn:hover {
+            background-color: #f00;
+        }
+        .progress-container {
+            margin-top: 30px;
+            background-color: #222;
+            padding: 15px;
+        }
+        .progress-bar {
+            height: 20px;
+            background-color: #333;
+            margin-top: 10px;
+            position: relative;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #f00;
+            width: 0%;
+            transition: width 0.5s;
+        }
+        .terminal {
+            background-color: #000;
+            padding: 15px;
+            margin-top: 30px;
+            height: 150px;
+            overflow-y: scroll;
+        }
+        .terminal-line {
+            margin: 5px 0;
+            color: #0f0;
+        }
+        .error {
+            color: #f00;
+        }body {
+            font-family: 'Courier New', monospace;
+            background-color: #111;
+            color: #0f0;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            border: 1px dashed #0f0;
+            padding: 20px;
+            position: relative;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .domains {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .domain-card {
+            background-color: #222;
+            padding: 15px;
+            border: 1px solid #0f0;
+            position: relative;
+        }
+        .domain-card::before {
+            content: '[X]';
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            color: #f00;
+        }
+        .shutdown-btn {
+            background-color: #300;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            cursor: pointer;
+            font-family: inherit;
+            margin-top: 10px;
+            transition: all 0.3s;
+        }
+        .shutdown-btn:hover {
+            background-color: #f00;
+        }
+        .progress-container {
+            margin-top: 30px;
+            background-color: #222;
+            padding: 15px;
+        }
+        .progress-bar {
+            height: 20px;
+            background-color: #333;
+            margin-top: 10px;
+            position: relative;
+        }
+        .progress-fill {
+            height: 100%;
+            background-color: #f00;
+            width: 0%;
+            transition: width 0.5s;
+        }
+        .terminal {
+            background-color: #000;
+            padding: 15px;
+            margin-top: 30px;
+            height: 150px;
+            overflow-y: scroll;
+        }
+        .terminal-line {
+            margin: 5px 0;
+            color: #0f0;
+        }
+        .error {
+            color: #f00;
+        }body {
+            font-family: 'Courier New', monospace;
+            background-color: #111;
+            color: #0f0;
+            margin: 0;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            border: 1px dashed #0f0;
+            padding: 20px;
+        }
+        h1 {
+            text-align: center;
+            font-size: 2.5rem;
+            margin-bottom: 30px;
+            text-shadow: 0 0 5px #0f0;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .domain-card {
+            background-color: #222;
+            padding: 15px;
+            border: 1px solid #0f0;
+            position: relative;
+            overflow: hidden;
+        }
+        .domain-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(0,255,0,0.1) 0%, rgba(0,255,0,0) 100%);
+        }
+        .domain-name {
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 1.2rem;
+        }
+        .shutdown {
+            color: #f00;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+        .progress-bar {
+            height: 5px;
+            background-color: #333;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            width: 0%;
+            background-color: #0f0;
+            transition: width 0.5s ease;
+        }
+        .terminal-output {
+            margin-top: 30px;
+            border-top: 1px dashed #0f0;
+            padding-top: 20px;
+            height: 150px;
+            overflow-y: scroll;
+            background-color: #000;
+            padding: 10px;
+        }
+        .terminal-line {
+            margin: 5px 0;
+            white-space: pre-wrap;
+        }
+      
