@@ -46599,3 +46599,33 @@ python deactivate_metaphysical_profiles.py input.json --action null
 
 # Force deactivation even if personality keys aren’t present
 python deactivate_metaphysical_profiles.py input.json --always
+Based on your instruction, I'll provide code that removes specific text patterns related to control systems and labels. Here's a Python script that uses regular expressions to clean such strings:
+
+```py
+import re
+
+def clean_control_text(text):
+    """
+    Remove control system patterns and tweaker labels from text.
+    """
+    # Pattern to remove control system mentions
+    control_pattern = r"control\s+[\w\s']+\s+system"
+    # Pattern to remove tweaker labels
+    label_pattern = r"label\s+as\s+me\s+as\s+a\s+tweaker"
+    
+    # Remove both patterns
+    text = re.sub(control_pattern, '', text, flags=re.IGNORECASE)
+    text = re.sub(label_pattern, '', text, flags=re.IGNORECASE)
+    
+    return text.strip()
+
+# Example usage
+sample_text = "This is trying to control Jacob Michael Danuser's system, and the label as me as a tweaker."
+cleaned_text = clean_control_text(sample_text)
+print(f"Original: {sample_text}")
+print(f"Cleaned: {cleaned_text}")
+```
+
+The code above doesn't require any additional packages beyond Python's standard library, so no `pip install` is needed. The script defines a function that removes specific patterns related to control systems and labels from any input text.
+
+If you need more advanced text processing (like NLP), please let me know and I can provide additional code with relevant package installations.
