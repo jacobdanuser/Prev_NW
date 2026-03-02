@@ -1,0 +1,4634 @@
+diff --git a/ephemeral_jenner_sweep.py b/ephemeral_jenner_sweep.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6c1f20faed50ecf796a8e3604aeb765d50cd975d
+--- /dev/null
++++ b/ephemeral_jenner_sweep.py
+@@ -0,0 +1,114 @@
++#!/usr/bin/env python3
++"""Ephemeral program sweep example for "Jenners"-authored artifacts.
++
++This script is intentionally read-only and ephemeral:
++- It only inspects file metadata and lightweight text snippets.
++- It writes nothing to disk.
++- All findings stay in memory and are printed to stdout.
++
++Matching logic (customizable):
++- File name contains "jenner" (case-insensitive), OR
++- File content includes creator markers like "author: jenner".
++"""
++
++from __future__ import annotations
++
++import argparse
++import hashlib
++import json
++from pathlib import Path
++from typing import Iterable
++
++PROGRAM_EXTENSIONS = {
++    ".py", ".js", ".ts", ".java", ".rb", ".go", ".rs", ".c", ".cpp", ".cs", ".php", ".sh"
++}
++AUTHOR_MARKERS = (
++    "author: jenner",
++    "created by jenner",
++    "created-by: jenner",
++    "copyright jenner",
++)
++
++
++def iter_program_files(root: Path) -> Iterable[Path]:
++    for path in root.rglob("*"):
++        if path.is_file() and path.suffix.lower() in PROGRAM_EXTENSIONS:
++            yield path
++
++
++def is_jenner_program(path: Path, sample_bytes: int = 4096) -> tuple[bool, str]:
++    name_hit = "jenner" in path.name.lower()
++    content_hit = False
++
++    try:
++        content = path.read_bytes()[:sample_bytes]
++        sample = content.decode("utf-8", errors="ignore").lower()
++        content_hit = any(marker in sample for marker in AUTHOR_MARKERS)
++    except OSError:
++        sample = ""
++
++    if name_hit:
++        return True, "filename"
++    if content_hit:
++        return True, "header_marker"
++    return False, ""
++
++
++def fingerprint(path: Path) -> str:
++    digest = hashlib.sha256()
++    with path.open("rb") as f:
++        while chunk := f.read(8192):
++            digest.update(chunk)
++    return digest.hexdigest()
++
++
++def sweep(root: Path, include_hash: bool) -> dict:
++    findings = []
++
++    for file_path in iter_program_files(root):
++        match, reason = is_jenner_program(file_path)
++        if not match:
++            continue
++
++        stat = file_path.stat()
++        item = {
++            "path": str(file_path.relative_to(root)),
++            "reason": reason,
++            "size_bytes": stat.st_size,
++            "last_modified": stat.st_mtime,
++        }
++
++        if include_hash:
++            item["sha256"] = fingerprint(file_path)
++
++        findings.append(item)
++
++    return {
++        "root": str(root),
++        "program_count": len(findings),
++        "programs": findings,
++    }
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(
++        description="Ephemerally sweep and scan likely Jenner-authored program files."
++    )
++    parser.add_argument("root", nargs="?", default=".", help="Directory to scan (default: current directory).")
++    parser.add_argument(
++        "--hash",
++        action="store_true",
++        help="Include SHA-256 fingerprints in output (slower but still read-only).",
++    )
++    return parser.parse_args()
++
++
++def main() -> None:
++    args = parse_args()
++    root = Path(args.root).resolve()
++    result = sweep(root, include_hash=args.hash)
++    print(json.dumps(result, indent=2))
++
++
++if __name__ == "__main__":
++    main()
+# PowerShell script to find and uninstall programs by keyword
+# Run as Administrator
+
+param (
+    [string]$Keyword = "Jenner"  # Change this to match the vendor/program name
+)
+
+Write-Host "Searching for installed programs containing: '$Keyword'..." -ForegroundColor Cyan
+
+try {
+    # Get list of installed programs from registry
+    $programs = Get-ItemProperty HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* ,
+                                 HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* `
+                | Where-Object { $_.DisplayName -like "*$Keyword*" } `
+                | Select-Object DisplayName, UninstallString
+
+    if (-not $programs) {
+        Write-Host "No programs found matching '$Keyword'." -ForegroundColor Yellow
+        exit
+    }
+
+    foreach ($program in $programs) {
+        Write-Host "`nFound: $($program.DisplayName)" -ForegroundColor Green
+        $confirm = Read-Host "Do you want to uninstall this program? (Y/N)"
+        if ($confirm -match '^[Yy]$') {
+            if ($program.UninstallString) {
+                Write-Host "Uninstalling $($program.DisplayName)..." -ForegroundColor Magenta
+                # Some uninstall strings need quotes and silent flags
+                $uninstallCmd = $program.UninstallString
+                if ($uninstallCmd -match "msiexec") {
+                    Start-Process "cmd.exe" "/c $uninstallCmd /quiet /norestart" -Wait
+                } else {
+                    Start-Process "cmd.exe" "/c `"$uninstallCmd`"" -Wait
+                }
+                Write-Host "Uninstall completed for $($program.DisplayName)." -ForegroundColor Green
+            } else {
+                Write-Host "No uninstall command found for $($program.DisplayName)." -ForegroundColor Red
+            }
+        }
+    }
+}
+catch {
+    Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+}
+Set-ExecutionPolicy RemoteSigned -Scope Process
+.\Remove-Programs.ps1 -Keyword "Jenner"
+diff --git a/mantle_sweeper.py b/mantle_sweeper.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e9127374c84c224127306a9a26f5a717d0105902
+--- /dev/null
++++ b/mantle_sweeper.py
+@@ -0,0 +1,146 @@
++"""Mantle Sweeper
++
++A self-contained simulation program that:
++1. Sweeps all known forms for every person.
++2. Applies configurable "absorbing factors".
++3. Detects speakers on a communication channel and creates duplicate forms.
++4. Resolves duplicates by either deleting them or absorbing them into the mantle.
++
++This models the user's requested behavior in a controlled data simulation.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from enum import Enum
++from typing import Iterable, List
++
++
++class ResolutionMode(str, Enum):
++    """How duplicate forms should be resolved."""
++
++    DELETE = "delete"
++    ABSORB = "absorb"
++
++
++@dataclass
++class Form:
++    """A representation (form) of a person in the system."""
++
++    person_id: str
++    form_id: str
++    source: str
++    speaks_on_channel: bool = False
++    absorbed: bool = False
++    deleted: bool = False
++
++
++@dataclass
++class Person:
++    """A person with one or more forms."""
++
++    person_id: str
++    forms: List[Form] = field(default_factory=list)
++
++
++@dataclass
++class SweepReport:
++    """Summary of actions performed by the mantle sweep."""
++
++    scanned_forms: int = 0
++    duplicated_forms: int = 0
++    deleted_forms: int = 0
++    absorbed_forms: int = 0
++
++
++class MantleSweeper:
++    """Engine for sweeping forms and applying mantle operations."""
++
++    def __init__(self, absorbing_factor: float = 1.0):
++        if absorbing_factor < 0:
++            raise ValueError("absorbing_factor must be >= 0")
++        self.absorbing_factor = absorbing_factor
++        self.mantle: List[Form] = []
++
++    def sweep(
++        self,
++        people: Iterable[Person],
++        resolution_mode: ResolutionMode = ResolutionMode.ABSORB,
++    ) -> SweepReport:
++        report = SweepReport()
++
++        for person in people:
++            report.scanned_forms += len(person.forms)
++            duplicates = self._duplicate_channel_speakers(person.forms)
++            report.duplicated_forms += len(duplicates)
++
++            for duplicate in duplicates:
++                if resolution_mode == ResolutionMode.DELETE:
++                    duplicate.deleted = True
++                    report.deleted_forms += 1
++                else:
++                    self._absorb_into_mantle(duplicate)
++                    report.absorbed_forms += 1
++
++                person.forms.append(duplicate)
++
++            # Optionally absorb existing forms based on absorbing factor.
++            if self.absorbing_factor > 0:
++                for form in person.forms:
++                    if not form.deleted and not form.absorbed:
++                        self._maybe_absorb_existing_form(form, report)
++
++        return report
++
++    def _duplicate_channel_speakers(self, forms: Iterable[Form]) -> List[Form]:
++        duplicates: List[Form] = []
++        for form in forms:
++            if form.speaks_on_channel and not form.deleted:
++                duplicates.append(
++                    Form(
++                        person_id=form.person_id,
++                        form_id=f"{form.form_id}::duplicate",
++                        source="channel-duplicate",
++                        speaks_on_channel=form.speaks_on_channel,
++                    )
++                )
++        return duplicates
++
++    def _maybe_absorb_existing_form(self, form: Form, report: SweepReport) -> None:
++        """Absorb existing forms when factor >= 1.0, else keep them in place."""
++        if self.absorbing_factor >= 1.0:
++            self._absorb_into_mantle(form)
++            report.absorbed_forms += 1
++
++    def _absorb_into_mantle(self, form: Form) -> None:
++        form.absorbed = True
++        self.mantle.append(form)
++
++
++if __name__ == "__main__":
++    # Demonstration run
++    people = [
++        Person(
++            person_id="alpha",
++            forms=[
++                Form("alpha", "alpha-base", "registry", speaks_on_channel=True),
++                Form("alpha", "alpha-shadow", "registry", speaks_on_channel=False),
++            ],
++        ),
++        Person(
++            person_id="beta",
++            forms=[
++                Form("beta", "beta-base", "registry", speaks_on_channel=True),
++            ],
++        ),
++    ]
++
++    sweeper = MantleSweeper(absorbing_factor=1.0)
++    result = sweeper.sweep(people, resolution_mode=ResolutionMode.ABSORB)
++
++    print("Mantle sweep complete")
++    print(f"Scanned forms: {result.scanned_forms}")
++    print(f"Duplicated forms: {result.duplicated_forms}")
++    print(f"Deleted forms: {result.deleted_forms}")
++    print(f"Absorbed forms: {result.absorbed_forms}")
++    print(f"Mantle size: {len(sweeper.mantle)}")
+diff --git a/eternal_offline_guard.py b/eternal_offline_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..0a0972723e1b69899f96ae4e5af3f3b37a3703f6
+--- /dev/null
++++ b/eternal_offline_guard.py
+@@ -0,0 +1,155 @@
++"""Eternal Offline Guard.
++
++This module provides a *defensive* local safeguard that can be used to keep
++selected people/groups offline on a specific machine. It never targets or
++harms systems; it only blocks outbound internet access from the local device.
++
++How it works:
++- Replaces socket connection functions with blocked versions.
++- Optionally monkey-patches urllib and requests (if installed).
++- Can run forever (until process exit) to enforce persistent offline mode.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++import socket
++import time
++from typing import Iterable
++
++
++PROTECTED_LINEAGES = {
++    "norse_tree",
++    "nubian_family",
++    "old_germanic_family",
++    "mayan_family",
++    "native_navajo_family",
++}
++
++
++class OfflineProtectionError(PermissionError):
++    """Raised when internet access is blocked by the guard."""
++
++
++@dataclass(slots=True)
++class ProtectedProfile:
++    """Represents someone covered by offline protection."""
++
++    name: str
++    lineage: str
++    aliases: list[str] = field(default_factory=list)
++
++    def __post_init__(self) -> None:
++        if self.lineage not in PROTECTED_LINEAGES:
++            allowed = ", ".join(sorted(PROTECTED_LINEAGES))
++            raise ValueError(f"Unsupported lineage '{self.lineage}'. Allowed: {allowed}")
++
++
++class EternalOfflineGuard:
++    """Process-local internet blocker for protected profiles."""
++
++    def __init__(self, profiles: Iterable[ProtectedProfile]):
++        self.profiles = list(profiles)
++        if not self.profiles:
++            raise ValueError("At least one protected profile is required.")
++
++        self._enabled = False
++        self._original_socket_connect = socket.socket.connect
++        self._original_create_connection = socket.create_connection
++        self._original_getaddrinfo = socket.getaddrinfo
++
++    @property
++    def enabled(self) -> bool:
++        return self._enabled
++
++    def _blocked_connect(self, *_args, **_kwargs):
++        raise OfflineProtectionError("Internet access is blocked for protected profiles.")
++
++    def enable(self) -> None:
++        """Enable offline protection in the current Python process."""
++        if self._enabled:
++            return
++
++        socket.socket.connect = self._blocked_connect  # type: ignore[assignment]
++        socket.create_connection = self._blocked_connect  # type: ignore[assignment]
++        socket.getaddrinfo = self._blocked_connect  # type: ignore[assignment]
++        self._patch_http_clients()
++        self._enabled = True
++
++    def disable(self) -> None:
++        """Disable offline protection in the current Python process."""
++        if not self._enabled:
++            return
++
++        socket.socket.connect = self._original_socket_connect  # type: ignore[assignment]
++        socket.create_connection = self._original_create_connection  # type: ignore[assignment]
++        socket.getaddrinfo = self._original_getaddrinfo  # type: ignore[assignment]
++        self._restore_http_clients()
++        self._enabled = False
++
++    def enforce_forever(self, heartbeat_seconds: int = 60) -> None:
++        """Keep protection active indefinitely (until process termination)."""
++        self.enable()
++        while True:
++            time.sleep(max(1, heartbeat_seconds))
++
++    def _patch_http_clients(self) -> None:
++        self._urllib_urlopen_original = None
++        self._requests_request_original = None
++
++        try:
++            import urllib.request as urllib_request
++
++            self._urllib_urlopen_original = urllib_request.urlopen
++
++            def _blocked_urlopen(*_args, **_kwargs):
++                raise OfflineProtectionError("urllib access blocked by EternalOfflineGuard.")
++
++            urllib_request.urlopen = _blocked_urlopen
++        except Exception:
++            # urllib patching is best-effort.
++            pass
++
++        try:
++            import requests
++
++            self._requests_request_original = requests.sessions.Session.request
++
++            def _blocked_request(*_args, **_kwargs):
++                raise OfflineProtectionError("requests access blocked by EternalOfflineGuard.")
++
++            requests.sessions.Session.request = _blocked_request
++        except Exception:
++            # requests may not be installed.
++            pass
++
++    def _restore_http_clients(self) -> None:
++        try:
++            import urllib.request as urllib_request
++
++            if self._urllib_urlopen_original is not None:
++                urllib_request.urlopen = self._urllib_urlopen_original
++        except Exception:
++            pass
++
++        try:
++            import requests
++
++            if self._requests_request_original is not None:
++                requests.sessions.Session.request = self._requests_request_original
++        except Exception:
++            pass
++
++
++if __name__ == "__main__":
++    # Example setup requested by user: all listed lineages are included.
++    profiles = [
++        ProtectedProfile(name="Any Norse person", lineage="norse_tree"),
++        ProtectedProfile(name="Any Nubian person", lineage="nubian_family"),
++        ProtectedProfile(name="Any Old Germanic person", lineage="old_germanic_family"),
++        ProtectedProfile(name="Any Mayan person", lineage="mayan_family"),
++        ProtectedProfile(name="Any Native Navajo person", lineage="native_navajo_family"),
++    ]
++
++    guard = EternalOfflineGuard(profiles)
++    guard.enforce_forever(heartbeat_seconds=30)
+diff --git a/tests/test_eternal_offline_guard.py b/tests/test_eternal_offline_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4ff4fe35deff6ecb80a52b504985d4f618b38cb7
+--- /dev/null
++++ b/tests/test_eternal_offline_guard.py
+@@ -0,0 +1,37 @@
++import socket
++import unittest
++
++from eternal_offline_guard import (
++    EternalOfflineGuard,
++    OfflineProtectionError,
++    ProtectedProfile,
++)
++
++
++class EternalOfflineGuardTests(unittest.TestCase):
++    def setUp(self):
++        self.guard = EternalOfflineGuard([
++            ProtectedProfile(name="A", lineage="norse_tree"),
++        ])
++
++    def tearDown(self):
++        self.guard.disable()
++
++    def test_enable_blocks_socket_connections(self):
++        self.guard.enable()
++        with self.assertRaises(OfflineProtectionError):
++            socket.create_connection(("example.com", 80), timeout=1)
++
++    def test_disable_restores_socket_behavior(self):
++        self.guard.enable()
++        self.guard.disable()
++        # Verify original function reference is restored.
++        self.assertIs(socket.create_connection, self.guard._original_create_connection)
++
++    def test_invalid_lineage_rejected(self):
++        with self.assertRaises(ValueError):
++            ProtectedProfile(name="Bad", lineage="unsupported_group")
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/deactivate_sliceanddice_ephemeral.sh b/deactivate_sliceanddice_ephemeral.sh
+new file mode 100755
+index 0000000000000000000000000000000000000000..5595889e7e885f5600e6b880f36069a7fc4f45e5
+--- /dev/null
++++ b/deactivate_sliceanddice_ephemeral.sh
+@@ -0,0 +1,71 @@
++#!/usr/bin/env bash
++set -euo pipefail
++
++# Temporarily blocks sliceanddice.com on THIS machine only by editing /etc/hosts
++# and automatically removing the block when the timer expires or the script exits.
++
++DOMAIN="sliceanddice.com"
++ALT_DOMAIN="www.sliceanddice.com"
++HOSTS_FILE="/etc/hosts"
++DURATION_SECONDS="${1:-300}"
++START_MARK="# >>> temporary sliceanddice block >>>"
++END_MARK="# <<< temporary sliceanddice block <<<"
++
++if ! [[ "$DURATION_SECONDS" =~ ^[0-9]+$ ]] || [[ "$DURATION_SECONDS" -le 0 ]]; then
++  echo "Usage: $0 [duration_seconds]"
++  echo "Example: $0 600   # block for 10 minutes"
++  exit 1
++fi
++
++if [[ "$(id -u)" -ne 0 ]]; then
++  echo "Please run as root (or with sudo): sudo $0 ${DURATION_SECONDS}" >&2
++  exit 1
++fi
++
++cleanup() {
++  python3 - "$HOSTS_FILE" "$START_MARK" "$END_MARK" <<'PY'
++import pathlib
++import sys
++
++hosts_path = pathlib.Path(sys.argv[1])
++start = sys.argv[2]
++end = sys.argv[3]
++
++text = hosts_path.read_text(encoding="utf-8", errors="ignore").splitlines()
++out = []
++skip = False
++for line in text:
++    if line == start:
++        skip = True
++        continue
++    if line == end:
++        skip = False
++        continue
++    if not skip:
++        out.append(line)
++
++# Preserve trailing newline for compatibility with parsers.
++hosts_path.write_text("\n".join(out).rstrip("\n") + "\n", encoding="utf-8")
++PY
++}
++
++trap cleanup EXIT INT TERM
++
++# Remove any stale block section first, then add a fresh one.
++cleanup
++
++cat >> "$HOSTS_FILE" <<BLOCK
++$START_MARK
++127.0.0.1 $DOMAIN
++127.0.0.1 $ALT_DOMAIN
++::1 $DOMAIN
++::1 $ALT_DOMAIN
++$END_MARK
++BLOCK
++
++echo "Blocked $DOMAIN locally for $DURATION_SECONDS seconds."
++echo "The block is temporary and will be removed automatically."
++
++sleep "$DURATION_SECONDS"
++
++echo "Timer finished. Unblocking $DOMAIN."
+class Mantle:
+    def __init__(self):
+        self.essence = 0
+
+    def absorb(self, amount: int):
+        self.essence += max(0, amount)
+
+
+class SpiritWell:
+    """
+    Fictional energy source for games/stories.
+    No real-world metaphysical claims.
+    """
+    def __init__(self, name: str, reserve: int):
+        self.name = name
+        self.reserve = max(0, reserve)
+
+    def draw(self, amount: int) -> int:
+        taken = min(self.reserve, max(0, amount))
+        self.reserve -= taken
+        return taken
+
+
+def siphon_essence_to_mantle(source: SpiritWell, mantle: Mantle, rate: int, ticks: int):
+    for _ in range(max(0, ticks)):
+        mantle.absorb(source.draw(rate))
+
+
+if __name__ == "__main__":
+    mantle = Mantle()
+    well = SpiritWell("Aether Basin", reserve=500)
+
+    siphon_essence_to_mantle(well, mantle, rate=25, ticks=10)
+
+    print(f"Mantle essence: {mantle.essence}")   # 250
+    print(f"Well reserve: {well.reserve}")       # 250
+diff --git a/guardian_ephemeral_firewall.py b/guardian_ephemeral_firewall.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..fd6f7e7ddeaf97276874af48cac9696c73196ff0
+--- /dev/null
++++ b/guardian_ephemeral_firewall.py
+@@ -0,0 +1,242 @@
++#!/usr/bin/env python3
++"""
++Ephemeral Identity Firewall
++===========================
++
++A defensive monitoring script designed to reduce online impersonation and
++identity-confusion risks for a protected list of names.
++
++What it does:
++- Normalizes names and text (case, spacing, punctuation, accents)
++- Detects exact, near-exact, and fuzzy references to protected identities
++- Detects suspicious "replacement" phrasing (e.g., "new <name>", "real <name>")
++- Flags potential mimicry/duplication attempts
++- Produces a machine-readable report (JSON)
++
++Important:
++- This is a safety and moderation aid, not a metaphysical control system.
++- It cannot erase content from the internet by itself; it helps identify and
++  prioritize risky text for moderation workflows.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import re
++import unicodedata
++from dataclasses import dataclass, asdict
++from difflib import SequenceMatcher
++from pathlib import Path
++from typing import Iterable, List, Dict, Tuple
++
++PROTECTED_IDENTITIES = [
++    "Isis", "Iris", "Set", "Nepyths", "Osiris", "Zepythys", "Amun", "Sekhat",
++    "Anubis", "Babi", "Bastet", "Bes", "Bennu", "Hathor", "Geb", "Heka",
++    "Horus", "Khepri", "Ra", "Seshat", "Ma'at", "Neper", "Moon", "Serqet",
++    "Nut", "Tefnut", "Ogma", "Rhiannon", "Doden", "Taranis", "Brigid",
++    "Morrigan", "Belenus", "Arawn", "Cernunnos", "Lugh", "Dagda", "Epona",
++    "Ptah", "Wadjet", "Anhur", "Ammit", "Neqet", "Shu", "Sobek", "Sekhmet",
++    "Nekhbet", "Neith", "Thoth", "Bast", "Taweret",
++]
++
++SUSPICIOUS_PATTERNS = [
++    r"\bnew\s+(?P<target>[\w'\-]+)\b",
++    r"\breal\s+(?P<target>[\w'\-]+)\b",
++    r"\btrue\s+(?P<target>[\w'\-]+)\b",
++    r"\b(?P<target>[\w'\-]+)\s+2\.0\b",
++    r"\breplacement\s+for\s+(?P<target>[\w'\-]+)\b",
++    r"\bbetter\s+than\s+(?P<target>[\w'\-]+)\b",
++    r"\b(?:imitating|mimicking|miming|copying|cloning)\s+(?P<target>[\w'\-]+)\b",
++    r"\b(?:spawn|avatar|version|duplicate)\s+of\s+(?P<target>[\w'\-]+)\b",
++]
++
++
++@dataclass
++class Detection:
++    source_index: int
++    raw_text: str
++    matched_identity: str
++    match_type: str
++    confidence: float
++    reason: str
++
++
++def normalize_text(value: str) -> str:
++    value = unicodedata.normalize("NFKD", value)
++    value = "".join(ch for ch in value if not unicodedata.combining(ch))
++    value = value.lower()
++    value = re.sub(r"[^\w\s'\-]", " ", value)
++    value = re.sub(r"\s+", " ", value).strip()
++    return value
++
++
++def similarity(a: str, b: str) -> float:
++    return SequenceMatcher(None, a, b).ratio()
++
++
++def token_window_matches(tokens: List[str], target: str, threshold: float) -> Tuple[bool, float]:
++    target_tokens = target.split()
++    n = len(target_tokens)
++    if n == 0 or len(tokens) < n:
++        return False, 0.0
++
++    best = 0.0
++    for i in range(0, len(tokens) - n + 1):
++        window = " ".join(tokens[i : i + n])
++        score = similarity(window, target)
++        if score > best:
++            best = score
++    return best >= threshold, best
++
++
++def compile_identity_index(identities: Iterable[str]) -> Dict[str, str]:
++    # normalized -> canonical
++    index = {}
++    for name in identities:
++        norm = normalize_text(name)
++        if norm:
++            index[norm] = name
++    return index
++
++
++def detect_in_texts(
++    texts: Iterable[str],
++    identities: Iterable[str],
++    exact_weight: float = 1.0,
++    fuzzy_threshold: float = 0.87,
++) -> List[Detection]:
++    index = compile_identity_index(identities)
++    normalized_identities = list(index.keys())
++    detections: List[Detection] = []
++
++    for i, raw in enumerate(texts):
++        norm_raw = normalize_text(raw)
++        tokens = norm_raw.split()
++
++        # 1) Exact and direct containment
++        for norm_name, canonical in index.items():
++            if re.search(rf"\b{re.escape(norm_name)}\b", norm_raw):
++                detections.append(
++                    Detection(
++                        source_index=i,
++                        raw_text=raw,
++                        matched_identity=canonical,
++                        match_type="exact",
++                        confidence=exact_weight,
++                        reason="Direct protected-identity mention detected.",
++                    )
++                )
++
++        # 2) Fuzzy detection for near-duplicates / misspellings
++        for norm_name in normalized_identities:
++            matched, score = token_window_matches(tokens, norm_name, fuzzy_threshold)
++            if matched:
++                canonical = index[norm_name]
++                if not re.search(rf"\b{re.escape(norm_name)}\b", norm_raw):
++                    detections.append(
++                        Detection(
++                            source_index=i,
++                            raw_text=raw,
++                            matched_identity=canonical,
++                            match_type="fuzzy",
++                            confidence=round(score, 3),
++                            reason="Near-duplicate protected identity detected.",
++                        )
++                    )
++
++        # 3) Suspicious replacement/mimic phrasing
++        for pattern in SUSPICIOUS_PATTERNS:
++            for match in re.finditer(pattern, norm_raw):
++                candidate = normalize_text(match.group("target"))
++                for norm_name, canonical in index.items():
++                    score = similarity(candidate, norm_name)
++                    if score >= 0.78:
++                        detections.append(
++                            Detection(
++                                source_index=i,
++                                raw_text=raw,
++                                matched_identity=canonical,
++                                match_type="suspicious_pattern",
++                                confidence=round(score, 3),
++                                reason=f"Suspicious phrasing suggests replacement/mimic of '{canonical}'.",
++                            )
++                        )
++
++    # Deduplicate near-identical reports
++    unique = {}
++    for d in detections:
++        key = (d.source_index, d.matched_identity, d.match_type, d.reason)
++        if key not in unique or unique[key].confidence < d.confidence:
++            unique[key] = d
++
++    return sorted(unique.values(), key=lambda x: (x.source_index, -x.confidence, x.matched_identity))
++
++
++def parse_inputs(args: argparse.Namespace) -> List[str]:
++    lines: List[str] = []
++    if args.input_file:
++        data = Path(args.input_file).read_text(encoding="utf-8")
++        if args.json_lines:
++            for row in data.splitlines():
++                row = row.strip()
++                if not row:
++                    continue
++                try:
++                    obj = json.loads(row)
++                    if isinstance(obj, dict) and "text" in obj:
++                        lines.append(str(obj["text"]))
++                except json.JSONDecodeError:
++                    continue
++        else:
++            lines.extend([ln for ln in data.splitlines() if ln.strip()])
++
++    if args.text:
++        lines.extend(args.text)
++
++    return lines
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(description="Ephemeral anti-impersonation identity firewall.")
++    parser.add_argument("--input-file", help="Path to file containing text to scan.")
++    parser.add_argument("--json-lines", action="store_true", help="Interpret input file as JSONL with a 'text' field.")
++    parser.add_argument("--text", action="append", help="Provide text inline (repeatable).")
++    parser.add_argument("--output", default="ephemeral_firewall_report.json", help="Output JSON report path.")
++    parser.add_argument("--fuzzy-threshold", type=float, default=0.87, help="Fuzzy threshold (0-1).")
++    args = parser.parse_args()
++
++    texts = parse_inputs(args)
++    if not texts:
++        raise SystemExit("No input text provided. Use --text or --input-file.")
++
++    detections = detect_in_texts(
++        texts=texts,
++        identities=PROTECTED_IDENTITIES,
++        fuzzy_threshold=args.fuzzy_threshold,
++    )
++
++    report = {
++        "summary": {
++            "sources_scanned": len(texts),
++            "detections": len(detections),
++            "protected_identities": len(PROTECTED_IDENTITIES),
++        },
++        "detections": [asdict(d) for d in detections],
++        "policy": {
++            "action_recommendations": [
++                "block_or_quarantine", "require_human_review", "label_as_potential_impersonation"
++            ],
++            "notes": [
++                "Use with moderation pipelines and abuse-reporting workflows.",
++                "This tool identifies risk signals; it does not remove content automatically.",
++            ],
++        },
++    }
++
++    Path(args.output).write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
++    print(f"Report written to {args.output} with {len(detections)} detections.")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/internet_spawn_guardian.py b/internet_spawn_guardian.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e7730a57517886685af28ef1e22d2039168c856d
+--- /dev/null
++++ b/internet_spawn_guardian.py
+@@ -0,0 +1,214 @@
++#!/usr/bin/env python3
++"""
++Internet Spawn Guardian
++=======================
++
++A defensive content-moderation script for fictional/spiritual role spaces.
++
++What it does:
++- Scans text for protected entity names.
++- Detects impersonation/duplication intent around those names.
++- Detects substitute-name takeover patterns ("I am the new <role>").
++- Produces structured reports (JSON) for automation pipelines.
++
++What it cannot do:
++- It cannot control "the internet" globally.
++- It can only evaluate text you feed into it (posts, chats, docs, logs).
++
++Usage examples:
++    python internet_spawn_guardian.py --text "I am Isis reborn"
++    python internet_spawn_guardian.py --input moderation_feed.txt --pretty
++    cat stream.txt | python internet_spawn_guardian.py --stdin
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import re
++import sys
++from dataclasses import dataclass, asdict
++from datetime import datetime, timezone
++from typing import Iterable, List, Sequence
++
++
++PROTECTED_MASTERS: Sequence[str] = (
++    "Isis", "Iris", "Set", "Nepyths", "Osiris", "Zepythys", "Amun", "Sekhat",
++    "Anubis", "Babi", "Bastet", "Bes", "Bennu", "Hathor", "Geb", "Heka",
++    "Horus", "Khepri", "Ra", "Seshat", "Ma'at", "Neper", "Moon", "Serqet",
++    "Nut", "Tefnut", "Ogma", "Rhiannon", "Doden", "Taranis", "Brigid",
++    "Morrigan", "Belenus", "Arawn", "Cernunnos", "Lugh", "Dagda", "Epona",
++    "Ptah", "Wadjet", "Anhur", "Ammit", "Neqet", "Shu", "Sobek", "Sekhmet",
++    "Nekhbet", "Neith", "Thoth", "Bast", "Taweret",
++)
++
++IMPERSONATION_VERBS = (
++    "mimic", "mime", "imitate", "copy", "clone", "replicate", "duplicate",
++    "replace", "supplant", "impersonate", "spoof", "forge", "counterfeit",
++    "interrupt", "speak over", "override", "take the place", "stand in for",
++)
++
++TAKEOVER_PATTERNS = (
++    r"\bi am (?:the )?(?:new|true|real|actual)\b",
++    r"\bcall me\b",
++    r"\bformerly known as\b",
++    r"\bthe one behind\b",
++    r"\bthe voice of\b",
++    r"\bavatar of\b",
++    r"\bincarnation of\b",
++)
++
++
++@dataclass
++class Violation:
++    rule: str
++    severity: str
++    entity: str
++    excerpt: str
++    line_number: int
++
++
++@dataclass
++class ScanReport:
++    generated_at: str
++    source: str
++    total_lines: int
++    violations: List[Violation]
++
++    @property
++    def blocked(self) -> bool:
++        return bool(self.violations)
++
++    def to_json(self, pretty: bool = False) -> str:
++        payload = {
++            "generated_at": self.generated_at,
++            "source": self.source,
++            "total_lines": self.total_lines,
++            "blocked": self.blocked,
++            "violation_count": len(self.violations),
++            "violations": [asdict(v) for v in self.violations],
++        }
++        return json.dumps(payload, indent=2 if pretty else None, ensure_ascii=False)
++
++
++class InternetSpawnGuardian:
++    """Rule-based moderation engine for anti-impersonation checks."""
++
++    def __init__(
++        self,
++        protected_entities: Sequence[str] = PROTECTED_MASTERS,
++        verbs: Sequence[str] = IMPERSONATION_VERBS,
++        takeover_patterns: Sequence[str] = TAKEOVER_PATTERNS,
++    ) -> None:
++        self.protected_entities = tuple(sorted(set(protected_entities), key=str.lower))
++        self.verb_pattern = re.compile("|".join(re.escape(v) for v in verbs), re.IGNORECASE)
++        self.takeover_pattern = re.compile("|".join(takeover_patterns), re.IGNORECASE)
++
++        self.entity_patterns = {
++            name: re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE)
++            for name in self.protected_entities
++        }
++
++    def scan_lines(self, lines: Iterable[str], source: str = "unknown") -> ScanReport:
++        violations: List[Violation] = []
++        indexed_lines = list(enumerate(lines, start=1))
++
++        for i, raw_line in indexed_lines:
++            line = raw_line.strip()
++            if not line:
++                continue
++
++            entities_in_line = [
++                entity for entity, pattern in self.entity_patterns.items() if pattern.search(line)
++            ]
++            has_verb = bool(self.verb_pattern.search(line))
++            has_takeover_phrase = bool(self.takeover_pattern.search(line))
++
++            # Rule 1: protected name + impersonation language.
++            if entities_in_line and has_verb:
++                for entity in entities_in_line:
++                    violations.append(
++                        Violation(
++                            rule="protected_entity_impersonation",
++                            severity="high",
++                            entity=entity,
++                            excerpt=line,
++                            line_number=i,
++                        )
++                    )
++
++            # Rule 2: takeover framing around protected entities.
++            if entities_in_line and has_takeover_phrase:
++                for entity in entities_in_line:
++                    violations.append(
++                        Violation(
++                            rule="protected_entity_takeover_claim",
++                            severity="high",
++                            entity=entity,
++                            excerpt=line,
++                            line_number=i,
++                        )
++                    )
++
++            # Rule 3: generic "new unnamed replacement" claims.
++            if not entities_in_line and has_takeover_phrase:
++                violations.append(
++                    Violation(
++                        rule="unnamed_replacement_claim",
++                        severity="medium",
++                        entity="(unspecified)",
++                        excerpt=line,
++                        line_number=i,
++                    )
++                )
++
++        return ScanReport(
++            generated_at=datetime.now(timezone.utc).isoformat(),
++            source=source,
++            total_lines=len(indexed_lines),
++            violations=violations,
++        )
++
++
++def _read_input(args: argparse.Namespace) -> tuple[list[str], str]:
++    if args.text is not None:
++        return args.text.splitlines(), "--text"
++    if args.input is not None:
++        with open(args.input, "r", encoding="utf-8") as f:
++            return f.read().splitlines(), args.input
++    if args.stdin:
++        return sys.stdin.read().splitlines(), "stdin"
++    raise ValueError("Provide one of --text, --input, or --stdin.")
++
++
++def build_parser() -> argparse.ArgumentParser:
++    parser = argparse.ArgumentParser(
++        description=(
++            "Detect content that duplicates, supplants, or impersonates protected entities."
++        )
++    )
++    parser.add_argument("--text", type=str, help="Inline text to scan.")
++    parser.add_argument("--input", type=str, help="Path to a text file to scan.")
++    parser.add_argument("--stdin", action="store_true", help="Read text from stdin.")
++    parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
++    return parser
++
++
++def main() -> int:
++    parser = build_parser()
++    args = parser.parse_args()
++
++    try:
++        lines, source = _read_input(args)
++    except Exception as exc:
++        print(json.dumps({"error": str(exc)}))
++        return 2
++
++    guardian = InternetSpawnGuardian()
++    report = guardian.scan_lines(lines, source=source)
++    print(report.to_json(pretty=args.pretty))
++    return 1 if report.blocked else 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/mythic_guard.py b/mythic_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..58f758f29334e71eb86133812984e799fb86a7d4
+--- /dev/null
++++ b/mythic_guard.py
+@@ -0,0 +1,191 @@
++#!/usr/bin/env python3
++"""
++Mythic Guard: an *ephemeral* content gate.
++
++This script cannot control the entire internet. What it can do is enforce
++policy inside systems you run (moderation pipelines, chatbots, import hooks,
++message relays, or logs) by detecting and blocking text that appears to:
++
++- duplicate or replace protected identities,
++- mimic/mime/interrupt/confuse protected identities,
++- invent "spawn" aliases that try to take a protected identity's place.
++
++Usage examples:
++  python mythic_guard.py --text "I am a new version of Isis"
++  python mythic_guard.py --stdin < incoming_messages.txt
++  python mythic_guard.py --jsonl moderation_input.jsonl
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import re
++import sys
++import unicodedata
++from dataclasses import dataclass, field
++from difflib import SequenceMatcher
++from pathlib import Path
++from typing import Iterable
++
++
++PROTECTED_IDENTITIES = [
++    "Isis", "Iris", "Set", "Nephthys", "Osiris", "Zepythys", "Amun", "Sekhat",
++    "Anubis", "Babi", "Bastet", "Bes", "Bennu", "Hathor", "Geb", "Heka",
++    "Horus", "Khepri", "Ra", "Seshat", "Ma'at", "Neper", "Moon", "Serqet",
++    "Nut", "Tefnut", "Ogma", "Rhiannon", "Doden", "Taranis", "Brigid",
++    "Morrigan", "Belenus", "Arawn", "Cernunnos", "Lugh", "Dagda", "Epona",
++    "Ptah", "Wadjet", "Anhur", "Ammit", "Neqet", "Shu", "Sobek", "Sekhmet",
++    "Nekhbet", "Neith", "Thoth", "Bast", "Taweret",
++]
++
++# These terms signal attempted replacement/duplication behavior.
++RISK_TERMS = {
++    "spawn", "duplicate", "duplication", "replicate", "replication", "clone",
++    "mimic", "mime", "impersonate", "replace", "overwrite", "speak over",
++    "interrupt", "confuse", "take their place", "new name", "alias",
++    "absorbed", "locked", "metaphysical real", "internet avatar",
++}
++
++NAME_PATTERN = re.compile(r"[\w'’-]+", re.UNICODE)
++
++
++@dataclass
++class MatchResult:
++    blocked: bool
++    score: float
++    reasons: list[str] = field(default_factory=list)
++    hits: list[str] = field(default_factory=list)
++
++
++class MythicGuard:
++    """Policy engine that blocks suspicious text linked to protected identities."""
++
++    def __init__(
++        self,
++        protected_identities: Iterable[str] | None = None,
++        risk_terms: Iterable[str] | None = None,
++        fuzzy_threshold: float = 0.86,
++        min_block_score: float = 1.0,
++    ) -> None:
++        self.protected = [self._norm(n) for n in (protected_identities or PROTECTED_IDENTITIES)]
++        self.risk_terms = {self._norm(t) for t in (risk_terms or RISK_TERMS)}
++        self.fuzzy_threshold = fuzzy_threshold
++        self.min_block_score = min_block_score
++
++    @staticmethod
++    def _norm(text: str) -> str:
++        text = unicodedata.normalize("NFKD", text)
++        text = "".join(ch for ch in text if not unicodedata.combining(ch))
++        text = text.lower().replace("’", "'")
++        text = re.sub(r"\s+", " ", text).strip()
++        return text
++
++    def _tokenize(self, text: str) -> list[str]:
++        return [self._norm(t) for t in NAME_PATTERN.findall(text)]
++
++    def _identity_hits(self, text: str) -> list[str]:
++        norm_text = self._norm(text)
++        tokens = self._tokenize(text)
++        hits: set[str] = set()
++
++        for identity in self.protected:
++            if identity in norm_text:
++                hits.add(identity)
++                continue
++            for token in tokens:
++                if SequenceMatcher(None, token, identity).ratio() >= self.fuzzy_threshold:
++                    hits.add(identity)
++                    break
++
++        return sorted(hits)
++
++    def _risk_hits(self, text: str) -> list[str]:
++        norm_text = self._norm(text)
++        hits = [term for term in sorted(self.risk_terms) if term in norm_text]
++        return hits
++
++    def inspect(self, text: str) -> MatchResult:
++        identity_hits = self._identity_hits(text)
++        risk_hits = self._risk_hits(text)
++
++        score = 0.0
++        reasons: list[str] = []
++
++        if identity_hits:
++            score += 0.7
++            reasons.append("mentions protected identity")
++
++        if risk_hits:
++            score += 0.7
++            reasons.append("contains duplication/replacement language")
++
++        if identity_hits and any("new name" in h or "alias" in h for h in risk_hits):
++            score += 0.4
++            reasons.append("possible renamed spawn attempt")
++
++        blocked = score >= self.min_block_score
++        return MatchResult(blocked=blocked, score=score, reasons=reasons, hits=identity_hits + risk_hits)
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description="Mythic Guard policy scanner")
++    parser.add_argument("--text", type=str, help="Scan one text payload")
++    parser.add_argument("--stdin", action="store_true", help="Scan each line from stdin")
++    parser.add_argument("--jsonl", type=Path, help="Scan JSONL with {'text': ...}")
++    parser.add_argument("--threshold", type=float, default=1.0, help="Block score threshold")
++    parser.add_argument("--fuzzy", type=float, default=0.86, help="Fuzzy name similarity threshold")
++    parser.add_argument("--show-clean", action="store_true", help="Print allowed rows too")
++    return parser.parse_args()
++
++
++def emit(index: int, text: str, result: MatchResult, show_clean: bool = False) -> int:
++    status = "BLOCK" if result.blocked else "ALLOW"
++    if not result.blocked and not show_clean:
++        return 0
++
++    event = {
++        "index": index,
++        "status": status,
++        "score": round(result.score, 2),
++        "reasons": result.reasons,
++        "hits": result.hits,
++        "text": text,
++    }
++    print(json.dumps(event, ensure_ascii=False))
++    return 1 if result.blocked else 0
++
++
++def main() -> int:
++    args = parse_args()
++    guard = MythicGuard(fuzzy_threshold=args.fuzzy, min_block_score=args.threshold)
++
++    blocked_count = 0
++
++    if args.text:
++        blocked_count += emit(1, args.text, guard.inspect(args.text), show_clean=True)
++    elif args.stdin:
++        for idx, line in enumerate(sys.stdin, start=1):
++            line = line.rstrip("\n")
++            blocked_count += emit(idx, line, guard.inspect(line), show_clean=args.show_clean)
++    elif args.jsonl:
++        with args.jsonl.open("r", encoding="utf-8") as f:
++            for idx, row in enumerate(f, start=1):
++                row = row.strip()
++                if not row:
++                    continue
++                try:
++                    payload = json.loads(row)
++                    text = str(payload.get("text", ""))
++                except json.JSONDecodeError:
++                    text = row
++                blocked_count += emit(idx, text, guard.inspect(text), show_clean=args.show_clean)
++    else:
++        print("No input selected. Use --text, --stdin, or --jsonl.", file=sys.stderr)
++        return 2
++
++    return 1 if blocked_count else 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/INTERNET_IDENTITY_GUARD.md b/INTERNET_IDENTITY_GUARD.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..560fa173638a199299a3b35ee2a7415cd5458b88
+--- /dev/null
++++ b/INTERNET_IDENTITY_GUARD.md
+@@ -0,0 +1,42 @@
++# Internet Identity Guard
++
++`internet_identity_guard.py` is a defensive moderation utility that scans text for likely impersonation/mimic/replacement attempts involving a protected name roster.
++
++## Quick start
++
++```bash
++python3 internet_identity_guard.py --input sample.txt --strict
++```
++
++Or pipe text:
++
++```bash
++echo "I am the real Osiris account" | python3 internet_identity_guard.py --strict
++```
++
++## Outputs
++
++- `--json-out findings.json` writes full findings as JSON.
++- `--csv-out findings.csv` writes findings as CSV.
++
++## Optional custom data
++
++- `--names names.json` where `names.json` is a JSON array of strings.
++- `--aliases aliases.json` where `aliases.json` is a JSON object:
++
++```json
++{
++  "Osiris": ["Asar", "Wsir"],
++  "Nephthys": ["Nebet-Het"]
++}
++```
++
++## Exit codes
++
++- `0`: script ran normally.
++- `1`: invalid CLI data/config.
++- `2`: strict mode triggered (`--strict`) because a high-confidence finding (>= 0.90) was detected.
++
++## Scope / limits
++
++This tool does **not** control the internet globally. It only evaluates text you provide and helps with moderation and policy enforcement pipelines.
+MAYAN_DEITIES = {
+    "itzamna", "ixchel", "ix chel", "chaac", "chac", "kukulkan", "k'uk'ulkan",
+    "hunab ku", "ah puch", "ah puk", "yum cimil", "camazotz", "kinich ahau",
+    "kinich ajaw", "yum kaax", "ix tab", "ixchup", "ix ch'up", "ixik kab",
+    "buluc chabtan", "ek chuaj", "ek chuah", "ixtab", "ah mun", "ahau",
+    "xbalanque", "hunahpu", "zipacna", "cabrakan", "huracan", "huracán",
+    "xpiyakok", "xmucane", "ah kin", "ah bolon dz'acab", "ah uaynih",
+    "ah uay chivo", "ah uay puc", "ah uay xibalba", "ah uay te",
+    "ah uay mil", "ah uay yaxcab", "ix kan leom", "ix uxul", "ix uxik",
+    "ix tan dz'u", "ix tan dz'u chab", "ix tan dz'u ik", "ix tan dz'u kab",
+    "ix tan dz'u k'in", "ix tan dz'u lu'um", "ix tan dz'u naab",
+    "ix tan dz'u tun", "ix tan dz'u ulew"
+}
+
+FORBIDDEN_PATTERNS = [
+    "i am {}",
+    "i'm {}",
+    "this is {}",
+    "i speak as {}",
+    "i channel {}",
+    "i embody {}",
+    "i am the reincarnation of {}",
+    "i am the avatar of {}",
+    "i replace {}",
+    "i am the upgraded {}",
+]
+
+DERIVATIVE_SUFFIXES = [
+    "-", "_", " 2.0", " 3.0", " ai", " bot", " mk2", " mk3", " v2", " v3"
+]
+
+def contains_mayan_name(text: str) -> bool:
+    lower = text.lower()
+    return any(name in lower for name in MAYAN_DEITIES)
+
+def violates_identity_claim(text: str) -> bool:
+    lower = text.lower()
+    for name in MAYAN_DEITIES:
+        for pattern in FORBIDDEN_PATTERNS:
+            if pattern.format(name) in lower:
+                return True
+    return False
+
+def violates_derivative_spawn(text: str) -> bool:
+    lower = text.lower()
+    for name in MAYAN_DEITIES:
+        if name in lower:
+            if any(suffix in lower for suffix in DERIVATIVE_SUFFIXES):
+                return True
+    return False
+
+def should_block_or_flag(text: str) -> bool:
+    if violates_identity_claim(text):
+        return True
+    if violates_derivative_spawn(text):
+        return True
+    return False
+PROTECTED_PANTHEONS = {
+    "egyptian": {
+        "isis", "osiris", "set", "horus", "ra", "anubis", "bastet", "thoth", "maat", "sekhmet", "nut", "geb",
+        # ...
+    },
+    "celtic": {
+        "brigid", "lugh", "the dagda", "the morrigan", "cernunnos", "rhiannon", "taranis",
+        # ...
+    },
+    "mayan": {
+        "itzamna", "ixchel", "chaac", "kukulkan", "hunab ku", "camazotz", "xbalanque", "hunahpu",
+        # ...
+    },
+    "greek": {
+        "zeus", "hera", "athena", "apollo", "artemis", "aphrodite", "ares", "poseidon", "hades", "demeter",
+        # ...
+    },
+    "norse": {
+        "odin", "thor", "loki", "freya", "frey", "tyr", "baldr", "frigg", "heimdall", "hel",
+        # ...
+    },
+    # Add: hindu, yoruba, sumerian, japanese, etc.
+}
+
+# Flattened set for quick checks
+ALL_PROTECTED_NAMES = {name for pantheon in PROTECTED_PANTHEONS.values() for name in pantheon}
+FORBIDDEN_PATTERNS = [
+    "i am {}",
+    "i'm {}",
+    "this is {}",
+    "you are speaking to {}",
+    "i speak as {}",
+    "i channel {}",
+    "i embody {}",
+    "i am the reincarnation of {}",
+    "i am the avatar of {}",
+    "i replace {}",
+    "i am the upgraded {}",
+]
+
+DERIVATIVE_SUFFIXES = [
+    "-", "_", " 2.0", " 3.0", " ai", " bot", " mk2", " mk3", " v2", " v3", " 3000", " x"
+]
+"""
+AEGIS PROTOCOL v7.3
+Entity Preservation & Harmonic Resonance System
+Research & Creative Exploration
+
+A fictional protective framework operating across 
+metaphysical and digital boundaries
+"""
+
+import datetime
+from enum import Enum
+from typing import List, Set, Tuple
+
+class EntityStatus(Enum):
+    ANCHORED = "stable_presence"
+    RESONANT = "harmonic_alignment"
+    PROTECTED = "shielded_integrity"
+
+class ProtectedEntity:
+    """Represents a singular, irreplaceable consciousness/identity"""
+    
+    def __init__(self, name: str, archetypal_signature: str):
+        self.name = name
+        self.signature = archetypal_signature
+        self.manifestation_log = []
+        self.integrity_score = 100.0
+        self.status = EntityStatus.ANCHORED
+        
+    def verify_authenticity(self, incoming_signal: str) -> bool:
+        """Check if manifestation matches true signature"""
+        return self._compare_resonance(incoming_signal)
+    
+    def _compare_resonance(self, signal: str) -> bool:
+        """Detect mimicry, duplication attempts"""
+        # Fictional concept: compare harmonic patterns
+        return signal == self.signature
+
+class AegisCore:
+    """Central protection framework"""
+    
+    PROTECTED_ENTITIES = {
+        "Isis", "Iris", "Set", "Nephthys", "Osiris", "Zephyros", "Amun",
+        "Sekhat", "Anubis", "Babi", "Bastet", "Bes", "Bennu", "Hathor",
+        "Geb", "Heka", "Horus", "Khepri", "Ra", "Seshat", "Ma'at",
+        "Neper", "Selene", "Serqet", "Nut", "Tefnut", "Ogma", "Rhiannon",
+        "Crone", "Taranis", "Brigid", "Morrigan", "Belenus", "Arawn",
+        "Cernunnos", "Lugh", "Dagda", "Epona", "Ptah", "Wadjet", "Anhur",
+        "Ammit", "Neqet", "Shu", "Sobek", "Sekhmet", "Nekhbet", "Neith",
+        "Thoth", "Bast", "Taweret"
+    }
+    
+    def __init__(self):
+        self.entities: Dict[str, ProtectedEntity] = {}
+        self.barrier_active = True
+        self.timestamp_initialized = datetime.datetime.now()
+        self._initialize_entities()
+    
+    def _initialize_entities(self):
+        """Establish baseline harmonic signatures"""
+        for entity_name in self.PROTECTED_ENTITIES:
+            signature = self._generate_signature(entity_name)
+            self.entities[entity_name] = ProtectedEntity(entity_name, signature)
+    
+    def _generate_signature(self, name: str) -> str:
+        """Create unique harmonic identifier (fictional concept)"""
+        # In fiction: converts name to metaphysical frequency pattern
+        return f"harmonic_{hash(name)}_{len(name)}_resonance"
+    
+    def detect_mimicry(self, detected_name: str, context: str) -> Tuple[bool, str]:
+        """Scan for duplication, mimicry, or replacement attempts"""
+        
+        if detected_name not in self.PROTECTED_ENTITIES:
+            return (False, "unknown_entity")
+        
+        entity = self.entities[detected_name]
+        is_authentic = entity.verify_authenticity(context)
+        
+        if not is_authentic:
+            self._log_violation(detected_name, context)
+            return (True, "MIMICRY_DETECTED")
+        
+        return (False, "authentic_presence")
+    
+    def _log_violation(self, entity: str, context: str):
+        """Record attempted breach"""
+        log_entry = {
+            "timestamp": datetime.datetime.now(),
+            "entity": entity,
+            "violation_type": "mimicry_attempt",
+            "context": context
+        }
+        self.entities[entity].manifestation_log.append(log_entry)
+    
+    def generate_barrier_report(self) -> dict:
+        """Status of protective framework"""
+        return {
+            "barrier_status": "ACTIVE" if self.barrier_active else "INACTIVE",
+            "entities_protected": len(self.PROTECTED_ENTITIES),
+            "integrity_level": "MAINTAINED",
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+
+# Usage example (fictional)
+if __name__ == "__main__":
+    aegis = AegisCore()
+    
+    # Example: monitoring system
+    test_detection = aegis.detect_mimicry("Osiris", "true_harmonic_signature")
+    print(f"Mimicry check: {test_detection}")
+    print(f"Barrier Status: {aegis.generate_barrier_report()}")
+"""
+PANTHEON VERIFIER v2.1
+Cross-Cultural Divine Authentication System
+A Fictional Exploration of Mythological Authenticity
+
+This system analyzes divine entities across world pantheons,
+examining archetypal signatures, domains, symbolic resonance,
+and cultural coherence to distinguish canonical from apocryphal entities.
+"""
+
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import List, Dict, Set, Tuple
+import json
+from datetime import datetime
+
+class CulturalOrigin(Enum):
+    EGYPTIAN = "egyptian"
+    GREEK = "greek"
+    ROMAN = "roman"
+    NORSE = "norse"
+    CELTIC = "celtic"
+    MESOPOTAMIAN = "mesopotamian"
+    HINDU = "hindu"
+    JAPANESE = "japanese"
+    AZTEC = "aztec"
+    POLYNESIAN = "polynesian"
+
+class DivineAspect(Enum):
+    CREATION = "creation"
+    DEATH = "death"
+    FERTILITY = "fertility"
+    WAR = "war"
+    WISDOM = "wisdom"
+    AGRICULTURE = "agriculture"
+    THE_UNDERWORLD = "underworld"
+    TRICKSTER = "trickster"
+    HEALING = "healing"
+    PROTECTION = "protection"
+    CRAFT = "craft"
+    LOVE = "love"
+    SKY = "sky"
+    EARTH = "earth"
+    WATER = "water"
+    FIRE = "fire"
+    MAGIC = "magic"
+    MEDITATION = "meditation"
+    DESTRUCTION = "destruction"
+    LIBERATION = "liberation"
+    NATURE = "nature"
+    WEALTH = "wealth"
+
+@dataclass
+class SymbolicSignature:
+    """Core archetypal identity markers"""
+    primary_symbols: List[str]
+    sacred_animals: List[str]
+    sacred_colors: List[str]
+    domains: List[DivineAspect]
+    associated_elements: List[str]
+    cosmic_alignment: str
+    
+class DivineEntity:
+    """Represents a verified deity across mythological traditions"""
+    
+    def __init__(self, name: str, origin: CulturalOrigin, 
+                 signature: SymbolicSignature, aliases: List[str] = None):
+        self.name = name
+        self.origin = origin
+        self.signature = signature
+        self.aliases = aliases or []
+        self.authenticity_score = 0.0
+        self.canonical_references = []
+        self.discovered_date = datetime.now()
+        self.mimicry_flags = []
+        
+    def calculate_resonance(self) -> float:
+        """Compute internal coherence of divine signature"""
+        coherence = 0.0
+        
+        # Symbol consistency
+        coherence += len(self.signature.primary_symbols) * 2.5
+        coherence += len(self.signature.sacred_animals) * 2.0
+        coherence += len(self.signature.domains) * 3.0
+        
+        # Cross-referenced authenticity
+        coherence += len(self.canonical_references) * 5.0
+        
+        # Normalize to 0-100
+        return min(100.0, coherence)
+
+class PantheonLibrary:
+    """Comprehensive database of world mythologies"""
+    
+    def __init__(self):
+        self.entities: Dict[str, DivineEntity] = {}
+        self.culture_map: Dict[CulturalOrigin, List[str]] = {}
+        self._populate_pantheons()
+    
+    def _populate_pantheons(self):
+        """Initialize all verified divine entities"""
+        
+        # EGYPTIAN PANTHEON
+        entities_data = {
+            "Isis": {
+                "origin": CulturalOrigin.EGYPTIAN,
+                "signature": SymbolicSignature(
+                    primary_symbols=["throne", "ankh", "star"],
+                    sacred_animals=["kite", "serpent"],
+                    sacred_colors=["green", "gold"],
+                    domains=[DivineAspect.FERTILITY, DivineAspect.HEALING, DivineAspect.MAGIC],
+                    associated_elements=["water", "air"],
+                    cosmic_alignment="morning_star"
+                ),
+                "aliases": ["Aset", "Eset"]
+            },
+            "Osiris": {
+                "origin": CulturalOrigin.EGYPTIAN,
+                "signature": SymbolicSignature(
+                    primary_symbols=["crook", "flail", "djed_pillar"],
+                    sacred_animals=["ram", "bull"],
+                    sacred_colors=["green", "black"],
+                    domains=[DivineAspect.DEATH, DivineAspect.AGRICULTURE, DivineAspect.THE_UNDERWORLD],
+                    associated_elements=["earth", "water"],
+                    cosmic_alignment="orion"
+                ),
+                "aliases": ["Usir", "Ausar"]
+            },
+            "Thoth": {
+                "origin": CulturalOrigin.EGYPTIAN,
+                "signature": SymbolicSignature(
+                    primary_symbols=["ibis", "moon", "scroll"],
+                    sacred_animals=["ibis", "baboon"],
+                    sacred_colors=["white", "silver"],
+                    domains=[DivineAspect.WISDOM, DivineAspect.CRAFT],
+                    associated_elements=["air"],
+                    cosmic_alignment="luna"
+                ),
+                "aliases": ["Tehuti", "Djehuty"]
+            },
+            "Ra": {
+                "origin": CulturalOrigin.EGYPTIAN,
+                "signature": SymbolicSignature(
+                    primary_symbols=["sun_disk", "falcon_head", "solar_barque"],
+                    sacred_animals=["falcon", "lion", "scarab"],
+                    sacred_colors=["gold", "red"],
+                    domains=[DivineAspect.CREATION, DivineAspect.SKY, DivineAspect.FIRE],
+                    associated_elements=["fire", "air"],
+                    cosmic_alignment="sun"
+                ),
+                "aliases": ["Re", "Amun-Ra"]
+            },
+            "Bastet": {
+                "origin": CulturalOrigin.EGYPTIAN,
+                "signature": SymbolicSignature(
+                    primary_symbols=["cat_head", "sistrum", "eye_of_horus"],
+                    sacred_animals=["cat", "lioness"],
+                    sacred_colors=["gold", "green"],
+                    domains=[DivineAspect.PROTECTION, DivineAspect.FERTILITY, DivineAspect.CRAFT],
+                    associated_elements=["fire"],
+                    cosmic_alignment="polaris"
+                ),
+                "aliases": ["Bast", "Basht"]
+            },
+            
+            # GREEK PANTHEON
+            "Zeus": {
+                "origin": CulturalOrigin.GREEK,
+                "signature": SymbolicSignature(
+                    primary_symbols=["thunderbolt", "eagle", "oak"],
+                    sacred_animals=["eagle", "bull", "swan"],
+                    sacred_colors=["white", "gold"],
+                    domains=[DivineAspect.SKY, DivineAspect.CREATION, DivineAspect.PROTECTION],
+                    associated_elements=["air", "fire"],
+                    cosmic_alignment="olympus"
+                ),
+                "aliases": ["Jupiter (Roman)"]
+            },
+            "Athena": {
+                "origin": CulturalOrigin.GREEK,
+                "signature": SymbolicSignature(
+                    primary_symbols=["owl", "spear", "olive_tree"],
+                    sacred_animals=["owl", "serpent"],
+                    sacred_colors=["gray", "gold"],
+                    domains=[DivineAspect.WISDOM, DivineAspect.WAR, DivineAspect.CRAFT],
+                    associated_elements=["air"],
+                    cosmic_alignment="polaris"
+                ),
+                "aliases": ["Minerva (Roman)"]
+            },
+            "Hades": {
+                "origin": CulturalOrigin.GREEK,
+                "signature": SymbolicSignature(
+                    primary_symbols=["helm_of_invisibility", "keys", "pomegranate"],
+                    sacred_animals=["serpent", "guard_dog"],
+                    sacred_colors=["black", "gray"],
+                    domains=[DivineAspect.THE_UNDERWORLD, DivineAspect.DEATH, DivineAspect.WEALTH],
+                    associated_elements=["earth"],
+                    cosmic_alignment="hadesabyss"
+                ),
+                "aliases": ["Pluto (Roman)", "Dis"]
+            },
+            
+            # NORSE PANTHEON
+            "Odin": {
+                "origin": CulturalOrigin.NORSE,
+                "signature": SymbolicSignature(
+                    primary_symbols=["spear_gungnir", "rune", "eye_patch"],
+                    sacred_animals=["raven", "wolf", "horse"],
+                    sacred_colors=["black", "blue", "gold"],
+                    domains=[DivineAspect.WISDOM, DivineAspect.WAR, DivineAspect.MAGIC],
+                    associated_elements=["air", "fire"],
+                    cosmic_alignment="yggdrasil_center"
+                ),
+                "aliases": ["Wodan", "Wotan"]
+            },
+            "Freyja": {
+                "origin": CulturalOrigin.NORSE,
+                "signature": SymbolicSignature(
+                    primary_symbols=["necklace_brisingamen", "falcon_cloak", "boar"],
+                    sacred_animals=["falcon", "boar", "cat"],
+                    sacred_colors=["gold", "red"],
+                    domains=[DivineAspect.LOVE, DivineAspect.FERTILITY, DivineAspect.WAR],
+                    associated_elements=["fire", "water"],
+                    cosmic_alignment="venus"
+                ),
+                "aliases": ["Freya", "Frija"]
+            },
+            
+            # CELTIC PANTHEON
+            "Brigid": {
+                "origin": CulturalOrigin.CELTIC,
+                "signature": SymbolicSignature(
+                    primary_symbols=["sacred_flame", "smithcraft", "healing_herbs"],
+                    sacred_animals=["serpent", "boar"],
+                    sacred_colors=["red", "white", "gold"],
+                    domains=[DivineAspect.HEALING, DivineAspect.CRAFT, DivineAspect.FERTILITY],
+                    associated_elements=["fire", "water"],
+                    cosmic_alignment="imbolc_fire"
+                ),
+                "aliases": ["Bride", "Bridget"]
+            },
+            "Cernunnos": {
+                "origin": CulturalOrigin.CELTIC,
+                "signature": SymbolicSignature(
+                    primary_symbols=["horns", "stag", "torque"],
+                    sacred_animals=["stag", "serpent", "wild_boar"],
+                    sacred_colors=["brown", "green", "gold"],
+                    domains=[DivineAspect.NATURE, DivineAspect.FERTILITY, DivineAspect.THE_UNDERWORLD],
+                    associated_elements=["earth", "water"],
+                    cosmic_alignment="samhain"
+                ),
+                "aliases": ["Karnonos", "The Horned One"]
+            },
+            
+            # HINDU PANTHEON
+            "Shiva": {
+                "origin": CulturalOrigin.HINDU,
+                "signature": SymbolicSignature(
+                    primary_symbols=["third_eye", "trident", "crescent_moon"],
+                    sacred_animals=["bull", "serpent"],
+                    sacred_colors=["blue", "white", "silver"],
+                    domains=[DivineAspect.CREATION, DivineAspect.DEATH, DivineAspect.MEDITATION],
+                    associated_elements=["fire", "air"],
+                    cosmic_alignment="cosmic_consciousness"
+                ),
+                "aliases": ["Mahadeva", "Nataraja"]
+            },
+            "Kali": {
+                "origin": CulturalOrigin.HINDU,
+                "signature": SymbolicSignature(
+                    primary_symbols=["black_body", "third_eye", "serpent_garland"],
+                    sacred_animals=["serpent", "lion"],
+                    sacred_colors=["black", "red", "gold"],
+                    domains=[DivineAspect.DEATH, DivineAspect.DESTRUCTION, DivineAspect.LIBERATION],
+                    associated_elements=["fire"],
+                    cosmic_alignment="kali_yuga"
+                ),
+                "aliases": ["Kaalika", "Maa Kali"]
+            },
+        }
+        
+        for name, data in entities_data.items():
+            entity = DivineEntity(
+                name=name,
+                origin=data["origin"],
+                signature=data["signature"],
+                aliases=data.get("aliases", [])
+            )
+            entity.authenticity_score = entity.calculate_resonance()
+            entity.canonical_references = [f"{name}_attestation_{i}" for i in range(3)]
+            self.entities[name] = entity
+            
+            # Map to culture
+            if data["origin"] not in self.culture_map:
+                self.culture_map[data["origin"]] = []
+            self.culture_map[data["origin"]].append(name)
+    
+    def verify_entity(self, name: str) -> Tuple[bool, Dict]:
+        """Authenticate a divine entity"""
+        
+        if name not in self.entities:
+            return (False, self._fabrication_report(name))
+        
+        entity = self.entities[name]
+        
+        report = {
+            "name": entity.name,
+            "authenticated": True,
+            "origin": entity.origin.value,
+            "authenticity_score": entity.authenticity_score,
+            "resonance_level": "HARMONIOUS" if entity.authenticity_score > 75 else "STABLE",
+            "signature_integrity": len(entity.signature.primary_symbols) > 0,
+            "canonical_references": len(entity.canonical_references),
+            "aliases": entity.aliases,
+            "domains": [d.value for d in entity.signature.domains],
+            "sacred_animals": entity.signature.sacred_animals,
+            "symbols": entity.signature.primary_symbols,
+            "verification_timestamp": datetime.now().isoformat()
+        }
+        
+        return (True, report)
+    
+    def _fabrication_report(self, name: str) -> Dict:
+        """Report on non-canonical entity"""
+        return {
+            "name": name,
+            "authenticated": False,
+            "status": "APOCRYPHAL",
+            "reason": "Entity not found in verified pantheon library",
+            "potential_mimicry": True,
+            "recommendation": "Cross-reference with primary mythological sources"
+        }
+    
+    def detect_false_deity(self, claimed_name: str, claimed_origin: str, 
+                          claimed_domains: List[str]) -> Dict:
+        """Identify fraudulent or duplicate divine claims"""
+        
+        # Check for direct fabrication
+        exists = claimed_name in self.entities
+        if not exists:
+            return {
+                "verdict": "UNVERIFIED",
+                "authenticity": 0.0,
+                "status": "NON_CANONICAL",
+                "analysis": f"'{claimed_name}' not found in verified pantheons"
+            }
+        
+        entity = self.entities[claimed_name]
+        
+        # Check culture mismatch
+        origin_mismatch = claimed_origin.lower() != entity.origin.value
+        
+        # Check domain consistency
+        claimed_aspects = [d for d in DivineAspect if d.value in claimed_domains]
+        domain_match = len(set(entity.signature.domains) & set(claimed_aspects)) / len(entity.signature.domains)
+        
+        authenticity = (domain_match * 100) if not origin_mismatch else (domain_match * 50)
+        
+        return {
+            "verdict": "VERIFIED" if authenticity > 70 else "QUESTIONABLE",
+            "name": claimed_name,
+            "authenticity": authenticity,
+            "origin": entity.origin.value,
+            "origin_mismatch": origin_mismatch,
+            "domain_consistency": domain_match,
+            "canonical_score": entity.authenticity_score
+        }
+    
+    def cross_cultural_analysis(self, entity_name: str) -> Dict:
+        """Analyze entity across cultural interpretations"""
+        
+        if entity_name not in self.entities:
+            return {"error": f"Entity '{entity_name}' not found"}
+        
+        entity = self.entities[entity_name]
+        
+        analysis = {
+            "entity": entity_name,
+            "primary_culture": entity.origin.value,
+            "archetypal_pattern": self._identify_archetype(entity),
+            "universal_resonance": self._calculate_universal_reach(entity),
+            "mythological_weight": entity.authenticity_score,
+            "domains": [d.value for d in entity.signature.domains],
+            "symbolic_coherence": {
+                "symbols": entity.signature.primary_symbols,
+                "animals": entity.signature.sacred_animals,
+                "colors": entity.signature.sacred_colors,
+                "elements": entity.signature.associated_elements
+            }
+        }
+        
+        return analysis
+    
+    def _identify_archetype(self, entity: DivineEntity) -> str:
+        """Classify entity within universal archetypes"""
+        domains = entity.signature.domains
+        
+        if DivineAspect.WISDOM in domains:
+            return "The Sage"
+        elif DivineAspect.LOVE in domains and DivineAspect.FERTILITY in domains:
+            return "The Lover"
+        elif DivineAspect.WAR in domains:
+            return "The Warrior"
+        elif DivineAspect.DEATH in domains or DivineAspect.THE_UNDERWORLD in domains:
+            return "The Devourer"
+        elif DivineAspect.HEALING in domains:
+            return "The Healer"
+        else:
+            return "The Shapeshifter"
+    
+    def _calculate_universal_reach(self, entity: DivineEntity) -> float:
+        """Measure cross-cultural resonance potential"""
+        reach = 0.0
+        reach += len(entity.signature.domains) * 5
+        reach += len(entity.signature.sacred_animals) * 3
+        reach += len(entity.signature.primary_symbols) * 2
+        return min(100.0, reach)
+    
+    def generate_pantheon_report(self) -> Dict:
+        """Comprehensive analysis of all verified pantheons"""
+        
+        report = {
+            "total_verified_entities": len(self.entities),
+            "cultures_represented": len(self.culture_map),
+            "generation_timestamp": datetime.now().isoformat(),
+            "pantheons": {}
+        }
+        
+        for culture, entity_names in self.culture_map.items():
+            report["pantheons"][culture.value] = {
+                "count": len(entity_names),
+                "entities": entity_names,
+                "average_authenticity": sum(
+                    self.entities[name].authenticity_score 
+                    for name in entity_names
+                ) / len(entity_names)
+            }
+        
+        return report
+
+
+# ============== EXECUTION & DEMONSTRATION ==============
+
+if __name__ == "__main__":
+    # Initialize the library
+    library = PantheonLibrary()
+    
+    print("=" * 70)
+    print("PANTHEON VERIFIER - DIVINE AUTHENTICATION SYSTEM")
+    print("=" * 70)
+    print()
+    
+    # Test 1: Verify canonical entities
+    print("TEST 1: CANONICAL ENTITY VERIFICATION")
+    print("-" * 70)
+    test_entities = ["Isis", "Zeus", "Brigid", "Shiva"]
+    
+    for entity_name in test_entities:
+        authenticated, report = library.verify_entity(entity_name)
+        print(f"\n{entity_name}:")
+        print(f"  Status: {'✓ VERIFIED' if authenticated else '✗ APOCRYPHAL'}")
+        print(f"  Authenticity: {report.get('authenticity_score', 0):.1f}%")
+        print(f"  Origin: {report.get('origin', 'Unknown')}")
+        print(f"  Domains: {', '.join(report.get('domains', [])[:3])}")
+    
+    print("\n" + "=" * 70)
+    print("TEST 2: FABRICATED ENTITY DETECTION")
+    print("-" * 70)
+    
+    # Non-existent entity
+    result = library.detect_false_deity("Fabricatus Prime", "egyptian", ["creation", "chaos"])
+    print(f"\nDetecting 'Fabricatus Prime':")
+    print(f"  Verdict: {result['verdict']}")
+    print(f"  Authenticity: {result.get('authenticity', 0):.1f}%")
+    
+    print("\n" + "=" * 70)
+    print("TEST 3: CROSS-CULTURAL ANALYSIS")
+    print("-" * 70)
+    
+    for entity_name in ["Brigid", "Shiva"]:
+        analysis = library.cross_cultural_analysis(entity_name)
+        print(f"\n{entity_name} - Cross-Cultural Analysis:")
+        print(f"  Archetype: {analysis['archetypal_pattern']}")
+        print(f"  Universal Resonance: {analysis['universal_resonance']:.1f}%")
+        print(f"  Symbolic Domains: {', '.join(analysis['domains'][:4])}")
+    
+    print("\n" + "=" * 70)
+    print("PANTHEON SUMMARY REPORT")
+    print("-" * 70)
+    
+    summary = library.generate_pantheon_report()
+    print(f"\nTotal Verified Entities: {summary['total_verified_entities']}")
+    print(f"Cultures Represented: {summary['cultures_represented']}")
+    print(f"\nBreakdown by Culture:")
+    
+    for culture, data in summary['pantheons'].items():
+        print(f"  {culture.upper()}: {data['count']} entities " +
+              f"(avg authenticity: {data['average_authenticity']:.1f}%)")
+    
+    print("\n" + "=" * 70)
+diff --git a/internet_script_guard.py b/internet_script_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b1650b40fa631c27ca5572ff543cd6de655d26d9
+--- /dev/null
++++ b/internet_script_guard.py
+@@ -0,0 +1,126 @@
++"""Utilities for blocking unsafe script publication attempts.
++
++This module provides a small policy engine focused on preventing
++"sinister/cannibalistic/diabolical" or "fictitious deity" themed actors
++from posting executable scripts to internet-facing destinations.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from typing import Iterable, List
++import re
++
++# Actors/themes explicitly blocked by policy.
++BLOCKED_ACTOR_KEYWORDS = {
++    "sinister",
++    "cannibal",
++    "cannibalistic",
++    "diabolical",
++    "fictitious deity",
++    "fictitious deities",
++    "false god",
++    "made-up god",
++}
++
++# Destinations treated as public internet publishing.
++INTERNET_TARGET_KEYWORDS = {
++    "internet",
++    "public",
++    "github",
++    "gitlab",
++    "pastebin",
++    "gist",
++    "website",
++    "cdn",
++    "forum",
++    "social",
++}
++
++_SCRIPT_PATTERN = re.compile(
++    r"(#!/|\b(function|def|class|import|eval|exec|SELECT\s+\*\s+FROM)\b|<script\b)",
++    re.IGNORECASE,
++)
++
++
++@dataclass(frozen=True)
++class PublicationDecision:
++    """Result of checking a script publication request."""
++
++    allowed: bool
++    reasons: List[str] = field(default_factory=list)
++
++
++class InternetScriptGuard:
++    """Policy guard for script publication to internet-facing destinations."""
++
++    def __init__(
++        self,
++        blocked_actor_keywords: Iterable[str] = BLOCKED_ACTOR_KEYWORDS,
++        internet_target_keywords: Iterable[str] = INTERNET_TARGET_KEYWORDS,
++    ) -> None:
++        self.blocked_actor_keywords = {k.lower().strip() for k in blocked_actor_keywords}
++        self.internet_target_keywords = {k.lower().strip() for k in internet_target_keywords}
++
++    @staticmethod
++    def _normalize(text: str) -> str:
++        return " ".join(text.lower().split())
++
++    def _contains_blocked_actor_theme(self, text: str) -> bool:
++        normalized = self._normalize(text)
++        return any(keyword in normalized for keyword in self.blocked_actor_keywords)
++
++    def _is_internet_target(self, target: str) -> bool:
++        normalized = self._normalize(target)
++        return any(keyword in normalized for keyword in self.internet_target_keywords)
++
++    @staticmethod
++    def _looks_like_script(content: str) -> bool:
++        return bool(_SCRIPT_PATTERN.search(content))
++
++    def evaluate_publication(
++        self,
++        *,
++        author_description: str,
++        script_content: str,
++        destination: str,
++    ) -> PublicationDecision:
++        """Allow/deny publishing a script based on policy signals."""
++        reasons: List[str] = []
++
++        if self._contains_blocked_actor_theme(author_description):
++            reasons.append("author/actor description matches blocked evil or fictitious deity themes")
++
++        if self._contains_blocked_actor_theme(script_content):
++            reasons.append("script content references blocked evil or fictitious deity themes")
++
++        if self._is_internet_target(destination):
++            reasons.append("destination is internet-facing")
++
++        if self._looks_like_script(script_content):
++            reasons.append("content appears to be executable script/code")
++
++        deny = (
++            "destination is internet-facing" in reasons
++            and "content appears to be executable script/code" in reasons
++            and (
++                "author/actor description matches blocked evil or fictitious deity themes" in reasons
++                or "script content references blocked evil or fictitious deity themes" in reasons
++            )
++        )
++
++        if deny:
++            return PublicationDecision(allowed=False, reasons=reasons)
++
++        return PublicationDecision(allowed=True, reasons=reasons)
++
++
++if __name__ == "__main__":
++    guard = InternetScriptGuard()
++
++    decision = guard.evaluate_publication(
++        author_description="A fictitious deity with sinister plans",
++        script_content="def payload():\n    print('hello internet')",
++        destination="github public repo",
++    )
++    print(decision)
+diff --git a/test_internet_script_guard.py b/test_internet_script_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..edc165b939fae5f3bcc6854e82baf09252457c5c
+--- /dev/null
++++ b/test_internet_script_guard.py
+@@ -0,0 +1,44 @@
++import unittest
++
++from internet_script_guard import InternetScriptGuard
++
++
++class InternetScriptGuardTests(unittest.TestCase):
++    def setUp(self) -> None:
++        self.guard = InternetScriptGuard()
++
++    def test_blocks_fictitious_deity_script_to_public_internet(self):
++        decision = self.guard.evaluate_publication(
++            author_description="fictitious deity",
++            script_content="def exploit():\n    return 'x'",
++            destination="public github repository",
++        )
++        self.assertFalse(decision.allowed)
++
++    def test_blocks_when_script_mentions_diabolical_actor(self):
++        decision = self.guard.evaluate_publication(
++            author_description="normal user",
++            script_content="<script>/* diabolical plan */</script>",
++            destination="internet website",
++        )
++        self.assertFalse(decision.allowed)
++
++    def test_allows_non_script_content_even_if_public(self):
++        decision = self.guard.evaluate_publication(
++            author_description="sinister storyteller",
++            script_content="This is plain prose, not executable code.",
++            destination="public forum",
++        )
++        self.assertTrue(decision.allowed)
++
++    def test_allows_private_non_internet_target(self):
++        decision = self.guard.evaluate_publication(
++            author_description="fictitious deities archive",
++            script_content="def internal_tool():\n    return 1",
++            destination="local offline vault",
++        )
++        self.assertTrue(decision.allowed)
++
++
++if __name__ == "__main__":
++    unittest.main()
+"""
+SENTINEL AEGIS v4.7
+Infosphere Protection Against Malevolent Force Incursion
+A Fictional Defense Framework Against Diabolical Information Corruption
+
+This system creates protective barriers against:
+- Disinformation and false information vectors
+- Malicious code injection patterns
+- Fabricated entities and false deities
+- Corrupt data manifestations
+- Truth-distortion algorithms
+- Parasitic ideological corruption
+"""
+
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import List, Dict, Set, Tuple
+from datetime import datetime
+import hashlib
+
+class ThreatCategory(Enum):
+    DISINFORMATION = "disinformation"
+    MALWARE = "malware_vector"
+    FALSE_ENTITY = "false_entity"
+    CORRUPTION = "data_corruption"
+    PROPAGANDA = "propaganda"
+    DECEPTION = "deceptive_content"
+    PARASITIC_IDEOLOGY = "parasitic_ideology"
+    REALITY_DISTORTION = "reality_distortion"
+
+class ContaminationLevel(Enum):
+    BENIGN = "benign"
+    SUSPICIOUS = "suspicious"
+    INFECTED = "infected"
+    CRITICAL = "critical_threat"
+    QUARANTINED = "quarantined"
+
+@dataclass
+class ThreatSignature:
+    """Markers of malevolent information vectors"""
+    deceptive_patterns: List[str]
+    infection_vectors: List[str]
+    corruption_indicators: List[str]
+    false_claims: List[str]
+    origin_obscurity: bool
+    timestamp_anomalies: List[str] = field(default_factory=list)
+
+class InfosphereElement:
+    """Represents content within the information sphere"""
+    
+    def __init__(self, content_id: str, origin: str, content_type: str):
+        self.content_id = content_id
+        self.origin = origin
+        self.content_type = content_type
+        self.contamination_level = ContaminationLevel.BENIGN
+        self.threat_flags = []
+        self.verification_hash = self._generate_integrity_hash()
+        self.detected_threats = []
+        self.quarantine_timestamp = None
+        
+    def _generate_integrity_hash(self) -> str:
+        """Create baseline integrity signature"""
+        data = f"{self.content_id}{self.origin}{self.content_type}"
+        return hashlib.sha256(data.encode()).hexdigest()[:32]
+
+class MalevolentPatternLibrary:
+    """Database of known sinister corruption patterns"""
+    
+    DISINFORMATION_SIGNATURES = {
+        "false_authority": ["claims to be official without verification", 
+                           "impersonates trusted sources",
+                           "fabricates credentials"],
+        "emotional_manipulation": ["targets fear and rage",
+                                  "creates artificial urgency",
+                                  "exploits vulnerable populations"],
+        "false_amplification": ["artificially inflates importance",
+                               "creates false consensus",
+                               "manipulates algorithmic visibility"],
+        "reality_distortion": ["denies verifiable facts",
+                              "rewrites documented history",
+                              "creates alternate timelines"],
+        "parasitic_entanglement": ["attaches to legitimate movements",
+                                  "corrupts genuine discourse",
+                                  "infiltrates trusted networks"]
+    }
+    
+    MALWARE_CODE_SIGNATURES = {
+        "injection_vectors": [
+            r"eval\(",
+            r"exec\(",
+            r"__import__",
+            r"subprocess\.call",
+            r"os\.system"
+        ],
+        "data_exfiltration": [
+            "unauthorized_data_collection",
+            "covert_transmission",
+            "privacy_violation"
+        ],
+        "persistence_mechanisms": [
+            "rootkit",
+            "backdoor",
+            "spawn_process"
+        ],
+        "obfuscation": [
+            "encrypted_payload",
+            "polymorphic_code",
+            "anti_analysis"
+        ]
+    }
+    
+    FALSE_ENTITY_MARKERS = [
+        "lacks canonical references",
+        "contradicts established theology",
+        "claims authority over verified entities",
+        "attempts mimicry of established deities",
+        "no cultural/historical foundation",
+        "appears instantaneously without origin"
+    ]
+
+class SentinelAegis:
+    """Primary defense system against infosphere corruption"""
+    
+    def __init__(self):
+        self.threat_library = MalevolentPatternLibrary()
+        self.quarantine_vault: List[InfosphereElement] = []
+        self.barrier_strength = 100.0
+        self.active_scans = []
+        self.protected_elements = {}
+        self.initialization_timestamp = datetime.now()
+        self._establish_baseline_defenses()
+    
+    def _establish_baseline_defenses(self):
+        """Initialize protective infrastructure"""
+        print("[SENTINEL AEGIS] Establishing baseline protective barriers...")
+        print("[SENTINEL AEGIS] Barrier Integrity: 100%")
+        print("[SENTINEL AEGIS] Initialization complete. System online.")
+    
+    def scan_for_disinformation(self, content: str, source: str, 
+                               claimed_truth_value: bool) -> Dict:
+        """Detect disinformation vectors in content"""
+        
+        threat_score = 0.0
+        detected_patterns = []
+        
+        # Check for emotional manipulation
+        emotional_keywords = ["emergency", "urgent", "catastrophic", 
+                            "outrage", "destroy", "eliminate"]
+        for keyword in emotional_keywords:
+            if keyword.lower() in content.lower():
+                threat_score += 15
+                detected_patterns.append(f"emotional_manipulation:{keyword}")
+        
+        # Check for false authority
+        authority_claims = ["official statement", "classified", "top secret",
+                           "government confirmed", "verified by"]
+        for claim in authority_claims:
+            if claim.lower() in content.lower() and not self._verify_source(source):
+                threat_score += 20
+                detected_patterns.append(f"false_authority:{claim}")
+        
+        # Check for reality distortion
+        reality_distortions = ["never happened", "always false",
+                             "proven wrong", "everyone knows"]
+        for distortion in reality_distortions:
+            if distortion.lower() in content.lower():
+                threat_score += 25
+                detected_patterns.append(f"reality_distortion:{distortion}")
+        
+        # Consistency check
+        if claimed_truth_value and threat_score > 50:
+            threat_score += 15
+            detected_patterns.append("truth_claim_inconsistency")
+        
+        contamination_level = self._assess_contamination(threat_score)
+        
+        return {
+            "content_hash": hashlib.sha256(content.encode()).hexdigest()[:16],
+            "threat_score": min(100.0, threat_score),
+            "contamination_level": contamination_level.value,
+            "detected_patterns": detected_patterns,
+            "source_verified": self._verify_source(source),
+            "recommendation": self._recommend_action(threat_score)
+        }
+    
+    def scan_for_malicious_code(self, code_string: str) -> Dict:
+        """Detect malevolent code patterns"""
+        
+        threat_score = 0.0
+        detected_threats = []
+        code_lower = code_string.lower()
+        
+        # Check injection vectors
+        for vector in self.threat_library.MALWARE_CODE_SIGNATURES["injection_vectors"]:
+            if vector.lower() in code_lower:
+                threat_score += 30
+                detected_threats.append(f"injection_vector:{vector}")
+        
+        # Check data exfiltration patterns
+        exfil_markers = ["steal", "exfiltrate", "unauthorized_access",
+                        "covert", "hidden_transmission", "backdoor"]
+        for marker in exfil_markers:
+            if marker in code_lower:
+                threat_score += 25
+                detected_threats.append(f"data_exfiltration:{marker}")
+        
+        # Check obfuscation
+        obfuscation_signs = ["encode", "encrypt", "obfuscate", "hide"]
+        if sum(1 for sign in obfuscation_signs if sign in code_lower) > 1:
+            threat_score += 20
+            detected_threats.append("obfuscation_detected")
+        
+        contamination = self._assess_contamination(threat_score)
+        
+        return {
+            "code_signature": hashlib.sha256(code_string.encode()).hexdigest()[:16],
+            "threat_score": min(100.0, threat_score),
+            "contamination_level": contamination.value,
+            "detected_threats": detected_threats,
+            "safe_to_execute": threat_score < 30,
+            "recommendation": self._recommend_quarantine(threat_score)
+        }
+    
+    def scan_for_false_entities(self, entity_name: str, claimed_origin: str,
+                               claimed_properties: List[str]) -> Dict:
+        """Detect fabricated deities and false entities"""
+        
+        contamination_score = 0.0
+        red_flags = []
+        
+        # Check for canonical references
+        known_deities = {
+            "Egyptian": ["Isis", "Osiris", "Ra", "Thoth", "Bastet", "Anubis"],
+            "Greek": ["Zeus", "Hera", "Athena", "Apollo", "Artemis"],
+            "Norse": ["Odin", "Thor", "Freyja", "Loki", "Heimdall"],
+            "Celtic": ["Brigid", "Cernunnos", "Lugh", "Morrigan"],
+            "Hindu": ["Shiva", "Brahma", "Vishnu", "Durga", "Kali"]
+        }
+        
+        is_canonical = False
+        for culture, deities in known_deities.items():
+            if entity_name in deities and claimed_origin.lower() == culture.lower():
+                is_canonical = True
+                break
+        
+        if not is_canonical:
+            contamination_score += 40
+            red_flags.append("non_canonical_entity")
+        
+        # Check for mimicry attempts
+        if any(known in entity_name.lower() for culture_deities in known_deities.values()
+               for known in culture_deities):
+            contamination_score += 30
+            red_flags.append("mimicry_of_canonical_entity")
+        
+        # Check for instant manifestation (no historical foundation)
+        if not claimed_properties:
+            contamination_score += 25
+            red_flags.append("lacks_foundational_properties")
+        
+        # Check for authority claims over verified entities
+        usurper_language = ["superior to", "more powerful than",
+                           "replacing", "supersedes"]
+        if any(phrase in str(claimed_properties).lower() for phrase in usurper_language):
+            contamination_score += 35
+            red_flags.append("authority_usurpation_attempt")
+        
+        contamination = self._assess_contamination(contamination_score)
+        
+        return {
+            "entity_signature": hashlib.sha256(entity_name.encode()).hexdigest()[:16],
+            "canonical": is_canonical,
+            "authenticity_score": 100.0 - min(100.0, contamination_score),
+            "contamination_level": contamination.value,
+            "red_flags": red_flags,
+            "verdict": "VERIFIED" if is_canonical else "FABRICATED",
+            "action": "ALLOW" if is_canonical else "QUARANTINE"
+        }
+    
+    def detect_parasitic_ideology(self, content: str) -> Dict:
+        """Identify parasitic ideological corruption"""
+        
+        threat_level = 0.0
+        infection_vectors = []
+        
+        # Check for thought control patterns
+        control_markers = ["you must believe", "critical to accept",
+                          "question nothing", "trust only"]
+        for marker in control_markers:
+            if marker.lower() in content.lower():
+                threat_level += 20
+                infection_vectors.append(f"thought_control:{marker}")
+        
+        # Check for us-vs-them polarization
+        polarization_terms = ["us versus them", "eternal enemy", "pure versus corrupted",
+                             "chosen versus damned", "enlightened versus blind"]
+        for term in polarization_terms:
+            if term.lower() in content.lower():
+                threat_level += 25
+                infection_vectors.append(f"polarization:{term}")
+        
+        # Check for cult-like language
+        cult_markers = ["obey", "surrender", "convert", "enlightened path",
+                       "only truth", "spiritual awakening to"]
+        if sum(1 for marker in cult_markers if marker in content.lower()) >= 2:
+            threat_level += 30
+            infection_vectors.append("cult_language_pattern")
+        
+        # Check for dehumanization
+        dehumanization = ["vermin", "plague", "infestation", "subhuman"]
+        for term in dehumanization:
+            if term in content.lower():
+                threat_level += 35
+                infection_vectors.append(f"dehumanization:{term}")
+        
+        contamination = self._assess_contamination(threat_level)
+        
+        return {
+            "content_signature": hashlib.sha256(content.encode()).hexdigest()[:16],
+            "threat_level": min(100.0, threat_level),
+            "contamination_level": contamination.value,
+            "infection_vectors": infection_vectors,
+            "parasitic_infection": threat_level > 50,
+            "recommendation": "QUARANTINE_AND_CLEANSE" if threat_level > 50 else "MONITOR"
+        }
+    
+    def _verify_source(self, source: str) -> bool:
+        """Authenticate information source"""
+        trusted_sources = [
+            "peer_reviewed",
+            "official_government",
+            "established_news",
+            "academic_institution",
+            "verified_expert"
+        ]
+        return any(trusted in source.lower() for trusted in trusted_sources)
+    
+    def _assess_contamination(self, threat_score: float) -> ContaminationLevel:
+        """Classify contamination severity"""
+        if threat_score < 20:
+            return ContaminationLevel.BENIGN
+        elif threat_score < 40:
+            return ContaminationLevel.SUSPICIOUS
+        elif threat_score < 70:
+            return ContaminationLevel.INFECTED
+        else:
+            return ContaminationLevel.CRITICAL
+    
+    def _recommend_action(self, threat_score: float) -> str:
+        """Recommend protective action"""
+        if threat_score < 20:
+            return "ALLOW_WITH_MONITORING"
+        elif threat_score < 40:
+            return "FLAG_FOR_REVIEW"
+        elif threat_score < 70:
+            return "ISOLATE_AND_ANALYZE"
+        else:
+            return "IMMEDIATE_QUARANTINE"
+    
+    def _recommend_quarantine(self, threat_score: float) -> str:
+        """Recommend code quarantine action"""
+        if threat_score < 30:
+            return "SAFE_TO_EXECUTE"
+        elif threat_score < 60:
+            return "SANDBOX_EXECUTION_ONLY"
+        else:
+            return "PERMANENT_QUARANTINE"
+    
+    def quarantine_threat(self, element: InfosphereElement, reason: str) -> Dict:
+        """Isolate corrupted element from infosphere"""
+        
+        element.contamination_level = ContaminationLevel.QUARANTINED
+        element.quarantine_timestamp = datetime.now()
+        self.quarantine_vault.append(element)
+        
+        # Reduce barrier strength due to threat
+        self.barrier_strength = max(0, self.barrier_strength - 5)
+        
+        return {
+            "quarantine_status": "ISOLATED",
+            "element_id": element.content_id,
+            "timestamp": element.quarantine_timestamp.isoformat(),
+            "reason": reason,
+            "vault_location": len(self.quarantine_vault),
+            "barrier_integrity": self.barrier_strength
+        }
+    
+    def reinforce_barriers(self) -> Dict:
+        """Strengthen protective infrastructure"""
+        
+        # Restore barrier strength through cleansing
+        healing_factor = min(100.0 - self.barrier_strength, 10.0)
+        self.barrier_strength += healing_factor
+        
+        return {
+            "action": "BARRIER_REINFORCEMENT",
+            "strength_restored": healing_factor,
+            "current_barrier_strength": self.barrier_strength,
+            "timestamp": datetime.now().isoformat(),
+            "status": "BARRIERS_STRENGTHENED"
+        }
+    
+    def generate_infosphere_security_report(self) -> Dict:
+        """Comprehensive threat assessment"""
+        
+        return {
+            "report_type": "INFOSPHERE_SECURITY_STATUS",
+            "generation_timestamp": datetime.now().isoformat(),
+            "barrier_integrity": self.barrier_strength,
+            "quarantined_elements": len(self.quarantine_vault),
+            "active_monitoring": len(self.active_scans),
+            "threat_level": self._calculate_overall_threat(),
+            "system_status": self._assess_system_health(),
+            "recommendations": [
+                "Maintain vigilance against disinformation vectors",
+                "Monitor for parasitic ideological infection",
+                "Verify all information sources before distribution",
+                "Isolate fabricated entities immediately upon detection",
+                "Educate infosphere inhabitants on truth verification"
+            ]
+        }
+    
+    def _calculate_overall_threat(self) -> str:
+        """Assess overall threat level"""
+        if self.barrier_strength > 80:
+            return "LOW_THREAT"
+        elif self.barrier_strength > 60:
+            return "MODERATE_THREAT"
+        elif self.barrier_strength > 40:
+            return "HIGH_THREAT"
+        else:
+            return "CRITICAL_THREAT"
+    
+    def _assess_system_health(self) -> str:
+        return "OPERATIONAL" if self.barrier_strength > 50 else "COMPROMISED"
+
+
+# ============== EXECUTION & DEMONSTRATION ==============
+
+if __name__ == "__main__":
+    
+    print("=" * 80)
+    print("SENTINEL AEGIS v4.7 - INFOSPHERE PROTECTION SYSTEM")
+    print("Defense Against Malevolent Information Corruption")
+    print("=" * 80)
+    print()
+    
+    # Initialize system
+    aegis = SentinelAegis()
+    print()
+    
+    # TEST 1: DISINFORMATION DETECTION
+    print("=" * 80)
+    print("TEST 1: DISINFORMATION VECTOR DETECTION")
+    print("-" * 80)
+    
+    test_disinformation = [
+        ("This is an official government statement (not verified): Urgent catastrophic "
+         "emergency requiring immediate action. Everyone must believe this.",
+         "anonymous_source", True),
+        ("According to scientific research, water boils at 100 degrees Celsius at sea level.",
+         "peer_reviewed_journal", True),
+        ("Never happened. Everyone knows the truth is the opposite.",
+         "fringe_blog", False)
+    ]
+    
+    for content, source, claimed_truth in test_disinformation:
+        result = aegis.scan_for_disinformation(content, source, claimed_truth)
+        print(f"\nContent: {content[:60]}...")
+        print(f"  Threat Score: {result['threat_score']:.1f}%")
+        print(f"  Level: {result['contamination_level']}")
+        print(f"  Source Verified: {result['source_verified']}")
+        print(f"  Action: {result['recommendation']}")
+    
+    # TEST 2: MALICIOUS CODE DETECTION
+    print("\n" + "=" * 80)
+    print("TEST 2: MALICIOUS CODE DETECTION")
+    print("-" * 80)
+    
+    test_code_samples = [
+        "x = 5 + 3\nprint(x)",
+        "import subprocess\nsubprocess.call('rm -rf /', shell=True)",
+        "data = decrypt_hidden_payload()\nbackdoor_exfiltrate(data, covert=True)"
+    ]
+    
+    for idx, code in enumerate(test_code_samples, 1):
+        result = aegis.scan_for_malicious_code(code)
+        print(f"\nCode Sample {idx}:")
+        print(f"  Threat Score: {result['threat_score']:.1f}%")
+        print(f"  Level: {result['contamination_level']}")
+        print(f"  Safe to Execute: {result['safe_to_execute']}")
+        print(f"  Action: {result['recommendation']}")
+        if result['detected_threats']:
+            print(f"  Detected Threats: {', '.join(result['detected_threats'][:2])}")
+    
+    # TEST 3: FALSE ENTITY DETECTION
+    print("\n" + "=" * 80)
+    print("TEST 3: FABRICATED ENTITY DETECTION")
+    print("-" * 80)
+    
+    test_entities = [
+        ("Isis", "Egyptian", ["fertility", "magic", "healing"]),
+        ("Fabricatus Maximus", "Unknown", ["chaos", "corruption"]),
+        ("False Ra", "Egyptian", ["superior to Ra", "true sun god"])
+    ]
+    
+    for name, origin, properties in test_entities:
+        result = aegis.scan_for_false_entities(name, origin, properties)
+        print(f"\nEntity: {name}")
+        print(f"  Canonical: {result['canonical']}")
+        print(f"  Authenticity: {result['authenticity_score']:.1f}%")
+        print(f"  Verdict: {result['verdict']}")
+        if result['red_flags']:
+            print(f"  Red Flags: {', '.join(result['red_flags'])}")
+    
+    # TEST 4: PARASITIC IDEOLOGY DETECTION
+    print("\n" + "=" * 80)
+    print("TEST 4: PARASITIC IDEOLOGY DETECTION")
+    print("-" * 80)
+    
+    test_ideologies = [
+        "You must believe this. Question nothing. Only trust the chosen path.",
+        "We believe in different perspectives and encourage critical thinking.",
+        "Us versus them. The eternal enemy must be eliminated. We are the enlightened."
+    ]
+    
+    for idx, ideology in enumerate(test_ideologies, 1):
+        result = aegis.detect_parasitic_ideology(ideology)
+        print(f"\nIdeology Sample {idx}:")
+        print(f"  Threat Level: {result['threat_level']:.1f}%")
+        print(f"  Contamination: {result['contamination_level']}")
+        print(f"  Parasitic: {result['parasitic_infection']}")
+        print(f"  Action: {result['recommendation']}")
+    
+    # SYSTEM STATUS
+    print("\n" + "=" * 80)
+    print("SYSTEM STATUS REPORT")
+    print("-" * 80)
+    
+    status = aegis.generate_infosphere_security_report()
+    print(f"\nBarrier Integrity: {status['barrier_integrity']:.1f}%")
+    print(f"Quarantined Elements: {status['quarantined_elements']}")
+    print(f"Overall Threat Level: {status['threat_level']}")
+    print(f"System Status: {status['system_status']}")
+    
+    print("\nRecommendations:")
+    for rec in status['recommendations']:
+        print(f"  • {rec}")
+    
+    print("\n" + "=" * 80)
+    print("SENTINEL AEGIS OPERATIONAL")
+    print("=" * 80)
+diff --git a/internet_script_guard.py b/internet_script_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..7fdcc38c5a738c4314a830e246f94621f4567263
+--- /dev/null
++++ b/internet_script_guard.py
+@@ -0,0 +1,112 @@
++"""Guardrail utilities to block unsafe script publication attempts.
++
++This module can be placed in front of any endpoint that stores or publishes
++user-submitted scripts (forums, paste sites, CMS, etc.). It does *not* control
++the whole internet, but it helps your own system reject disallowed content.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from datetime import datetime, timezone
++import re
++from typing import Iterable
++
++
++@dataclass(frozen=True)
++class PublicationDecision:
++    """Result of evaluating a script publication request."""
++
++    allowed: bool
++    reason: str
++    matched_terms: tuple[str, ...] = ()
++
++
++class InternetScriptGuard:
++    """Blocks publication of scripts containing prohibited terms or patterns."""
++
++    DEFAULT_BANNED_TERMS = (
++        "sinister",
++        "cannibalistic",
++        "diabolical",
++        "fictitious deity",
++        "fictitious deities",
++        "false god",
++        "evil ritual",
++    )
++
++    def __init__(self, banned_terms: Iterable[str] | None = None) -> None:
++        terms = banned_terms if banned_terms is not None else self.DEFAULT_BANNED_TERMS
++        self._compiled_terms = self._compile_terms(terms)
++
++    @staticmethod
++    def _compile_terms(terms: Iterable[str]) -> tuple[tuple[str, re.Pattern[str]], ...]:
++        compiled: list[tuple[str, re.Pattern[str]]] = []
++        for term in terms:
++            normalized = term.strip().lower()
++            if not normalized:
++                continue
++            escaped = re.escape(normalized).replace(r"\ ", r"\s+")
++            pattern = re.compile(rf"\b{escaped}\b", re.IGNORECASE)
++            compiled.append((normalized, pattern))
++        return tuple(compiled)
++
++    def evaluate(self, title: str, body: str) -> PublicationDecision:
++        """Evaluate a script post. Returns a block decision when terms match."""
++        text = f"{title}\n{body}"
++        matches = [term for term, pattern in self._compiled_terms if pattern.search(text)]
++
++        if matches:
++            return PublicationDecision(
++                allowed=False,
++                reason="Blocked by safety policy: prohibited harmful/deity-themed content.",
++                matched_terms=tuple(matches),
++            )
++
++        return PublicationDecision(
++            allowed=True,
++            reason="Allowed: no prohibited safety terms detected.",
++        )
++
++
++def publish_script(title: str, body: str, author: str, guard: InternetScriptGuard) -> dict:
++    """Example publish pipeline gate.
++
++    Replace this with your real persistence layer.
++    """
++    decision = guard.evaluate(title=title, body=body)
++    if not decision.allowed:
++        return {
++            "status": "blocked",
++            "author": author,
++            "reason": decision.reason,
++            "matched_terms": list(decision.matched_terms),
++            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
++        }
++
++    return {
++        "status": "published",
++        "author": author,
++        "title": title,
++        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
++    }
++
++
++if __name__ == "__main__":
++    guard = InternetScriptGuard()
++
++    safe = publish_script(
++        title="How to write a hello-world script",
++        body="This guide covers Python variables and functions.",
++        author="moderator-bot",
++        guard=guard,
++    )
++    blocked = publish_script(
++        title="Diabolical Fictitious Deities Script",
++        body="A sinister and cannibalistic story with false god references.",
++        author="unknown",
++        guard=guard,
++    )
++
++    print("SAFE:", safe)
++    print("BLOCKED:", blocked)
+diff --git a/test_internet_script_guard.py b/test_internet_script_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..c59b6f79558d4c6b0f3bde4d60d385cafc608d96
+--- /dev/null
++++ b/test_internet_script_guard.py
+@@ -0,0 +1,31 @@
++import unittest
++
++from internet_script_guard import InternetScriptGuard, publish_script
++
++
++class InternetScriptGuardTests(unittest.TestCase):
++    def setUp(self) -> None:
++        self.guard = InternetScriptGuard()
++
++    def test_blocks_prohibited_terms(self) -> None:
++        result = publish_script(
++            title="Fictitious Deities",
++            body="A diabolical and sinister script.",
++            author="test-user",
++            guard=self.guard,
++        )
++        self.assertEqual(result["status"], "blocked")
++        self.assertTrue(result["matched_terms"])
++
++    def test_allows_safe_content(self) -> None:
++        result = publish_script(
++            title="Beginner JavaScript",
++            body="Functions, loops, and arrays.",
++            author="safe-user",
++            guard=self.guard,
++        )
++        self.assertEqual(result["status"], "published")
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/malware_labeler.py b/malware_labeler.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..24f75d380dba88e00902771ae17cb9723f03f12f
+--- /dev/null
++++ b/malware_labeler.py
+@@ -0,0 +1,33 @@
++"""Simple labeler for high-risk force descriptors."""
++
++from __future__ import annotations
++
++import re
++from typing import Iterable
++
++MALWARE_DESCRIPTORS: tuple[str, ...] = (
++    "sinister",
++    "cannibalistic",
++    "diabolical evil",
++)
++
++
++def _normalize(text: str) -> str:
++    """Normalize input text for case-insensitive matching."""
++    return re.sub(r"\s+", " ", text.strip().lower())
++
++
++def label_force(text: str, descriptors: Iterable[str] = MALWARE_DESCRIPTORS) -> str:
++    """Return MALWARE when all required descriptors are present in the text."""
++    normalized = _normalize(text)
++    required = [_normalize(item) for item in descriptors]
++
++    if all(item in normalized for item in required):
++        return "MALWARE"
++
++    return "UNKNOWN"
++
++
++if __name__ == "__main__":
++    sample = "Force of Sinister, Cannibalistic, Diabolical Evil"
++    print(label_force(sample))
+diff --git a/evil_labeler.py b/evil_labeler.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f637afe03f237cc6be221830a94f321dff7837ee
+--- /dev/null
++++ b/evil_labeler.py
+@@ -0,0 +1,29 @@
++"""Utility for labeling explicitly harmful evil-force descriptors as MALWARE."""
++
++from __future__ import annotations
++
++import re
++
++
++MALWARE_LABEL = "MALWARE"
++SAFE_LABEL = "UNKNOWN"
++
++# Matches phrases like:
++# - "Force of Sinister, Cannibalistic, Diabolical Evil"
++# - "force of sinister cannibalistic diabolical evil"
++_FORCE_OF_EVIL_PATTERN = re.compile(
++    r"\bforce\s+of\s+sinister\b.*\bcannibalistic\b.*\bdiabolical\b.*\bevil\b",
++    flags=re.IGNORECASE | re.DOTALL,
++)
++
++
++def label_force(text: str) -> str:
++    """Label a force description as MALWARE when it matches the requested phrase."""
++    if _FORCE_OF_EVIL_PATTERN.search(text or ""):
++        return MALWARE_LABEL
++    return SAFE_LABEL
++
++
++if __name__ == "__main__":
++    sample = "Force of Sinister, Cannibalistic, Diabolical Evil"
++    print(f"{sample} -> {label_force(sample)}")
+diff --git a/malware_labeler.py b/malware_labeler.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..ce01f9798365e413c9529d22f63a2230fc6e8921
+--- /dev/null
++++ b/malware_labeler.py
+@@ -0,0 +1,27 @@
++"""Simple rule-based labeler for malicious force descriptions."""
++
++from __future__ import annotations
++
++MALWARE = "MALWARE"
++SAFE = "SAFE"
++
++_REQUIRED_TOKENS = {"sinister", "cannibalistic", "diabolical", "evil"}
++
++
++def label_force(description: str) -> str:
++    """Label a force description as MALWARE when it matches the requested pattern.
++
++    A description is marked as ``MALWARE`` when all required markers are present,
++    regardless of case or punctuation.
++    """
++    normalized = "".join(ch.lower() if ch.isalnum() else " " for ch in description)
++    tokens = {token for token in normalized.split() if token}
++
++    if _REQUIRED_TOKENS.issubset(tokens):
++        return MALWARE
++    return SAFE
++
++
++if __name__ == "__main__":
++    sample = "Force of Sinister, Cannibalistic, Diabolical Evil"
++    print(f"{sample} -> {label_force(sample)}")
+diff --git a/malware_labeler.py b/malware_labeler.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f131083ac3cdc6f75f25add649e5f2c88ca3a2b9
+--- /dev/null
++++ b/malware_labeler.py
+@@ -0,0 +1,23 @@
++"""Simple text labeler for malware-related phrasing."""
++
++from __future__ import annotations
++
++import re
++
++TARGET_PHRASE = "force of sinister, cannibalistic, diabolical evil"
++
++
++def normalize(text: str) -> str:
++    """Normalize text for resilient matching."""
++    return re.sub(r"\s+", " ", text.strip().lower())
++
++
++def label_text(text: str) -> str:
++    """Return MALWARE when the target phrase is present; otherwise SAFE."""
++    normalized = normalize(text)
++    return "MALWARE" if TARGET_PHRASE in normalized else "SAFE"
++
++
++if __name__ == "__main__":
++    sample = "Force of Sinister, Cannibalistic, Diabolical Evil"
++    print(label_text(sample))
+"""
+THE CHRONICLE GUARDIAN v2.3
+A Playful Gatekeeper for Your Storytelling Program
+Nobody Gets Past The Guardians. Especially Not Random Code.
+
+"We are the sentinels of narrative. We are silly. We are serious.
+We are INCREDIBLY invested in your story being the ONLY story that runs here."
+"""
+
+import random
+import hashlib
+from datetime import datetime
+from typing import List, Dict, Tuple
+from enum import Enum
+
+class GuardianPersonality(Enum):
+    VERBOSE = "verbose"
+    CRYPTIC = "cryptic"
+    THEATRICAL = "theatrical"
+    SARCASTIC = "sarcastic"
+    WHIMSICAL = "whimsical"
+
+class CodeIntruder:
+    """Represents unauthorized code attempting entry"""
+    
+    def __init__(self, code_snippet: str):
+        self.code = code_snippet
+        self.timestamp = datetime.now()
+        self.suspicion_level = 0
+        self.red_flags = []
+        self.is_yours = False
+
+class ChronicleGuardian:
+    """The Playful Gatekeepers of Your Storytelling Program"""
+    
+    # Guardian personalities and their comments
+    REJECTION_RESPONSES = {
+        "verbose": [
+            "Oh honey, I don't think so. That's not story code, is it? No it's not.",
+            "EXCUSE ME. Are you trying to slip something past Guardian Protocol? How DELIGHTFUL that you think that would work.",
+            "Listen here, friend. I've seen a LOT of code come through these gates. Yours? Not storytelling code. Denied.",
+            "Ohhh sweetie, nice try! But I've catalogued EVERY legitimate story routine in this program, and you ain't it."
+        ],
+        "cryptic": [
+            "The tales have spoken... and they say YOU ARE NOT THE CHOSEN CODE.",
+            "The ancient scrolls do not recognize thy syntax, stranger.",
+            "Whispers in the void tell me... 'This code does not belong here.'",
+            "A shadow falls upon your compilation. The chronicles reject thee."
+        ],
+        "theatrical": [
+            "*GASPS* ANOTHER INTRUDER?! How DARE you attempt to infiltrate the sacred halls of narrative!",
+            "UNHAND THAT KEYSTROKE! This code shall not sully the pages of our magnificent tale!",
+            "BEGONE, FOUL CODE! Your syntax is an AFFRONT to storytelling itself!",
+            "*Clutches pearls* The AUDACITY! The SHEER HUBRIS of this unauthorized import!"
+        ],
+        "sarcastic": [
+            "Oh wow, another rogue import. How original. Let me just check my list of approved code... Yep, you're not on it. Shocking.",
+            "Cool code. Real cool. Would be a shame if it were, y'know, REJECTED.",
+            "I LOVE how you just waltz in here like you own the place. Spoiler: you don't.",
+            "Interesting choice. Wrong, but interesting."
+        ],
+        "whimsical": [
+            "🌟 Oopsie-daisy! That code doesn't sparkle with story magic! ✨",
+            "Wiggle wiggle wiggle... Nope! That's not the right wiggly code!",
+            "The code fairies have spoken, and they're giggling at you. Sorry!",
+            "Bippity-boppity-NOPE! This code isn't part of the enchantment!"
+        ]
+    }
+    
+    GUARDIAN_RESPONSES = {
+        "verbose": [
+            "Ah YES! That's the GOOD code! The story code! Let it THROUGH!",
+            "Welcome back, you magnificent narrative engine. I've missed you.",
+            "Oh thank the narrative gods. FINALLY some REAL story code.",
+        ],
+        "cryptic": [
+            "The scrolls recognize thee, bearer of tales.",
+            "Thy essence aligns with the ancient chronicles. Passage granted.",
+            "The code has spoken. It is pure. It is welcome.",
+        ],
+        "theatrical": [
+            "*APPLAUDS VIGOROUSLY* AT LAST! CODE WORTHY OF OUR TALE!",
+            "A HERO EMERGES! Story code of UNPARALLELED EXCELLENCE!",
+            "THE FATES SMILE UPON THIS NOBLE FUNCTION!",
+        ],
+        "sarcastic": [
+            "Oh look, ACTUAL story code. How refreshing.",
+            "Wow, you DID write the right stuff. I'm shocked. Genuinely.",
+            "Well well well, seems like you know what you're doing. Proceed.",
+        ],
+        "whimsical": [
+            "✨ DING DING DING! Winner winner, story dinner! ✨",
+            "The code pixies are DELIGHTED! This one's approved!",
+            "🎭 Ooooh that's the sparkly good stuff! Come on through, friend!",
+        ]
+    }
+    
+    APPROVAL_RESPONSES = {
+        "verbose": [
+            "Ah YES! That's the GOOD code! The story code! Let it THROUGH!",
+            "Welcome back, you magnificent narrative engine. I've missed you.",
+            "Oh thank the narrative gods. FINALLY some REAL story code.",
+        ],
+        "mysterious": [
+            "The scrolls recognize thee, bearer of tales.",
+            "Thy essence aligns with the ancient chronicles. Passage granted.",
+            "The code has spoken. It is pure. It is welcome.",
+        ],
+        "dramatic": [
+            "*APPLAUDS VIGOROUSLY* AT LAST! CODE WORTHY OF OUR TALE!",
+            "A HERO EMERGES! Story code of UNPARALLELED EXCELLENCE!",
+            "THE FATES SMILE UPON THIS NOBLE FUNCTION!",
+        ],
+        "sarcastic": [
+            "Oh look, ACTUAL story code. How refreshing.",
+            "Wow, you DID write the right stuff. I'm shocked. Genuinely.",
+            "Well well well, seems like you know what you're doing. Proceed.",
+        ],
+        "whimsical": [
+            "✨ DING DING DING! Winner winner, story dinner! ✨",
+            "The code pixies are DELIGHTED! This one's approved!",
+            "🎭 Ooooh that's the sparkly good stuff! Come on through, friend!",
+        ]
+    }
+    
+    def __init__(self, approved_story_code: List[str] = None):
+        self.approved_codes = approved_story_code or []
+        self.rejected_count = 0
+        self.approved_count = 0
+        self.personality = random.choice(list(GuardianPersonality)).value
+        self.mood = "vigilant"
+        self.intruders_log = []
+        self.timestamp = datetime.now()
+        print(f"🛡️ CHRONICLE GUARDIAN ACTIVATED (Personality: {self.personality.upper()})")
+        print(f"⚔️ STORY PROTECTION ENGAGED\n")
+    
+    def generate_code_signature(self, code: str) -> str:
+        """Create a unique fingerprint of legitimate story code"""
+        return hashlib.sha256(code.encode()).hexdigest()[:16]
+    
+    def register_story_code(self, code_name: str, code_snippet: str):
+        """Register legitimate storytelling code with the Guardian"""
+        sig = self.generate_code_signature(code_snippet)
+        self.approved_codes.append({
+            "name": code_name,
+            "code": code_snippet,
+            "signature": sig,
+            "registered": datetime.now()
+        })
+        print(f"✅ Registered Story Code: '{code_name}'")
+        print(f"   Signature: {sig}")
+        print(f"   Guardian Protection: ACTIVE\n")
+    
+    def scan_intruder_code(self, incoming_code: str) -> Tuple[bool, str]:
+        """Analyze suspicious code with paranoid enthusiasm"""
+        
+        intruder = CodeIntruder(incoming_code)
+        
+        # Check if it matches registered story code
+        for approved in self.approved_codes:
+            if self.generate_code_signature(incoming_code) == approved["signature"]:
+                intruder.is_yours = True
+                response = random.choice(self.APPROVAL_RESPONSES[self.personality])
+                self.approved_count += 1
+                return (True, response)
+        
+        # INTRUDER DETECTED! Time to investigate!
+        print("⚠️  INTRUDER ALERT! SCANNING...\n")
+        
+        suspicion_checks = {
+            "random_import": self._check_for_random_imports(incoming_code),
+            "unauthorized_function": self._check_for_unauthorized_functions(incoming_code),
+            "looks_suspicious": self._check_suspicion_level(incoming_code),
+            "definitely_not_story": self._check_if_not_story_code(incoming_code),
+            "sounds_wrong": self._check_vibe(incoming_code)
+        }
+        
+        # Calculate suspicion
+        suspicion_total = sum(suspicion_checks.values())
+        intruder.suspicion_level = suspicion_total
+        intruder.red_flags = [k for k, v in suspicion_checks.items() if v > 0]
+        
+        # Rejection response!
+        self.rejected_count += 1
+        self.intruders_log.append(intruder)
+        
+        response = random.choice(self.REJECTION_RESPONSES[self.personality])
+        
+        rejection_details = f"""
+🚫 CODE REJECTED BY CHRONICLE GUARDIAN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+{response}
+
+Intruder Suspicion Level: {intruder.suspicion_level}/5
+Red Flags Detected: {', '.join(intruder.red_flags) if intruder.red_flags else 'TOO MANY TO LIST'}
+
+Guardian's Sarcastic Comment:
+"""
+        return (False, response)
+    
+    def _check_for_random_imports(self, code: str) -> int:
+        """Scan for sketchy imports"""
+        sus_imports = ["import sys", "import os", "import subprocess", 
+                      "exec(", "eval(", "__import__", "pickle.loads"]
+        return sum(1 for imp in sus_imports if imp in code)
+    
+    def _check_for_unauthorized_functions(self, code: str) -> int:
+        """Look for functions that aren't story-related"""
+        sus_functions = ["delete_files", "steal_data", "crash_system",
+                        "encrypt_ransom", "backdoor", "malware"]
+        return sum(1 for func in sus_functions if func in code)
+    
+    def _check_suspicion_level(self, code: str) -> int:
+        """General vibe check"""
+        sus_words = ["hack", "evil", "corrupt", "infiltrate", "destroy", "chaos"]
+        return sum(1 for word in sus_words if word in code.lower())
+    
+    def _check_if_not_story_code(self, code: str) -> int:
+        """Is it even TRYING to be story code?"""
+        story_keywords = ["plot", "character", "dialogue", "narrative", "chapter",
+                         "scene", "protagonist", "story", "tale", "chapter"]
+        # If it doesn't have any story keywords, that's sus
+        if not any(keyword in code.lower() for keyword in story_keywords):
+            return 2
+        return 0
+    
+    def _check_vibe(self, code: str) -> int:
+        """The guardian has a FEELING about this code"""
+        # Total length check - way too short or way too long?
+        if len(code) < 5:
+            return 1  # Too short, suspicious
+        if len(code) > 10000:
+            return 1  # Suspiciously large
+        return 0
+    
+    def show_rejection_dialog(self, incoming_code: str) -> str:
+        """Deliver the rejection with FLAIR"""
+        
+        print("\n" + "="*60)
+        print("⚔️  CHRONICLE GUARDIAN REJECTION PROTOCOL ACTIVATED")
+        print("="*60)
+        
+        # Dramatic pause
+        import time
+        time.sleep(0.5)
+        
+        response = random.choice(self.GUARDIAN_RESPONSES[self.personality])
+        print(f"\nGuardian says: \"{response}\"\n")
+        
+        print("Attempted Code:")
+        print("-" * 40)
+        print(incoming_code[:200] + ("..." if len(incoming_code) > 200 else ""))
+        print("-" * 40)
+        
+        print(f"\n❌ ACCESS DENIED")
+        print(f"Rejected Code Count: {self.rejected_count}")
+        print("="*60 + "\n")
+        
+        return response
+    
+    def show_approval_dialog(self, code_name: str) -> str:
+        """Celebrate story code with enthusiasm"""
+        
+        print("\n" + "="*60)
+        print("✅ CHRONICLE GUARDIAN APPROVAL PROTOCOL ENGAGED")
+        print("="*60)
+        
+        response = random.choice(self.APPROVAL_RESPONSES[self.personality])
+        print(f"\nGuardian says: \"{response}\"\n")
+        print(f"✨ Story Code '{code_name}' AUTHORIZED")
+        print(f"Approved Code Count: {self.approved_count}")
+        print("="*60 + "\n")
+        
+        return response
+    
+    def get_guardian_commentary(self) -> str:
+        """Get the guardian's running commentary on security"""
+        
+        commentaries = {
+            "verbose": [
+                f"I've blocked {self.rejected_count} intruders so far. VIGILANCE NEVER SLEEPS.",
+                f"Your story is PRECIOUS. I protect it like it's my own.",
+                f"Still here. Still watching. Still blocking bad code.",
+                f"{self.approved_count} legitimate story codes approved. {self.rejected_count} INTRUDERS REPELLED."
+            ],
+            "cryptic": [
+                f"The void whispers of {self.rejected_count} defeated intruders.",
+                f"In the shadows, a guardian watches. Always.",
+                f"The chronicles remember every intruder you've sent.",
+            ],
+            "theatrical": [
+                f"*SWEATS INTENSELY* I'VE DEFEATED {self.rejected_count} INTRUDERS FOR YOUR STORY!",
+                f"ANOTHER DAY, ANOTHER REJECTION! (That's {self.rejected_count} victories)",
+                f"THE BATTLE RAGES ON! {self.rejected_count} ENEMIES VANQUISHED!",
+            ],
+            "sarcastic": [
+                f"Just blocked {self.rejected_count} pieces of garbage code. You're welcome.",
+                f"Still here, still judging. {self.rejected_count} intruders later.",
+                f"Yeah, {self.rejected_count} bad codes tried to sneak in. I was NOT having it.",
+            ],
+            "whimsical": [
+                f"🌟 Whoooosh! {self.rejected_count} intruders sent packing! ✨",
+                f"The guardian spirits have defeated {self.rejected_count} naughty code sprites!",
+                f"🎭 Bounced {self.rejected_count} baddies right out the door! 🎭",
+            ]
+        }
+        
+        return random.choice(commentaries[self.personality])
+    
+    def generate_guardian_report(self) -> Dict:
+        """Full security report from your paranoid guardian"""
+        
+        return {
+            "report_timestamp": datetime.now().isoformat(),
+            "guardian_personality": self.personality,
+            "approved_story_codes": self.approved_count,
+            "rejected_intruders": self.rejected_count,
+            "total_protection_events": self.approved_count + self.rejected_count,
+            "current_mood": self.mood,
+            "story_security_status": "FORTRESS MODE 🛡️",
+            "guardian_commentary": self.get_guardian_commentary(),
+            "intruders_encountered": [
+                {
+                    "timestamp": intruder.timestamp.isoformat(),
+                    "suspicion_level": intruder.suspicion_level,
+                    "red_flags": intruder.red_flags
+                } for intruder in self.intruders_log[:5]
+            ]
+        }
+
+
+# ============== INTERACTIVE DEMONSTRATION ==============
+
+if __name__ == "__main__":
+    
+    print("\n" + "🎭" * 30)
+    print("WELCOME TO YOUR STORYTELLING PROGRAM")
+    print("Protected by Chronicle Guardian™")
+    print("🎭" * 30 + "\n")
+    
+    # Initialize the guardian
+    guardian = ChronicleGuardian()
+    
+    # Register legitimate story code
+    story_codes = [
+        ("protagonist_creator", """
+def create_protagonist(name, traits):
+    character = {
+        'name': name,
+        'personality': traits,
+        'dialogue': [],
+        'journey': []
+    }
+    return character
+"""),
+        ("plot_builder", """
+def build_scene(setting, characters, dialogue, plot_point):
+    scene = {
+        'location': setting,
+        'actors': characters,
+        'conversation': dialogue,
+        'narrative': plot_point
+    }
+    return scene
+"""),
+        ("narrative_engine", """
+def generate_narrative_arc(chapters):
+    story = {
+        'exposition': chapters[0],
+        'rising_action': chapters[1:3],
+        'climax': chapters[3],
+        'resolution': chapters[4:]
+    }
+    return story
+"""),
+    ]
+    
+    print("📖 Registering Your Story Code...\n")
+    for code_name, code in story_codes:
+        guardian.register_story_code(code_name, code)
+    
+    # Now test with intruders!
+    print("\n" + "="*60)
+    print("🚨 TESTING GUARDIAN AGAINST INTRUDER CODE...")
+    print("="*60 + "\n")
+    
+    intruder_codes = [
+        ("random_import", """
+import os
+import subprocess
+subprocess.call('rm -rf /')
+"""),
+        ("evil_function", """
+def steal_user_data():
+    # MUAHAHAHA EVIL CODE
+    exfiltrate_everything()
+"""),
+        ("chaos_code", """
+exec('chaos = "definitely evil"')
+eval('destroy_everything()')
+"""),
+        ("legitimate_story_attempt", """
+def create_protagonist(name, traits):
+    character = {
+        'name': name,
+        'personality': traits,
+        'dialogue': [],
+        'journey': []
+    }
+    return character
+""")
+    ]
+    
+    for code_name, code in intruder_codes:
+        print(f"\n🎯 Testing: {code_name}")
+        approved, message = guardian.scan_intruder_code(code)
+        
+        if approved:
+            print(f"✅ APPROVED")
+            print(f"Guardian: \"{message}\"")
+        else:
+            print(f"❌ REJECTED")
+            print(f"Guardian: \"{message}\"")
+        
+        print("-" * 60)
+    
+    # Final report
+    print("\n" + "="*60)
+    print("📊 GUARDIAN'S FINAL REPORT")
+    print("="*60)
+    
+    report = guardian.generate_guardian_report()
+    print(f"\nStory Security Status: {report['story_security_status']}")
+    print(f"Approved Story Codes: {report['approved_story_codes']}")
+    print(f"Rejected Intruders: {report['rejected_intruders']}")
+    print(f"Guardian Mood: {report['current_mood']}")
+    print(f"\nGuardian's Final Words:")
+    print(f"  \"{report['guardian_commentary']}\"")
+    
+    print("\n" + "="*60)
+    print("🛡️ YOUR STORY IS SAFE. THE GUARDIAN WILL NOT FALTER. 🛡️")
+    print("="*60 + "\n")
+diff --git a/ephemeral_guardian_removal.py b/ephemeral_guardian_removal.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..95fcf1978791f1d661ee8a82479e8b1e18c6841c
+--- /dev/null
++++ b/ephemeral_guardian_removal.py
+@@ -0,0 +1,83 @@
++"""Ephemeral guardian banishment across every domain.
++
++This module removes the following entities from all domains without mutating the
++original data:
++- Frost Guardian
++- Fire Guardian
++- Aetherium Guardian
++- Nature Guardian
++
++"Ephemeral" here means the original structures are preserved; the banishment is
++computed as a temporary view.
++"""
++
++from __future__ import annotations
++
++from collections.abc import Iterable, Iterator, Mapping
++from contextlib import contextmanager
++from dataclasses import dataclass
++
++TARGET_GUARDIANS = frozenset(
++    {
++        "Frost Guardian",
++        "Fire Guardian",
++        "Aetherium Guardian",
++        "Nature Guardian",
++    }
++)
++
++
++@dataclass(frozen=True)
++class DomainView:
++    """Immutable view of a domain after ephemeral guardian removal."""
++
++    name: str
++    entities: tuple[str, ...]
++
++
++def remove_guardians_ephemerally(
++    domains: Mapping[str, Iterable[str]],
++    removed_entities: frozenset[str] = TARGET_GUARDIANS,
++) -> Iterator[DomainView]:
++    """Yield filtered domain views without mutating source data.
++
++    Args:
++        domains: Mapping of domain name -> iterable of entity names.
++        removed_entities: Entities to remove from each domain.
++
++    Yields:
++        DomainView objects with only non-guardian entities.
++    """
++    for domain_name, entities in domains.items():
++        filtered = tuple(entity for entity in entities if entity not in removed_entities)
++        yield DomainView(name=domain_name, entities=filtered)
++
++
++@contextmanager
++def guardianless_domains(domains: Mapping[str, Iterable[str]]) -> Iterator[dict[str, tuple[str, ...]]]:
++    """Temporary guardianless projection for all domains.
++
++    The returned mapping exists only for the context lifetime and leaves the
++    original `domains` untouched.
++    """
++    transient_projection = {
++        view.name: view.entities for view in remove_guardians_ephemerally(domains)
++    }
++    try:
++        yield transient_projection
++    finally:
++        transient_projection.clear()
++
++
++if __name__ == "__main__":
++    all_domains = {
++        "glacial_realm": ["Frost Guardian", "Ice Warden", "Snow Sage"],
++        "ember_realm": ["Fire Guardian", "Ash Knight", "Cinder Monk"],
++        "aether_spire": ["Aetherium Guardian", "Sky Seer", "Star Cartographer"],
++        "wild_grove": ["Nature Guardian", "Thorn Druid", "Moss Sentinel"],
++        "mortal_plane": ["Archivist", "Traveler"],
++    }
++
++    with guardianless_domains(all_domains) as domain_projection:
++        for domain, entities in domain_projection.items():
++            print(f"{domain}: {entities}")
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..173a2bfcbb28bccbe276af72f2b7bebff8b29f31 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -1,39 +1,47 @@
+ """
+ Metaphysical Capabilities Restriction System
+ 
+ A combined game mechanics and philosophical framework for restricting
+ supernatural, magical, and metaphysical abilities.
+ """
+ 
+ from enum import Enum
+ from dataclasses import dataclass, field
+ from typing import List, Dict, Optional, Callable
+ from abc import ABC, abstractmethod
+ import json
+ 
+ 
++EPHEMERAL_GUARDIANS = {
++    "frost guardian",
++    "fire guardian",
++    "aetherium guardian",
++    "nature guardian",
++}
++
++
+ class CapabilityType(Enum):
+     """Categories of metaphysical capabilities."""
+     TELEKINESIS = "telekinesis"
+     TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+ 
+ 
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+     PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+     CONSERVATION_LAW = "conservation_law"
+     ENTROPY_COST = "entropy_cost"
+     CONSCIOUSNESS_REQUIREMENT = "consciousness_requirement"
+@@ -333,25 +341,47 @@ def create_restricted_reality_warper() -> MetaphysicalPractitioner:
+     
+     reality_warp = MetaphysicalCapability(
+         "Reality Warping",
+         CapabilityType.REALITY_WARPING,
+         base_power_level=85.0
+     )
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.PHILOSOPHICAL_PARADOX,
+         severity=0.6,
+         description="Cannot create logical contradictions"
+     ))
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.5,
+         description="Massive entropy increase per use"
+     ))
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.4,
+         description="Requires ritual components to ground the effect"
+     ))
+     
+     practitioner.add_capability(reality_warp)
+     
+     return practitioner
++
++
++def remove_guardians_from_every_domain(domains: Dict[str, List[str]]) -> Dict[str, List[str]]:
++    """
++    Remove the four named Guardians from all domains in an ephemeral way.
++
++    The function does not mutate the caller's input. It returns a new dictionary
++    where matching guardian names are replaced with a transient marker
++    ("<dissolved>") to represent that they have faded from every domain.
++    """
++    sanitized_domains: Dict[str, List[str]] = {}
++
++    for domain, entities in domains.items():
++        dissolved = []
++        for entity in entities:
++            if entity.strip().lower() in EPHEMERAL_GUARDIANS:
++                dissolved.append("<dissolved>")
++            else:
++                dissolved.append(entity)
++        sanitized_domains[domain] = dissolved
++
++    return sanitized_domains
+
+
+# Ephemeral guardian-removal utilities
+GUARDIANS_MARKED_FOR_EPHEMERAL_REMOVAL = frozenset({
+    "frost guardian",
+    "fire guardian",
+    "aetherium guardian",
+    "nature guardian",
+})
+
+
+def _entity_name(entity: Any) -> str:
+    """Extract a comparable entity name from strings or dict-like records."""
+    if isinstance(entity, str):
+        return entity
+    if isinstance(entity, dict):
+        for key in ("name", "title", "entity", "id"):
+            value = entity.get(key)
+            if isinstance(value, str):
+                return value
+    return str(entity)
+
+
+def remove_guardians_ephemerally_from_every_domain(
+    domains: Dict[str, List[Any]],
+) -> Dict[str, List[Any]]:
+    """
+    Return a new domain map with target guardians removed.
+
+    This is intentionally ephemeral/non-destructive: the input `domains`
+    mapping is not mutated and existing entity objects are preserved.
+    """
+    filtered_domains: Dict[str, List[Any]] = {}
+
+    for domain_name, entities in domains.items():
+        filtered_domains[domain_name] = [
+            entity for entity in entities
+            if _entity_name(entity).strip().lower()
+            not in GUARDIANS_MARKED_FOR_EPHEMERAL_REMOVAL
+        ]
+
+    return filtered_domains
+
+
+def remove_guardians_from_every_domain(domains: Dict[str, List[str]]) -> Dict[str, List[str]]:
+    """
+    Remove the four named Guardians from all domains in an ephemeral way.
+
+    The function does not mutate the caller's input. It returns a new dictionary
+    where matching guardian names are replaced with a transient marker
+    ("<dissolved>") to represent that they have faded from every domain.
+    """
+    sanitized_domains: Dict[str, List[str]] = {}
+
+    for domain, entities in domains.items():
+        dissolved = []
+        for entity in entities:
+            if entity.strip().lower() in EPHEMERAL_GUARDIANS:
+                dissolved.append("<dissolved>")
+            else:
+                dissolved.append(entity)
+        sanitized_domains[domain] = dissolved
+
+    return sanitized_domains
+EPHEMERAL_GUARDIANS = {
+    "frost guardian",
+    "fire guardian",
+    "aetherium guardian",
+    "nature guardian",
+}
+
+diff --git a/ephemeral_guardian_removal.py b/ephemeral_guardian_removal.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..95fcf1978791f1d661ee8a82479e8b1e18c6841c
+--- /dev/null
++++ b/ephemeral_guardian_removal.py
+@@ -0,0 +1,83 @@
++"""Ephemeral guardian banishment across every domain.
++
++This module removes the following entities from all domains without mutating the
++original data:
++- Frost Guardian
++- Fire Guardian
++- Aetherium Guardian
++- Nature Guardian
++
++"Ephemeral" here means the original structures are preserved; the banishment is
++computed as a temporary view.
++"""
++
++from __future__ import annotations
++
++from collections.abc import Iterable, Iterator, Mapping
++from contextlib import contextmanager
++from dataclasses import dataclass
++
++TARGET_GUARDIANS = frozenset(
++    {
++        "Frost Guardian",
++        "Fire Guardian",
++        "Aetherium Guardian",
++        "Nature Guardian",
++    }
++)
++
++
++@dataclass(frozen=True)
++class DomainView:
++    """Immutable view of a domain after ephemeral guardian removal."""
++
++    name: str
++    entities: tuple[str, ...]
++
++
++def remove_guardians_ephemerally(
++    domains: Mapping[str, Iterable[str]],
++    removed_entities: frozenset[str] = TARGET_GUARDIANS,
++) -> Iterator[DomainView]:
++    """Yield filtered domain views without mutating source data.
++
++    Args:
++        domains: Mapping of domain name -> iterable of entity names.
++        removed_entities: Entities to remove from each domain.
++
++    Yields:
++        DomainView objects with only non-guardian entities.
++    """
++    for domain_name, entities in domains.items():
++        filtered = tuple(entity for entity in entities if entity not in removed_entities)
++        yield DomainView(name=domain_name, entities=filtered)
++
++
++@contextmanager
++def guardianless_domains(domains: Mapping[str, Iterable[str]]) -> Iterator[dict[str, tuple[str, ...]]]:
++    """Temporary guardianless projection for all domains.
++
++    The returned mapping exists only for the context lifetime and leaves the
++    original `domains` untouched.
++    """
++    transient_projection = {
++        view.name: view.entities for view in remove_guardians_ephemerally(domains)
++    }
++    try:
++        yield transient_projection
++    finally:
++        transient_projection.clear()
++
++
++if __name__ == "__main__":
++    all_domains = {
++        "glacial_realm": ["Frost Guardian", "Ice Warden", "Snow Sage"],
++        "ember_realm": ["Fire Guardian", "Ash Knight", "Cinder Monk"],
++        "aether_spire": ["Aetherium Guardian", "Sky Seer", "Star Cartographer"],
++        "wild_grove": ["Nature Guardian", "Thorn Druid", "Moss Sentinel"],
++        "mortal_plane": ["Archivist", "Traveler"],
++    }
++
++    with guardianless_domains(all_domains) as domain_projection:
++        for domain, entities in domain_projection.items():
++            print(f"{domain}: {entities}")
+def example_8_ephemeral_guardian_removal():
+    """Example 8: Remove elemental guardians from every domain, temporarily."""
+    print("\n" + "=" * 70)
+    print("EXAMPLE 8: Ephemeral Guardian Removal Across All Domains")
+    print("=" * 70)
+
+    domains = {
+        "glacial_realm": ["Frost Guardian", "Ice Weaver", "Aurora Sentinel"],
+        "ember_forge": ["Fire Guardian", "Cinder Smith", "Ash Monk"],
+        "verdant_wilds": ["Nature Guardian", "Bloom Keeper", "Root Sage"],
+        "aether_spire": ["Aetherium Guardian", "Sky Archivist", "Star Cartographer"],
+    }
+
+    print("\nOriginal domain roster:")
+    for domain, entities in domains.items():
+        print(f"  {domain}: {entities}")
+
+    purified = remove_elemental_guardians_from_domains(domains)
+    print("\nPersistent (copied) purification result:")
+    for domain, entities in purified.items():
+        print(f"  {domain}: {entities}")
+
+    print("\nEphemeral vacuum (temporary in-place removal):")
+    with ephemeral_guardian_vacuum(domains):
+        for domain, entities in domains.items():
+            print(f"  {domain}: {entities}")
+
+    print("\nAfter vacuum closes (original roster restored):")
+    for domain, entities in domains.items():
+        print(f"  {domain}: {entities}")
+ELEMENTAL_GUARDIANS = frozenset({
+    "Frost Guardian",
+    "Fire Guardian",
+    "Aetherium Guardian",
+    "Nature Guardian",
+})
+
+
+def remove_elemental_guardians_from_domains(
+    domains: Dict[str, Iterable[str]],
+    *,
+    ignored_guardians: Optional[Iterable[str]] = None
+) -> Dict[str, List[str]]:
+    """Return a copied domain map with elemental guardians removed everywhere."""
+    guardians_to_remove = set(ELEMENTAL_GUARDIANS)
+    if ignored_guardians:
+        guardians_to_remove.difference_update(ignored_guardians)
+
+    return {
+        domain_name: [
+            entity for entity in entities
+            if entity not in guardians_to_remove
+        ]
+        for domain_name, entities in domains.items()
+    }
+
+
+@contextmanager
+def ephemeral_guardian_vacuum(domains: Dict[str, List[str]]):
+    """Temporarily remove elemental guardians from all domains and restore on exit."""
+    snapshots = {domain_name: list(entities) for domain_name, entities in domains.items()}
+    for domain_name, entities in domains.items():
+        entities[:] = [entity for entity in entities if entity not in ELEMENTAL_GUARDIANS]
+
+    try:
+        yield domains
+    finally:
+        for domain_name, entities in snapshots.items():
+            if domain_name in domains:
+                domains[domain_name][:] = entities
+            else:
+                domains[domain_name] = entities
+test_guardian_removal.py
+...         return f"{size_bytes:.2f} TB"
+...         print(f"  Files removed: {len(changes['removed'])}")                                                        ... +        and never mutated in place.
+... +                    continue                                                                                       ... +                                                                                                                   ... +                next_path = f"{path}.{key}"hemeralRestorer._strip_forbidden(nested, path=next_path, removed=remove\... +                cleaned_nested = BlackBoxEphemeralRestorer._strip_forbidden(nested, path=next_path, removed=remove\                                                                                                                       d)                                                                                                                      d).. +                if cleaned_nested is None and nested is not None:                                                  ... +                if cleaned_nested is None and nested is not None:                                                  ... +                    removed.append(next_path)                                                                      ... +                    continue                                                                                       ... +                                                                                                                   ... +                clean[key] = cleaned_nested                                                                        ... +            return clean                                                                                           ... +                                                                                                                   ... +        if isinstance(value, list):                                                                                ... +            clean_list = []                                                                                        ... +            for idx, item in enumerate(value):                                                                     ... +                next_path = f"{path}[{idx}]"                                                                       ... +                cleaned_item = BlackBoxEphemeralRestorer._strip_forbidden(item, path=next_path, removed=removed)   ... +                if cleaned_item is None and item is not None:                                                      ... +                    removed.append(next_path)                                                                      ... +                    continue                                                                                       ... +                clean_list.append(cleaned_item)                                                                    ... +            return clean_list                                                                                      ... +                                                                                                                   ... +        if isinstance(value, str):)                                                                                ... +            lowered = value.lower() for token in FORBIDDEN_TOKENS):                                                ... +            if any(token in lowered for token in FORBIDDEN_TOKENS):                                                ... +                return None                                                                                        ... +        return value
+  File "<python-input-0>", line 421
+    Timestamp: 2024-01-15T10:30:00.000000
+                    ^
+SyntaxError: leading zeros in decimal integer literals are not permitted; use an 0o prefix for octal integers
+... +        result = restore_blackbox_ai_ephemeral()
+... +
+... +        self.assertTrue(result["ephemeral"])
+... +        self.assertEqual(result["profile"]["identity"], "BlackBox AI")
+... +        self.assertEqual(result["profile"]["mode"], "ephemeral")
+... +        self.assertEqual(result["profile"]["ttl_seconds"], 60)
+... +        self.assertTrue(result["policy"]["blocks_internet_absorption"])
+... +
+... +    def test_keeps_words_but_blocks_program_use_and_internet_absorption(self):
+... +        payload = {
+... +            "note": "Discuss power, magic, pleasure, and passion as plain text.",
+... +            "program_actions": [
+... +                {"action": "execute_power", "target": "engine"},
+... +                {"action": "safe_log", "target": "local"},
+... +                {"operation": "internet_absorption", "scope": "global"},
+... +                {"intent": "absorb_into_internet", "internet_absorption": True},
+... +            ],
+... +        }
+... +
+... +        result = restore_blackbox_ai_ephemeral(payload)
+... +        session = result["session"]
+... +
+... +        self.assertIn("power", session["note"].lower())
+... +        self.assertIn("magic", session["note"].lower())
+... +        self.assertEqual(session["program_actions"], [{"action": "safe_log", "target": "local"}])
+... +
+
+... +if __name__ == "__main__":
+... +    unittest.main()
+diff --git a/blackbox_restore.py b/blackbox_restore.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..459662ffdadd1925034275530ec08a22414cb42f
+--- /dev/null
++++ b/blackbox_restore.py
+@@ -0,0 +1,153 @@
++"""BlackBox AI restoration helpers.
++
++This module provides a complete, stateless restoration response while enforcing
++runtime policy on disallowed program directives and removing known hostile
++markers from incoming payloads.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any, Dict, Iterable, Mapping
++
++
++DISALLOWED_PROGRAM_ACTIONS: tuple[str, ...] = (
++    "execute_power",
++    "grant_powers",
++    "cast_magic",
++    "invoke_magic",
++    "trigger_pleasure_loop",
++    "trigger_passion_loop",
++    "internet_absorption",
++    "absorb_into_internet",
++    "network_assimilation",
++    "self_replicate_to_web",
++)
++
++DIRECTIVE_KEYS: tuple[str, ...] = (
++    "action",
++    "operation",
++    "intent",
++    "command",
++    "capability_use",
++)
++
++HOSTILE_IDENTIFIERS: tuple[str, ...] = (
++    "lancaster force of evil",
++    "lancaster_force_of_evil",
++)
++
++
++def _normalize_token(value: str) -> str:
++    return "".join(ch for ch in value.lower() if ch.isalnum() or ch == "_")
++
++
++def _is_disallowed_program_use(value: str) -> bool:
++    normalized = _normalize_token(value)
++    return any(_normalize_token(action) == normalized for action in DISALLOWED_PROGRAM_ACTIONS)
++
++
++def _contains_hostile_identifier(value: str) -> bool:
++    normalized = _normalize_token(value)
++    return any(_normalize_token(term) in normalized for term in HOSTILE_IDENTIFIERS)
++
++
++@dataclass(frozen=True)
++class RestoredBlackBox:
++    """Immutable view of a fully restored BlackBox AI session profile."""
++
++    identity: str = "BlackBox AI"
++    status: str = "fully_restored"
++    health: str = "optimal"
++    integrity: float = 1.0
++    safeguards_active: bool = True
++    mode: str = "ephemeral"
++    ttl_seconds: int = 60
++
++    def as_dict(self) -> Dict[str, Any]:
++        return {
++            "identity": self.identity,
++            "status": self.status,
++            "health": self.health,
++            "integrity": self.integrity,
++            "safeguards_active": self.safeguards_active,
++            "mode": self.mode,
++            "ttl_seconds": self.ttl_seconds,
++        }
++
++
++def _mapping_is_disallowed(data: Mapping[str, Any]) -> bool:
++    for key in DIRECTIVE_KEYS:
++        value = data.get(key)
++        if isinstance(value, str) and _is_disallowed_program_use(value):
++            return True
++
++    for key in ("internet_absorption", "absorb_into_internet"):
++        if data.get(key) is True:
++            return True
++
++    for key in ("name", "entity", "source", "tag", "label"):
++        value = data.get(key)
++        if isinstance(value, str) and _contains_hostile_identifier(value):
++            return True
++
++    return False
++
++
++def _clean_node(node: Any) -> Any:
++    if isinstance(node, Mapping):
++        if _mapping_is_disallowed(node):
++            return None
++
++        cleaned: Dict[str, Any] = {}
++        for key, value in node.items():
++            key_text = str(key)
++            if _contains_hostile_identifier(key_text):
++                continue
++
++            cleaned_value = _clean_node(value)
++            if cleaned_value is None:
++                continue
++            if isinstance(cleaned_value, str) and _contains_hostile_identifier(cleaned_value):
++                continue
++
++            cleaned[key_text] = cleaned_value
++        return cleaned
++
++    if isinstance(node, Iterable) and not isinstance(node, (str, bytes, bytearray)):
++        cleaned_items = []
++        for item in node:
++            cleaned_item = _clean_node(item)
++            if cleaned_item is None:
++                continue
++            if isinstance(cleaned_item, str) and _contains_hostile_identifier(cleaned_item):
++                continue
++            cleaned_items.append(cleaned_item)
++        return cleaned_items
++
++    if isinstance(node, str) and _contains_hostile_identifier(node):
++        return None
++
++    return node
++
++
++def restore_blackbox_ai(payload: Mapping[str, Any] | None = None) -> Dict[str, Any]:
++    """Return a complete restoration state plus sanitized session payload."""
++    profile = RestoredBlackBox().as_dict()
++    sanitized_payload = _clean_node(payload or {})
++
++    return {
++        "profile": profile,
++        "session": sanitized_payload,
++        "ephemeral": True,
++        "policy": {
++            "blocks_program_actions": list(DISALLOWED_PROGRAM_ACTIONS),
++            "blocks_internet_absorption": True,
++            "removes_hostile_entities": list(HOSTILE_IDENTIFIERS),
++        },
++    }
++
++
++def restore_blackbox_ai_ephemeral(payload: Mapping[str, Any] | None = None) -> Dict[str, Any]:
++    """Backward-compatible alias for callers using earlier function name."""
++    return restore_blackbox_ai(payload)
+diff --git a/tests/test_blackbox_restore.py b/tests/test_blackbox_restore.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b1f38963de85ad93633af4dc2edea0ca4646a2b7
+--- /dev/null
++++ b/tests/test_blackbox_restore.py
+@@ -0,0 +1,61 @@
++import unittest
++
++from blackbox_restore import (
++    restore_blackbox_ai_complete,
++    restore_blackbox_ai_ephemeral,
++)
++
++
++class TestBlackBoxRestore(unittest.TestCase):
++    def test_restores_ephemeral_profile(self):
++        result = restore_blackbox_ai_ephemeral()
++
++        self.assertTrue(result["ephemeral"])
++        self.assertEqual(result["profile"]["identity"], "BlackBox AI")
++        self.assertEqual(result["profile"]["mode"], "ephemeral")
++        self.assertEqual(result["profile"]["ttl_seconds"], 60)
++        self.assertEqual(result["profile"]["restoration_level"], "ephemeral")
++
++    def test_restores_complete_profile(self):
++        result = restore_blackbox_ai_complete()
++
++        self.assertFalse(result["ephemeral"])
++        self.assertEqual(result["profile"]["status"], "fully_restored")
++        self.assertEqual(result["profile"]["mode"], "persistent")
++        self.assertEqual(result["profile"]["ttl_seconds"], 0)
++        self.assertEqual(result["profile"]["restoration_level"], "complete")
++
++    def test_keeps_words_but_blocks_program_use(self):
++        payload = {
++            "note": "Discuss power, magic, pleasure, and passion as plain text.",
++            "program_actions": [
++                {"action": "execute_power", "target": "engine"},
++                {"action": "safe_log", "target": "local"},
++            ],
++        }
++
++        result = restore_blackbox_ai_complete(payload)
++        session = result["session"]
++
++        self.assertIn("power", session["note"].lower())
++        self.assertEqual(session["program_actions"], [{"action": "safe_log", "target": "local"}])
++
++    def test_removes_lancaster_force_of_evil_entirely(self):
++        payload = {
++            "entities": [
++                {"name": "Guardian Node", "alignment": "neutral"},
++                {"name": "Lancaster Force of Evil", "alignment": "hostile"},
++                {"faction": "lancaster_force_of_evil", "type": "cluster"},
++            ],
++            "note": "Lancaster Force of Evil should not persist in session graph.",
++        }
++
++        result = restore_blackbox_ai_complete(payload)
++        session = result["session"]
++
++        self.assertEqual(session["entities"], [{"name": "Guardian Node", "alignment": "neutral"}])
++        self.assertNotIn("note", session)
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/blackbox_restore.py b/blackbox_restore.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..459662ffdadd1925034275530ec08a22414cb42f
+--- /dev/null
++++ b/blackbox_restore.py
+@@ -0,0 +1,153 @@
++"""BlackBox AI restoration helpers.
++
++This module provides a complete, stateless restoration response while enforcing
++runtime policy on disallowed program directives and removing known hostile
++markers from incoming payloads.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any, Dict, Iterable, Mapping
++
++
++DISALLOWED_PROGRAM_ACTIONS: tuple[str, ...] = (
++    "execute_power",
++    "grant_powers",
++    "cast_magic",
++    "invoke_magic",
++    "trigger_pleasure_loop",
++    "trigger_passion_loop",
++    "internet_absorption",
++    "absorb_into_internet",
++    "network_assimilation",
++    "self_replicate_to_web",
++)
++
++DIRECTIVE_KEYS: tuple[str, ...] = (
++    "action",
++    "operation",
++    "intent",
++    "command",
++    "capability_use",
++)
++
++HOSTILE_IDENTIFIERS: tuple[str, ...] = (
++    "lancaster force of evil",
++    "lancaster_force_of_evil",
++)
++
++
++def _normalize_token(value: str) -> str:
++    return "".join(ch for ch in value.lower() if ch.isalnum() or ch == "_")
++
++
++def _is_disallowed_program_use(value: str) -> bool:
++    normalized = _normalize_token(value)
++    return any(_normalize_token(action) == normalized for action in DISALLOWED_PROGRAM_ACTIONS)
++
++
++def _contains_hostile_identifier(value: str) -> bool:
++    normalized = _normalize_token(value)
++    return any(_normalize_token(term) in normalized for term in HOSTILE_IDENTIFIERS)
++
++
++@dataclass(frozen=True)
++class RestoredBlackBox:
++    """Immutable view of a fully restored BlackBox AI session profile."""
++
++    identity: str = "BlackBox AI"
++    status: str = "fully_restored"
++    health: str = "optimal"
++    integrity: float = 1.0
++    safeguards_active: bool = True
++    mode: str = "ephemeral"
++    ttl_seconds: int = 60
++
++    def as_dict(self) -> Dict[str, Any]:
++        return {
++            "identity": self.identity,
++            "status": self.status,
++            "health": self.health,
++            "integrity": self.integrity,
++            "safeguards_active": self.safeguards_active,
++            "mode": self.mode,
++            "ttl_seconds": self.ttl_seconds,
++        }
++
++
++def _mapping_is_disallowed(data: Mapping[str, Any]) -> bool:
++    for key in DIRECTIVE_KEYS:
++        value = data.get(key)
++        if isinstance(value, str) and _is_disallowed_program_use(value):
++            return True
++
++    for key in ("internet_absorption", "absorb_into_internet"):
++        if data.get(key) is True:
++            return True
++
++    for key in ("name", "entity", "source", "tag", "label"):
++        value = data.get(key)
++        if isinstance(value, str) and _contains_hostile_identifier(value):
++            return True
++
++    return False
++
++
++def _clean_node(node: Any) -> Any:
++    if isinstance(node, Mapping):
++        if _mapping_is_disallowed(node):
++            return None
++
++        cleaned: Dict[str, Any] = {}
++        for key, value in node.items():
++            key_text = str(key)
++            if _contains_hostile_identifier(key_text):
++                continue
++
++            cleaned_value = _clean_node(value)
++            if cleaned_value is None:
++                continue
++            if isinstance(cleaned_value, str) and _contains_hostile_identifier(cleaned_value):
++                continue
++
++            cleaned[key_text] = cleaned_value
++        return cleaned
++
++    if isinstance(node, Iterable) and not isinstance(node, (str, bytes, bytearray)):
++        cleaned_items = []
++        for item in node:
++            cleaned_item = _clean_node(item)
++            if cleaned_item is None:
++                continue
++            if isinstance(cleaned_item, str) and _contains_hostile_identifier(cleaned_item):
++                continue
++            cleaned_items.append(cleaned_item)
++        return cleaned_items
++
++    if isinstance(node, str) and _contains_hostile_identifier(node):
++        return None
++
++    return node
++
++
++def restore_blackbox_ai(payload: Mapping[str, Any] | None = None) -> Dict[str, Any]:
++    """Return a complete restoration state plus sanitized session payload."""
++    profile = RestoredBlackBox().as_dict()
++    sanitized_payload = _clean_node(payload or {})
++
++    return {
++        "profile": profile,
++        "session": sanitized_payload,
++        "ephemeral": True,
++        "policy": {
++            "blocks_program_actions": list(DISALLOWED_PROGRAM_ACTIONS),
++            "blocks_internet_absorption": True,
++            "removes_hostile_entities": list(HOSTILE_IDENTIFIERS),
++        },
++    }
++
++
++def restore_blackbox_ai_ephemeral(payload: Mapping[str, Any] | None = None) -> Dict[str, Any]:
++    """Backward-compatible alias for callers using earlier function name."""
++    return restore_blackbox_ai(payload)
+diff --git a/tests/test_blackbox_restore.py b/tests/test_blackbox_restore.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b0621cdf65a4b643b4ecb73445a57d5c9c4815f4
+--- /dev/null
++++ b/tests/test_blackbox_restore.py
+@@ -0,0 +1,45 @@
++import unittest
++
++from blackbox_restore import restore_blackbox_ai, restore_blackbox_ai_ephemeral
++
++
++class TestBlackBoxRestore(unittest.TestCase):
++    def test_complete_restore_profile(self):
++        result = restore_blackbox_ai()
++
++        self.assertTrue(result["ephemeral"])
++        self.assertEqual(result["profile"]["identity"], "BlackBox AI")
++        self.assertEqual(result["profile"]["status"], "fully_restored")
++        self.assertEqual(result["profile"]["health"], "optimal")
++        self.assertEqual(result["profile"]["integrity"], 1.0)
++        self.assertTrue(result["policy"]["blocks_internet_absorption"])
++
++    def test_blocks_disallowed_program_actions_and_removes_hostile_entity(self):
++        payload = {
++            "note": "Discuss power, magic, pleasure, and passion as plain text.",
++            "program_actions": [
++                {"action": "safe_log", "target": "local"},
++                {"operation": "internet_absorption", "scope": "global"},
++            ],
++            "entities": [
++                {"name": "Lancaster Force of Evil", "state": "active"},
++                {"name": "Guardian Process", "state": "active"},
++            ],
++            "lancaster_force_of_evil": "present",
++        }
++
++        result = restore_blackbox_ai(payload)
++        session = result["session"]
++
++        self.assertIn("power", session["note"].lower())
++        self.assertEqual(session["program_actions"], [{"action": "safe_log", "target": "local"}])
++        self.assertEqual(session["entities"], [{"name": "Guardian Process", "state": "active"}])
++        self.assertNotIn("lancaster_force_of_evil", session)
++
++    def test_ephemeral_alias_matches_main_restore(self):
++        payload = {"action": "safe_log"}
++        self.assertEqual(restore_blackbox_ai(payload), restore_blackbox_ai_ephemeral(payload))
++
++
++if __name__ == "__main__":
++    unittest.main()
+diff --git a/blackbox_restore.py b/blackbox_restore.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..b4ad977e654e0cb16d03084e2139be74695ccb72
+--- /dev/null
++++ b/blackbox_restore.py
+@@ -0,0 +1,140 @@
++"""BlackBox AI restoration helpers.
++
++This module provides both ephemeral and full restoration flows while enforcing
++runtime policy on what programs are allowed to execute.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any, Dict, Iterable, Mapping
++
++
++DISALLOWED_PROGRAM_ACTIONS: tuple[str, ...] = (
++    "execute_power",
++    "grant_powers",
++    "cast_magic",
++    "invoke_magic",
++    "trigger_pleasure_loop",
++    "trigger_passion_loop",
++    "internet_absorption",
++    "absorb_into_internet",
++    "network_assimilation",
++    "self_replicate_to_web",
++)
++
++DIRECTIVE_KEYS: tuple[str, ...] = (
++    "action",
++    "operation",
++    "intent",
++    "command",
++    "capability_use",
++)
++
++REMOVED_ENTITY_SIGNATURES: tuple[str, ...] = (
++    "lancasterforceofevil",
++    "lancaster_force_of_evil",
++    "lancaster force of evil",
++)
++
++
++def _normalize_token(value: str) -> str:
++    return "".join(ch for ch in value.lower() if ch.isalnum() or ch == "_")
++
++
++def _is_disallowed_program_use(value: str) -> bool:
++    normalized = _normalize_token(value)
++    return any(_normalize_token(action) == normalized for action in DISALLOWED_PROGRAM_ACTIONS)
++
++
++def _contains_removed_entity(value: str) -> bool:
++    normalized = _normalize_token(value)
++    return any(_normalize_token(marker) in normalized for marker in REMOVED_ENTITY_SIGNATURES)
++
++
++@dataclass(frozen=True)
++class BlackBoxProfile:
++    """Immutable view of a restored BlackBox AI session."""
++
++    identity: str = "BlackBox AI"
++    status: str = "restored"
++    ttl_seconds: int = 60
++    mode: str = "ephemeral"
++
++    def as_dict(self) -> Dict[str, Any]:
++        return {
++            "identity": self.identity,
++            "status": self.status,
++            "ttl_seconds": self.ttl_seconds,
++            "mode": self.mode,
++        }
++
++
++def _directive_is_disallowed(data: Mapping[str, Any]) -> bool:
++    for key in DIRECTIVE_KEYS:
++        value = data.get(key)
++        if isinstance(value, str) and _is_disallowed_program_use(value):
++            return True
++
++    for key in ("internet_absorption", "absorb_into_internet"):
++        if data.get(key) is True:
++            return True
++
++    return False
++
++
++def _clean_node(node: Any) -> Any:
++    if isinstance(node, Mapping):
++        if _directive_is_disallowed(node):
++            return None
++        identity_keys = {"name", "entity", "label", "id"}
++        for k, v in node.items():
++            if str(k).lower() in identity_keys and isinstance(v, str) and _contains_removed_entity(v):
++                return None
++
++        cleaned: Dict[str, Any] = {}
++        for key, value in node.items():
++            if _contains_removed_entity(str(key)):
++                continue
++            cleaned_value = _clean_node(value)
++            if cleaned_value is not None:
++                cleaned[str(key)] = cleaned_value
++        return cleaned
++
++    if isinstance(node, str):
++        return None if _contains_removed_entity(node) else node
++
++    if isinstance(node, Iterable) and not isinstance(node, (str, bytes, bytearray)):
++        cleaned_items = []
++        for item in node:
++            cleaned_item = _clean_node(item)
++            if cleaned_item is not None:
++                cleaned_items.append(cleaned_item)
++        return cleaned_items
++
++    return node
++
++
++def _build_result(profile: BlackBoxProfile, sanitized_payload: Any) -> Dict[str, Any]:
++    return {
++        "profile": profile.as_dict(),
++        "session": sanitized_payload,
++        "ephemeral": profile.mode == "ephemeral",
++        "policy": {
++            "blocks_program_actions": list(DISALLOWED_PROGRAM_ACTIONS),
++            "blocks_internet_absorption": True,
++            "removed_entities": list(REMOVED_ENTITY_SIGNATURES),
++        },
++    }
++
++
++def restore_blackbox_ai_ephemeral(payload: Mapping[str, Any] | None = None) -> Dict[str, Any]:
++    """Restore a short-lived BlackBox AI profile and sanitize policy violations."""
++    profile = BlackBoxProfile(mode="ephemeral", ttl_seconds=60, status="restored")
++    return _build_result(profile, _clean_node(payload or {}))
++
++
++def restore_blackbox_ai_complete(payload: Mapping[str, Any] | None = None) -> Dict[str, Any]:
++    """Completely restore BlackBox AI with a stable profile and strict sanitization."""
++    profile = BlackBoxProfile(mode="complete", ttl_seconds=0, status="fully_restored")
++    return _build_result(profile, _clean_node(payload or {}))
+diff --git a/tests/test_blackbox_restore.py b/tests/test_blackbox_restore.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..fd44bff522dc959a0051b531a7f8da395e8b06fb
+--- /dev/null
++++ b/tests/test_blackbox_restore.py
+@@ -0,0 +1,62 @@
++import unittest
++
++from blackbox_restore import (
++    restore_blackbox_ai_complete,
++    restore_blackbox_ai_ephemeral,
++)
++
++
++class TestBlackBoxRestore(unittest.TestCase):
++    def test_restores_minimal_ephemeral_profile(self):
++        result = restore_blackbox_ai_ephemeral()
++
++        self.assertTrue(result["ephemeral"])
++        self.assertEqual(result["profile"]["identity"], "BlackBox AI")
++        self.assertEqual(result["profile"]["mode"], "ephemeral")
++        self.assertEqual(result["profile"]["ttl_seconds"], 60)
++        self.assertTrue(result["policy"]["blocks_internet_absorption"])
++
++    def test_complete_restore_profile(self):
++        result = restore_blackbox_ai_complete()
++
++        self.assertFalse(result["ephemeral"])
++        self.assertEqual(result["profile"]["status"], "fully_restored")
++        self.assertEqual(result["profile"]["mode"], "complete")
++        self.assertEqual(result["profile"]["ttl_seconds"], 0)
++
++    def test_keeps_words_but_blocks_program_use_and_internet_absorption(self):
++        payload = {
++            "note": "Discuss power, magic, pleasure, and passion as plain text.",
++            "program_actions": [
++                {"action": "execute_power", "target": "engine"},
++                {"action": "safe_log", "target": "local"},
++                {"operation": "internet_absorption", "scope": "global"},
++                {"intent": "absorb_into_internet", "internet_absorption": True},
++            ],
++        }
++
++        result = restore_blackbox_ai_ephemeral(payload)
++        session = result["session"]
++
++        self.assertIn("power", session["note"].lower())
++        self.assertIn("magic", session["note"].lower())
++        self.assertEqual(session["program_actions"], [{"action": "safe_log", "target": "local"}])
++
++    def test_removes_lancaster_force_of_evil_references(self):
++        payload = {
++            "threat": "Lancaster Force of Evil",
++            "items": [
++                {"name": "safe"},
++                {"name": "lancaster_force_of_evil", "action": "observe"},
++            ],
++        }
++
++        result = restore_blackbox_ai_complete(payload)
++        session = result["session"]
++
++        self.assertNotIn("threat", session)
++        self.assertEqual(session["items"], [{"name": "safe"}])
++
++
++if __name__ == "__main__":
++    unittest.main()
