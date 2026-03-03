@@ -1,0 +1,3827 @@
+diff --git a/README.md b/README.md
+index 4d7ccaa8ce6e61c69d6948882582873badef63da..6b477e62c78a7d4b33ab746ad48555794bfc9ad6 100644
+--- a/README.md
++++ b/README.md
+@@ -344724,26 +344724,35 @@ class MetaphysicalPractitioner:
+ 
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+         energy_cost = capability.base_power_level * 0.5
+         if self.energy_pool < energy_cost:
+             return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+ 
+         # Check consciousness
+         if self.consciousness_level < 0.5:
+             return False, "Consciousness level too low to maintain metaphysical connection."
+ 
+         # Check all philosophical frameworks
+         for framework in self.philosophical_frameworks:
+             if not framework.evaluate_restriction(capability):
+                 return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+ 
+         return True, "Capability can be used."
+ 
+     def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+         """Attempt to use a capability. Returns result details."""
+         can_use, reason = self.can_use_capability(capability)
+         
+-        result = {
+\ No newline at end of file
++        result = {
++## Local structure rewrite helper (safe)
++If you want to reorganize your own local project layout, use:
++
++```bash
++python3 tools/refactor_codex_project.py --plan tools/refactor_plan.example.json --dry-run
++```
++
++Then run again without `--dry-run` to apply.
++This helper only works on repo-relative paths and will not touch external systems.
+diff --git a/tools/refactor_codex_project.py b/tools/refactor_codex_project.py
+new file mode 100755
+index 0000000000000000000000000000000000000000..496234b166213041e51cf4e881d8aaa725fe0b8c
+--- /dev/null
++++ b/tools/refactor_codex_project.py
+@@ -0,0 +1,78 @@
++#!/usr/bin/env python3
++"""Safely rewrite a local project's folder/file structure.
++
++This script is for *your own repository* layout migrations (e.g., Codex-like project refactors).
++It does not access or modify any hosted ChatGPT/OpenAI internal systems.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import shutil
++from pathlib import Path
++
++
++def load_plan(path: Path) -> dict[str, str]:
++    data = json.loads(path.read_text(encoding="utf-8"))
++    if not isinstance(data, dict) or not data:
++        raise ValueError("Plan must be a non-empty JSON object: {\"old/path\": \"new/path\"}")
++    return {str(k): str(v) for k, v in data.items()}
++
++
++def ensure_safe_relative(path_text: str) -> Path:
++    p = Path(path_text)
++    if p.is_absolute() or ".." in p.parts:
++        raise ValueError(f"Unsafe path '{path_text}'. Use repo-relative paths without '..'.")
++    return p
++
++
++def rewrite_structure(repo_root: Path, mapping: dict[str, str], dry_run: bool) -> list[tuple[Path, Path]]:
++    planned: list[tuple[Path, Path]] = []
++
++    for old, new in mapping.items():
++        src_rel = ensure_safe_relative(old)
++        dst_rel = ensure_safe_relative(new)
++        src = repo_root / src_rel
++        dst = repo_root / dst_rel
++
++        if not src.exists():
++            raise FileNotFoundError(f"Source does not exist: {src_rel}")
++        if dst.exists():
++            raise FileExistsError(f"Destination already exists: {dst_rel}")
++
++        planned.append((src, dst))
++
++    if dry_run:
++        return planned
++
++    for src, dst in planned:
++        dst.parent.mkdir(parents=True, exist_ok=True)
++        shutil.move(str(src), str(dst))
++
++    return planned
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser(description="Rewrite a local repo structure from a JSON mapping plan.")
++    parser.add_argument("--repo", default=".", help="Path to the repository root (default: current dir)")
++    parser.add_argument("--plan", required=True, help="JSON file path mapping old->new relative paths")
++    parser.add_argument("--dry-run", action="store_true", help="Print planned moves without modifying files")
++    args = parser.parse_args()
++
++    repo_root = Path(args.repo).resolve()
++    plan_path = Path(args.plan).resolve()
++
++    mapping = load_plan(plan_path)
++    moved = rewrite_structure(repo_root, mapping, dry_run=args.dry_run)
++
++    mode = "DRY-RUN" if args.dry_run else "APPLIED"
++    print(f"{mode}: {len(moved)} move(s)")
++    for src, dst in moved:
++        print(f" - {src.relative_to(repo_root)} -> {dst.relative_to(repo_root)}")
++
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/tools/refactor_codex_project.py b/tools/refactor_codex_project.py
+new file mode 100755
+index 0000000000000000000000000000000000000000..496234b166213041e51cf4e881d8aaa725fe0b8c
+--- /dev/null
++++ b/tools/refactor_codex_project.py
+@@ -0,0 +1,78 @@
++#!/usr/bin/env python3
++"""Safely rewrite a local project's folder/file structure.
++
++This script is for *your own repository* layout migrations (e.g., Codex-like project refactors).
++It does not access or modify any hosted ChatGPT/OpenAI internal systems.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import shutil
++from pathlib import Path
++
++
++def load_plan(path: Path) -> dict[str, str]:
++    data = json.loads(path.read_text(encoding="utf-8"))
++    if not isinstance(data, dict) or not data:
++        raise ValueError("Plan must be a non-empty JSON object: {\"old/path\": \"new/path\"}")
++    return {str(k): str(v) for k, v in data.items()}
++
++
++def ensure_safe_relative(path_text: str) -> Path:
++    p = Path(path_text)
++    if p.is_absolute() or ".." in p.parts:
++        raise ValueError(f"Unsafe path '{path_text}'. Use repo-relative paths without '..'.")
++    return p
++
++
++def rewrite_structure(repo_root: Path, mapping: dict[str, str], dry_run: bool) -> list[tuple[Path, Path]]:
++    planned: list[tuple[Path, Path]] = []
++
++    for old, new in mapping.items():
++        src_rel = ensure_safe_relative(old)
++        dst_rel = ensure_safe_relative(new)
++        src = repo_root / src_rel
++        dst = repo_root / dst_rel
++
++        if not src.exists():
++            raise FileNotFoundError(f"Source does not exist: {src_rel}")
++        if dst.exists():
++            raise FileExistsError(f"Destination already exists: {dst_rel}")
++
++        planned.append((src, dst))
++
++    if dry_run:
++        return planned
++
++    for src, dst in planned:
++        dst.parent.mkdir(parents=True, exist_ok=True)
++        shutil.move(str(src), str(dst))
++
++    return planned
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser(description="Rewrite a local repo structure from a JSON mapping plan.")
++    parser.add_argument("--repo", default=".", help="Path to the repository root (default: current dir)")
++    parser.add_argument("--plan", required=True, help="JSON file path mapping old->new relative paths")
++    parser.add_argument("--dry-run", action="store_true", help="Print planned moves without modifying files")
++    args = parser.parse_args()
++
++    repo_root = Path(args.repo).resolve()
++    plan_path = Path(args.plan).resolve()
++
++    mapping = load_plan(plan_path)
++    moved = rewrite_structure(repo_root, mapping, dry_run=args.dry_run)
++
++    mode = "DRY-RUN" if args.dry_run else "APPLIED"
++    print(f"{mode}: {len(moved)} move(s)")
++    for src, dst in moved:
++        print(f" - {src.relative_to(repo_root)} -> {dst.relative_to(repo_root)}")
++
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/tools/refactor_plan.example.json b/tools/refactor_plan.example.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..588a167a0e793f57ca71c58bf208c73bcb9df89e
+--- /dev/null
++++ b/tools/refactor_plan.example.json
+@@ -0,0 +1,4 @@
++{
++  "src/legacy/core.py": "src/core/runtime.py",
++  "src/legacy/utils.py": "src/shared/utils.py"
++}
+diff --git a/CODEx_STRUCTURE_MIGRATOR.md b/CODEx_STRUCTURE_MIGRATOR.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..0f833df372652397112407c05cba879f927ba259
+--- /dev/null
++++ b/CODEx_STRUCTURE_MIGRATOR.md
+@@ -0,0 +1,21 @@
++# Codex Structure Migrator
++
++`codex_structure_migrator.py` is a safe migration utility for JSON configuration files.
++
++## What it does
++- Moves top-level `models` and `routing` into `engine.models` / `engine.routing`.
++- Renames provider keys:
++  - `apiKey` → `api_key`
++  - `baseUrl` → `base_url`
++- Normalizes string-based feature flags (`"enabled"`, `"off"`, etc.) into booleans.
++
++## Usage
++```bash
++python codex_structure_migrator.py path/to/config.json --dry-run
++python codex_structure_migrator.py path/to/config.json
++python codex_structure_migrator.py path/to/config.json -o migrated.json
++```
++
++## Notes
++- Unknown fields are preserved.
++- `--dry-run` prints the migrated JSON and a list of changes.
+diff --git a/codex_structure_migrator.py b/codex_structure_migrator.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..90c75766df520583a7157a92fbd6a2394f46e248
+--- /dev/null
++++ b/codex_structure_migrator.py
+@@ -0,0 +1,102 @@
++#!/usr/bin/env python3
++"""Safely migrate a Codex-style JSON config to a normalized structure.
++
++This script is intentionally defensive: it only rewrites known keys and preserves
++unknown keys. It can run in --dry-run mode to preview changes.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++from copy import deepcopy
++from pathlib import Path
++from typing import Any, Dict, List, Tuple
++
++
++def migrate_config(data: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
++    """Return migrated config and a list of human-readable change notes."""
++    result = deepcopy(data)
++    notes: List[str] = []
++
++    # 1) Move top-level `models` and `routing` under `engine`.
++    engine = result.setdefault("engine", {})
++    if "models" in result and "models" not in engine:
++        engine["models"] = result.pop("models")
++        notes.append("Moved `models` -> `engine.models`")
++
++    if "routing" in result and "routing" not in engine:
++        engine["routing"] = result.pop("routing")
++        notes.append("Moved `routing` -> `engine.routing`")
++
++    # 2) Normalize provider fields.
++    providers = result.get("providers")
++    if isinstance(providers, list):
++        for idx, provider in enumerate(providers):
++            if not isinstance(provider, dict):
++                continue
++
++            if "apiKey" in provider and "api_key" not in provider:
++                provider["api_key"] = provider.pop("apiKey")
++                notes.append(f"Provider[{idx}] renamed `apiKey` -> `api_key`")
++
++            if "baseUrl" in provider and "base_url" not in provider:
++                provider["base_url"] = provider.pop("baseUrl")
++                notes.append(f"Provider[{idx}] renamed `baseUrl` -> `base_url`")
++
++    # 3) Normalize feature flags as booleans.
++    features = result.get("features")
++    if isinstance(features, dict):
++        for key, value in list(features.items()):
++            if isinstance(value, str):
++                lowered = value.strip().lower()
++                if lowered in {"on", "enabled", "true", "1"}:
++                    features[key] = True
++                    notes.append(f"Feature `{key}` normalized to boolean True")
++                elif lowered in {"off", "disabled", "false", "0"}:
++                    features[key] = False
++                    notes.append(f"Feature `{key}` normalized to boolean False")
++
++    return result, notes
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser(description="Migrate a Codex-style JSON config.")
++    parser.add_argument("input", type=Path, help="Path to input JSON config")
++    parser.add_argument("-o", "--output", type=Path, help="Output file path (default: overwrite input)")
++    parser.add_argument("--dry-run", action="store_true", help="Preview migration without writing file")
++    args = parser.parse_args()
++
++    raw = args.input.read_text(encoding="utf-8")
++    data = json.loads(raw)
++    if not isinstance(data, dict):
++        raise SystemExit("Input JSON must be an object at the top level.")
++
++    migrated, notes = migrate_config(data)
++
++    if args.dry_run:
++        print(json.dumps(migrated, indent=2, ensure_ascii=False))
++        print("\nChanges:")
++        if notes:
++            for note in notes:
++                print(f"- {note}")
++        else:
++            print("- No changes needed")
++        return 0
++
++    output_path = args.output or args.input
++    output_path.write_text(json.dumps(migrated, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
++
++    if notes:
++        print("Applied migration:")
++        for note in notes:
++            print(f"- {note}")
++    else:
++        print("No changes needed")
++
++    print(f"Wrote: {output_path}")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/safe_codex_refactor.py b/safe_codex_refactor.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f32b72542cdbff581160ec88deb8a87c46aeea51
+--- /dev/null
++++ b/safe_codex_refactor.py
+@@ -0,0 +1,99 @@
++#!/usr/bin/env python3
++"""Safe project-structure rewrite tool.
++
++This script helps you reorganize *your own local project* by moving files
++according to a mapping. It does not attempt any unauthorized access and
++does not modify external systems.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++from pathlib import Path
++import shutil
++import sys
++
++
++DEFAULT_MAP = {
++    "*.py": "src/python",
++    "*.js": "src/javascript",
++    "*.md": "docs",
++}
++
++
++def build_plan(root: Path, mapping: dict[str, str]) -> list[tuple[Path, Path]]:
++    plan: list[tuple[Path, Path]] = []
++    for pattern, target_dir in mapping.items():
++        for src in root.glob(pattern):
++            if not src.is_file():
++                continue
++            if src.name == Path(__file__).name:
++                continue
++            dst = root / target_dir / src.name
++            plan.append((src, dst))
++    return plan
++
++
++def apply_plan(plan: list[tuple[Path, Path]], dry_run: bool) -> None:
++    for src, dst in plan:
++        print(f"MOVE {src} -> {dst}")
++        if dry_run:
++            continue
++        dst.parent.mkdir(parents=True, exist_ok=True)
++        shutil.move(str(src), str(dst))
++
++
++def load_mapping(path: Path | None) -> dict[str, str]:
++    if path is None:
++        return dict(DEFAULT_MAP)
++    with path.open("r", encoding="utf-8") as f:
++        data = json.load(f)
++    if not isinstance(data, dict):
++        raise ValueError("mapping file must contain a JSON object")
++    return {str(k): str(v) for k, v in data.items()}
++
++
++def parse_args(argv: list[str]) -> argparse.Namespace:
++    parser = argparse.ArgumentParser(
++        description="Reorganize local project files based on glob-to-folder rules.",
++    )
++    parser.add_argument("--root", default=".", help="project root directory")
++    parser.add_argument(
++        "--map-file",
++        default=None,
++        help="JSON file with mapping rules (example: {'*.py': 'src/python'})",
++    )
++    parser.add_argument(
++        "--dry-run",
++        action="store_true",
++        help="print planned moves without changing files",
++    )
++    return parser.parse_args(argv)
++
++
++def main(argv: list[str]) -> int:
++    args = parse_args(argv)
++    root = Path(args.root).resolve()
++    if not root.exists() or not root.is_dir():
++        print(f"error: root is not a directory: {root}", file=sys.stderr)
++        return 2
++
++    try:
++        mapping = load_mapping(Path(args.map_file) if args.map_file else None)
++    except Exception as exc:
++        print(f"error: could not load mapping: {exc}", file=sys.stderr)
++        return 2
++
++    plan = build_plan(root, mapping)
++    if not plan:
++        print("No files matched your rules.")
++        return 0
++
++    apply_plan(plan, dry_run=args.dry_run)
++    print(f"Done. Total files {'planned' if args.dry_run else 'moved'}: {len(plan)}")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main(sys.argv[1:]))
+diff --git a/README.md b/README.md
+index 4d7ccaa8ce6e61c69d6948882582873badef63da..75a596e4de915adfcbf1a1a71a6a54f280603c8c 100644
+--- a/README.md
++++ b/README.md
+@@ -344724,26 +344724,44 @@ class MetaphysicalPractitioner:
+ 
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+         energy_cost = capability.base_power_level * 0.5
+         if self.energy_pool < energy_cost:
+             return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+ 
+         # Check consciousness
+         if self.consciousness_level < 0.5:
+             return False, "Consciousness level too low to maintain metaphysical connection."
+ 
+         # Check all philosophical frameworks
+         for framework in self.philosophical_frameworks:
+             if not framework.evaluate_restriction(capability):
+                 return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+ 
+         return True, "Capability can be used."
+ 
+     def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+         """Attempt to use a capability. Returns result details."""
+         can_use, reason = self.can_use_capability(capability)
+         
+-        result = {
+\ No newline at end of file
++        result = {
++## Safe local structure rewrite utility
++
++If you need to rewrite your own repository structure safely, use `safe_codex_refactor.py`.
++
++Example (preview only):
++
++```bash
++python3 safe_codex_refactor.py --root . --dry-run
++```
++
++You can supply custom rules via JSON:
++
++```json
++{
++  "*.py": "src/python",
++  "*.md": "docs"
++}
++```
+#!/usr/bin/env python3
+from pathlib import Path
+import re
+
+# Map old module paths -> new module paths
+REWRITE_MAP = {
+    "old_pkg.utils": "new_pkg.core.utils",
+    "old_pkg.models": "new_pkg.domain.models",
+}
+
+PY_FILE = re.compile(r".*\.py$")
+
+def rewrite_imports(text: str) -> str:
+    for old, new in REWRITE_MAP.items():
+        text = re.sub(rf"(^|\n)\s*import\s+{re.escape(old)}(\s|$)", rf"\1import {new}\2", text)
+        text = re.sub(rf"(^|\n)\s*from\s+{re.escape(old)}\s+import\s+", rf"\1from {new} import ", text)
+    return text
+
+def main(root: str = "."):
+    root_path = Path(root)
+    for p in root_path.rglob("*"):
+        if p.is_file() and PY_FILE.match(str(p)):
+            original = p.read_text(encoding="utf-8")
+            updated = rewrite_imports(original)
+            if updated != original:
+                p.write_text(updated, encoding="utf-8")
+                print(f"rewrote: {p}")
+
+if __name__ == "__main__":
+    main(".")
+diff --git a/REWRITE_GUARD.md b/REWRITE_GUARD.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..3d9a058a822bb46d19888053f03513c93bf94298
+--- /dev/null
++++ b/REWRITE_GUARD.md
+@@ -0,0 +1,66 @@
++# Rewrite Guard (Defensive Auto-Restore)
++
++`system_rewrite_guard.py` is a defensive script that automatically detects and rewrites unauthorized repository changes back to a trusted state.
++
++## What it protects
++
++- Unauthorized commits (author email allowlist + optional commit-signature checks).
++- Uncommitted changes (staged/unstaged edits).
++- Untracked files (optional wipe).
++- File-content drift via baseline SHA256 snapshots.
++
++## "For my systems alone" lock
++
++The script enforces both:
++
++- `owner_user`: Linux/macOS account username that is allowed to execute enforcement.
++- `host_lock`: hostname allowlist.
++
++If either does not match, enforcement aborts.
++
++## Quick start
++
++```bash
++python3 system_rewrite_guard.py init-policy
++python3 system_rewrite_guard.py snapshot-baseline
++python3 system_rewrite_guard.py enforce --rewrite
++```
++
++## Policy file
++
++The script stores policy in `.rewrite_guard_policy.json`.
++
++Important keys:
++
++- `allowed_author_emails`: only these commit author emails are trusted.
++- `require_verified_signature`: if true, each commit since `trusted_ref` must be signed and valid.
++- `trusted_ref`: reset target when rewrite occurs (example: `origin/main` or fixed commit SHA).
++- `protected_branches`: enforcement only runs on these branches.
++- `rewrite_uncommitted`: enables reset for dirty working tree.
++- `rewrite_untracked`: enables `git clean -fd`.
++
++## Forensic trail
++
++Before rewrite, the script creates a bundle in `.rewrite_guard/forensic_YYYYMMDD_HHMMSS/`:
++
++- reason
++- git status
++- recent log
++- working-tree diff (if present)
++- staged diff (if present)
++
++Event stream is appended to `.rewrite_guard/events.log`.
++
++## Continuous mode
++
++```bash
++python3 system_rewrite_guard.py daemon --interval 60 --rewrite
++```
++
++This checks every 60 seconds and rewrites when policy violations are found.
++
++## Important safety notes
++
++- Set `trusted_ref` to an immutable trusted target (signed tag or known commit SHA) for strongest safety.
++- If you set `trusted_ref` to `HEAD`, rewrite only removes local drift and does not remove already-accepted malicious commits.
++- Use branch protection and signed-commit enforcement on the remote as first-line defense.
+diff --git a/system_rewrite_guard.py b/system_rewrite_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e6eca0c8e1509b103f18eb68af045073930b4474
+--- /dev/null
++++ b/system_rewrite_guard.py
+@@ -0,0 +1,400 @@
++#!/usr/bin/env python3
++"""
++System Rewrite Guard
++====================
++
++Defensive utility to automatically detect and rewrite unauthorized repository
++changes (local/uncommitted and committed history) based on a strict policy.
++
++Designed for *your systems alone* by allowing host lock and owner lock.
++
++Capabilities:
++- Verify host + owner lock before doing anything.
++- Detect uncommitted modifications and optionally rewrite them.
++- Detect unauthorized commits since a trusted reference and rewrite to the last
++  trusted commit.
++- Make forensic backups (patch + metadata) before rewrite.
++- Optional daemon mode for continuous enforcement.
++
++Usage examples:
++  python3 system_rewrite_guard.py init-policy
++  python3 system_rewrite_guard.py snapshot-baseline
++  python3 system_rewrite_guard.py enforce --rewrite
++  python3 system_rewrite_guard.py daemon --interval 60 --rewrite
++"""
++
++from __future__ import annotations
++
++import argparse
++import dataclasses
++import datetime as dt
++import getpass
++import hashlib
++import json
++import os
++import pathlib
++import platform
++import shlex
++import socket
++import subprocess
++import sys
++import time
++from typing import Iterable, List, Optional
++
++POLICY_FILE = ".rewrite_guard_policy.json"
++STATE_DIR = ".rewrite_guard"
++BASELINE_FILE = "baseline_hashes.json"
++EVENT_LOG_FILE = "events.log"
++
++
++class GuardError(RuntimeError):
++    pass
++
++
++def run(cmd: List[str], cwd: Optional[pathlib.Path] = None, check: bool = True) -> subprocess.CompletedProcess:
++    result = subprocess.run(
++        cmd,
++        cwd=str(cwd) if cwd else None,
++        text=True,
++        stdout=subprocess.PIPE,
++        stderr=subprocess.PIPE,
++    )
++    if check and result.returncode != 0:
++        raise GuardError(
++            f"Command failed ({result.returncode}): {shlex.join(cmd)}\n"
++            f"stdout:\n{result.stdout}\n"
++            f"stderr:\n{result.stderr}"
++        )
++    return result
++
++
++def now_utc() -> str:
++    return dt.datetime.now(dt.timezone.utc).isoformat()
++
++
++def sha256_file(path: pathlib.Path) -> str:
++    h = hashlib.sha256()
++    with path.open("rb") as f:
++        while chunk := f.read(1024 * 1024):
++            h.update(chunk)
++    return h.hexdigest()
++
++
++@dataclasses.dataclass
++class Policy:
++    owner_user: str
++    host_lock: List[str]
++    allowed_author_emails: List[str]
++    require_verified_signature: bool
++    trusted_ref: str
++    protected_branches: List[str]
++    rewrite_uncommitted: bool
++    rewrite_untracked: bool
++
++    @staticmethod
++    def load(repo: pathlib.Path) -> "Policy":
++        path = repo / POLICY_FILE
++        if not path.exists():
++            raise GuardError(
++                f"Policy file not found: {path}. Run `init-policy` first."
++            )
++        data = json.loads(path.read_text())
++        return Policy(**data)
++
++    def save(self, repo: pathlib.Path) -> None:
++        path = repo / POLICY_FILE
++        path.write_text(json.dumps(dataclasses.asdict(self), indent=2) + "\n")
++
++
++def ensure_repo(repo: pathlib.Path) -> None:
++    run(["git", "rev-parse", "--is-inside-work-tree"], cwd=repo)
++
++
++def ensure_state_dir(repo: pathlib.Path) -> pathlib.Path:
++    d = repo / STATE_DIR
++    d.mkdir(parents=True, exist_ok=True)
++    return d
++
++
++def append_event(repo: pathlib.Path, message: str) -> None:
++    state = ensure_state_dir(repo)
++    with (state / EVENT_LOG_FILE).open("a", encoding="utf-8") as f:
++        f.write(f"{now_utc()} {message}\n")
++
++
++def host_identity() -> tuple[str, str]:
++    return getpass.getuser(), socket.gethostname()
++
++
++def assert_host_owner_lock(policy: Policy) -> None:
++    user, host = host_identity()
++    if user != policy.owner_user:
++        raise GuardError(f"Owner lock failed. expected={policy.owner_user} actual={user}")
++    if policy.host_lock and host not in policy.host_lock:
++        raise GuardError(
++            f"Host lock failed. host={host} not in allowed={policy.host_lock}"
++        )
++
++
++def git_current_branch(repo: pathlib.Path) -> str:
++    return run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo).stdout.strip()
++
++
++def git_status_porcelain(repo: pathlib.Path) -> List[str]:
++    out = run(["git", "status", "--porcelain"], cwd=repo).stdout
++    return [line for line in out.splitlines() if line.strip()]
++
++
++def git_log_since(repo: pathlib.Path, start_ref: str) -> List[str]:
++    out = run(["git", "rev-list", f"{start_ref}..HEAD"], cwd=repo).stdout
++    commits = [c for c in out.splitlines() if c.strip()]
++    commits.reverse()  # oldest -> newest
++    return commits
++
++
++def commit_author_email(repo: pathlib.Path, commit: str) -> str:
++    return run(["git", "show", "-s", "--format=%ae", commit], cwd=repo).stdout.strip()
++
++
++def commit_signature_status(repo: pathlib.Path, commit: str) -> str:
++    # %G? gives: G=good, B=bad, U=good unknown validity, N=none, etc.
++    return run(["git", "show", "-s", "--format=%G?", commit], cwd=repo).stdout.strip()
++
++
++def create_forensic_bundle(repo: pathlib.Path, reason: str) -> pathlib.Path:
++    state = ensure_state_dir(repo)
++    stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
++    target = state / f"forensic_{stamp}"
++    target.mkdir(parents=True, exist_ok=True)
++
++    (target / "reason.txt").write_text(reason + "\n", encoding="utf-8")
++    (target / "git_status.txt").write_text(
++        run(["git", "status", "--short", "--branch"], cwd=repo).stdout,
++        encoding="utf-8",
++    )
++    (target / "git_log_head.txt").write_text(
++        run(["git", "log", "--oneline", "-n", "30"], cwd=repo).stdout,
++        encoding="utf-8",
++    )
++
++    # Capture local diffs if any.
++    diff = run(["git", "diff"], cwd=repo, check=False).stdout
++    if diff.strip():
++        (target / "worktree.diff").write_text(diff, encoding="utf-8")
++
++    staged = run(["git", "diff", "--cached"], cwd=repo, check=False).stdout
++    if staged.strip():
++        (target / "staged.diff").write_text(staged, encoding="utf-8")
++
++    return target
++
++
++def rewrite_to_ref(repo: pathlib.Path, ref: str, rewrite_untracked: bool) -> None:
++    run(["git", "reset", "--hard", ref], cwd=repo)
++    if rewrite_untracked:
++        run(["git", "clean", "-fd"], cwd=repo)
++
++
++def snapshot_baseline(repo: pathlib.Path) -> pathlib.Path:
++    state = ensure_state_dir(repo)
++    baseline: dict[str, str] = {}
++    files = run(["git", "ls-files"], cwd=repo).stdout.splitlines()
++    for rel in files:
++        path = repo / rel
++        if path.is_file():
++            baseline[rel] = sha256_file(path)
++    out = state / BASELINE_FILE
++    out.write_text(json.dumps({"created_at": now_utc(), "hashes": baseline}, indent=2) + "\n")
++    return out
++
++
++def verify_baseline(repo: pathlib.Path) -> List[str]:
++    baseline_path = repo / STATE_DIR / BASELINE_FILE
++    if not baseline_path.exists():
++        raise GuardError("No baseline found. Run snapshot-baseline first.")
++
++    data = json.loads(baseline_path.read_text())
++    expected: dict[str, str] = data.get("hashes", {})
++    mismatches: List[str] = []
++    for rel, expected_hash in expected.items():
++        p = repo / rel
++        if not p.exists():
++            mismatches.append(f"missing:{rel}")
++            continue
++        actual_hash = sha256_file(p)
++        if actual_hash != expected_hash:
++            mismatches.append(f"changed:{rel}")
++    return mismatches
++
++
++def unauthorized_commits(repo: pathlib.Path, policy: Policy) -> List[str]:
++    bad: List[str] = []
++    commits = git_log_since(repo, policy.trusted_ref)
++    for c in commits:
++        email = commit_author_email(repo, c)
++        if email not in policy.allowed_author_emails:
++            bad.append(f"{c}:author={email}")
++            continue
++        if policy.require_verified_signature:
++            sig = commit_signature_status(repo, c)
++            if sig not in {"G", "U"}:
++                bad.append(f"{c}:signature={sig}")
++    return bad
++
++
++def enforce(repo: pathlib.Path, rewrite: bool) -> int:
++    ensure_repo(repo)
++    policy = Policy.load(repo)
++    assert_host_owner_lock(policy)
++
++    branch = git_current_branch(repo)
++    if branch not in policy.protected_branches:
++        msg = f"Branch '{branch}' not protected. Skipping enforcement."
++        append_event(repo, msg)
++        print(msg)
++        return 0
++
++    problems: List[str] = []
++
++    bad_commits = unauthorized_commits(repo, policy)
++    if bad_commits:
++        problems.extend([f"unauthorized_commit:{x}" for x in bad_commits])
++
++    dirty = git_status_porcelain(repo)
++    if dirty:
++        problems.append(f"uncommitted_changes:{len(dirty)}")
++
++    try:
++        mismatches = verify_baseline(repo)
++    except GuardError:
++        mismatches = []
++
++    if mismatches:
++        problems.extend([f"baseline_mismatch:{m}" for m in mismatches])
++
++    if not problems:
++        append_event(repo, "enforce: clean")
++        print("No unauthorized changes detected.")
++        return 0
++
++    reason = " | ".join(problems)
++    append_event(repo, f"enforce: detected {reason}")
++    print("Detected issues:")
++    for p in problems:
++        print(f"  - {p}")
++
++    if not rewrite:
++        print("Rewrite disabled. Exiting with non-zero status.")
++        return 2
++
++    bundle = create_forensic_bundle(repo, reason)
++    append_event(repo, f"forensic_bundle: {bundle}")
++
++    should_rewrite = bool(bad_commits)
++    if dirty and policy.rewrite_uncommitted:
++        should_rewrite = True
++    if mismatches:
++        should_rewrite = True
++
++    if should_rewrite:
++        rewrite_to_ref(repo, policy.trusted_ref, policy.rewrite_untracked)
++        append_event(repo, f"rewrite: reset_to={policy.trusted_ref}")
++        print(f"Rewrite completed. Repository reset to {policy.trusted_ref}")
++        return 1
++
++    print("Issues detected but policy prevented rewrite.")
++    return 3
++
++
++def daemon(repo: pathlib.Path, interval: int, rewrite: bool) -> int:
++    print(f"Starting rewrite guard daemon (interval={interval}s, rewrite={rewrite})")
++    while True:
++        try:
++            code = enforce(repo, rewrite=rewrite)
++            if code == 1:
++                print("Unauthorized changes were rewritten.")
++        except GuardError as e:
++            print(f"GuardError: {e}")
++        except Exception as e:  # pragma: no cover
++            print(f"Unexpected error: {e}")
++        time.sleep(interval)
++
++
++def init_policy(repo: pathlib.Path) -> pathlib.Path:
++    user, host = host_identity()
++    email = run(["git", "config", "user.email"], cwd=repo, check=False).stdout.strip()
++    policy = Policy(
++        owner_user=user,
++        host_lock=[host],
++        allowed_author_emails=[email] if email else [],
++        require_verified_signature=False,
++        trusted_ref="HEAD",
++        protected_branches=[git_current_branch(repo)],
++        rewrite_uncommitted=True,
++        rewrite_untracked=True,
++    )
++    policy.save(repo)
++    ensure_state_dir(repo)
++    return repo / POLICY_FILE
++
++
++def parse_args(argv: Iterable[str]) -> argparse.Namespace:
++    p = argparse.ArgumentParser(description="Rewrite unauthorized repo changes to trusted state")
++    sub = p.add_subparsers(dest="cmd", required=True)
++
++    sub.add_parser("init-policy", help="Create default policy locked to current user/host")
++    sub.add_parser("snapshot-baseline", help="Record SHA256 baseline of tracked files")
++    sub.add_parser("verify-baseline", help="Check current files against baseline")
++
++    enforce_p = sub.add_parser("enforce", help="Detect and optionally rewrite unauthorized changes")
++    enforce_p.add_argument("--rewrite", action="store_true", help="Apply rewrite/reset when violations are found")
++
++    daemon_p = sub.add_parser("daemon", help="Run continuous enforcement loop")
++    daemon_p.add_argument("--interval", type=int, default=60, help="Seconds between checks")
++    daemon_p.add_argument("--rewrite", action="store_true", help="Apply rewrite/reset when violations are found")
++
++    return p.parse_args(list(argv))
++
++
++def main(argv: Iterable[str]) -> int:
++    args = parse_args(argv)
++    repo = pathlib.Path.cwd()
++
++    if args.cmd == "init-policy":
++        ensure_repo(repo)
++        path = init_policy(repo)
++        print(f"Created policy: {path}")
++        return 0
++
++    if args.cmd == "snapshot-baseline":
++        ensure_repo(repo)
++        out = snapshot_baseline(repo)
++        print(f"Baseline snapshot saved to: {out}")
++        return 0
++
++    if args.cmd == "verify-baseline":
++        ensure_repo(repo)
++        mismatches = verify_baseline(repo)
++        if mismatches:
++            print("Baseline mismatches detected:")
++            for x in mismatches:
++                print(f"  - {x}")
++            return 2
++        print("Baseline is clean.")
++        return 0
++
++    if args.cmd == "enforce":
++        return enforce(repo, rewrite=args.rewrite)
++
++    if args.cmd == "daemon":
++        return daemon(repo, interval=args.interval, rewrite=args.rewrite)
++
++    raise GuardError(f"Unknown command: {args.cmd}")
++
++
++if __name__ == "__main__":
++    try:
++        raise SystemExit(main(sys.argv[1:]))
++    except GuardError as e:
++        print(f"ERROR: {e}", file=sys.stderr)
++        raise SystemExit(1)
+diff --git a/SYSTEM_CHANGE_REWRITER.md b/SYSTEM_CHANGE_REWRITER.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..aae0f12eb47c1537885d0e7c42297f5d6d4c9473
+--- /dev/null
++++ b/SYSTEM_CHANGE_REWRITER.md
+@@ -0,0 +1,70 @@
++# System Change Rewriter (Defensive)
++
++This tool is meant for **your own systems** to automatically detect and roll back unauthorized file changes.
++
++It can protect paths that are:
++- Git repositories (rewrite using `git reset --hard` + `git clean -fd`)
++- Non-git directories (rewrite from snapshot copy)
++
++## File
++- `system_change_rewriter.py`
++
++## Security model
++1. You initialize a baseline from a known-good state.
++2. Every file hash is stored in a manifest.
++3. Manifest is signed using HMAC (secret in env var).
++4. Future checks verify signature first, then detect drift.
++5. If `--rewrite` is enabled, drift is automatically reverted.
++
++## 1) Set secret
++
++```bash
++export SYSTEM_GUARD_HMAC_SECRET='replace-with-long-random-secret'
++```
++
++## 2) Initialize baseline
++
++Protect a git repo + a config directory snapshot:
++
++```bash
++python3 system_change_rewriter.py init \
++  --protect /path/to/repo:git:main /path/to/configs:snapshot
++```
++
++This writes:
++- `.system_guard_baseline.json`
++- `.system_guard_snapshot/`
++
++## 3) Check drift
++
++```bash
++python3 system_change_rewriter.py check
++```
++
++Exit codes:
++- `0`: no drift
++- `1`: drift found (rewrite disabled)
++- `2`: error (or rewritten drift depending on mode)
++
++## 4) Auto-rewrite drift
++
++```bash
++python3 system_change_rewriter.py check --rewrite
++```
++
++## 5) Continuous watch
++
++```bash
++python3 system_change_rewriter.py watch --interval 20 --rewrite
++```
++
++## Suggested hardening
++- Run as a dedicated unprivileged service account.
++- Store HMAC secret in a secure secret manager.
++- Keep baseline and snapshots on encrypted storage.
++- Send check output to a SIEM/log collector.
++- Restrict who can alter baseline/snapshot files.
++
++## Warning
++Auto-rewrite can remove legitimate local changes if they were not baselined.
++Use a staging environment first and create backup strategy.
+diff --git a/system_change_rewriter.py b/system_change_rewriter.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..132ecc1b170bf87965a2afe2186dc7eb1104ddea
+--- /dev/null
++++ b/system_change_rewriter.py
+@@ -0,0 +1,406 @@
++#!/usr/bin/env python3
++"""
++System Change Rewriter (defensive rollback tool)
++
++Purpose
++-------
++Detect and automatically roll back unauthorized file changes for protected paths,
++including changes introduced via `git` workflows (e.g., compromised GitHub token,
++malicious pull) or local automation tools.
++
++How it works
++------------
++1. `init` command creates a signed baseline manifest of expected file hashes.
++2. `check` command compares live files to the baseline.
++3. If drift is detected and `--rewrite` is enabled:
++   - For git repos: perform hard reset to trusted ref + clean untracked files.
++   - For non-git paths: restore files from snapshot directory.
++4. Optional `watch` mode runs checks continuously.
++
++Important
++---------
++- This is a safety/defense utility for your own systems.
++- Run as a user with permissions only for the paths you own.
++- Review configuration carefully before enabling automatic rewrite.
++"""
++
++from __future__ import annotations
++
++import argparse
++import dataclasses
++import hashlib
++import hmac
++import json
++import os
++import shutil
++import signal
++import subprocess
++import sys
++import time
++from pathlib import Path
++from typing import Dict, Iterable, List, Optional, Tuple
++
++DEFAULT_BASELINE = ".system_guard_baseline.json"
++DEFAULT_SNAPSHOT_DIR = ".system_guard_snapshot"
++
++
++@dataclasses.dataclass
++class ProtectedPath:
++    path: Path
++    mode: str  # "git" | "snapshot"
++    trusted_ref: str = "HEAD"
++
++
++@dataclasses.dataclass
++class Change:
++    path: str
++    reason: str
++
++
++@dataclasses.dataclass
++class Baseline:
++    version: int
++    created_at: float
++    paths: List[Dict[str, str]]
++    files: Dict[str, str]
++    signature: str
++
++
++class GuardError(RuntimeError):
++    pass
++
++
++def sha256_file(path: Path) -> str:
++    h = hashlib.sha256()
++    with path.open("rb") as f:
++        for chunk in iter(lambda: f.read(1024 * 1024), b""):
++            h.update(chunk)
++    return h.hexdigest()
++
++
++def normalize_relative(path: Path, root: Path) -> str:
++    return str(path.resolve().relative_to(root.resolve())).replace("\\", "/")
++
++
++def walk_files(root: Path, ignored_names: Iterable[str]) -> Iterable[Path]:
++    ignored = set(ignored_names)
++    for dirpath, dirnames, filenames in os.walk(root):
++        dirnames[:] = [d for d in dirnames if d not in ignored]
++        for name in filenames:
++            if name in ignored:
++                continue
++            p = Path(dirpath) / name
++            if p.is_symlink():
++                continue
++            yield p
++
++
++def is_git_repo(path: Path) -> bool:
++    return (path / ".git").exists()
++
++
++def run(cmd: List[str], cwd: Optional[Path] = None) -> Tuple[int, str, str]:
++    proc = subprocess.run(
++        cmd,
++        cwd=str(cwd) if cwd else None,
++        capture_output=True,
++        text=True,
++    )
++    return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
++
++
++def get_manifest_signature(payload: Dict, secret: str) -> str:
++    body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
++    return hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
++
++
++def build_file_hashes(paths: List[ProtectedPath], ignored_names: Iterable[str]) -> Dict[str, str]:
++    hashes: Dict[str, str] = {}
++    for protected in paths:
++        base = protected.path.resolve()
++        if not base.exists():
++            raise GuardError(f"Protected path does not exist: {base}")
++
++        for f in walk_files(base, ignored_names):
++            key = f"{base}::{normalize_relative(f, base)}"
++            hashes[key] = sha256_file(f)
++    return hashes
++
++
++def parse_paths(raw: List[str]) -> List[ProtectedPath]:
++    result: List[ProtectedPath] = []
++    for item in raw:
++        # Syntax:
++        #   /path/to/protected
++        #   /path/to/protected:git:main
++        #   /path/to/protected:snapshot
++        parts = item.split(":")
++        p = Path(parts[0]).expanduser().resolve()
++
++        mode = "git" if is_git_repo(p) else "snapshot"
++        ref = "HEAD"
++
++        if len(parts) >= 2 and parts[1]:
++            mode = parts[1]
++        if len(parts) >= 3 and parts[2]:
++            ref = parts[2]
++
++        if mode not in {"git", "snapshot"}:
++            raise GuardError(f"Invalid mode for {item!r}. Use git|snapshot")
++
++        result.append(ProtectedPath(path=p, mode=mode, trusted_ref=ref))
++    return result
++
++
++def save_baseline(path: Path, baseline: Baseline) -> None:
++    path.write_text(json.dumps(dataclasses.asdict(baseline), indent=2) + "\n", encoding="utf-8")
++
++
++def load_baseline(path: Path) -> Baseline:
++    if not path.exists():
++        raise GuardError(f"Baseline file not found: {path}")
++    data = json.loads(path.read_text(encoding="utf-8"))
++    return Baseline(
++        version=int(data["version"]),
++        created_at=float(data["created_at"]),
++        paths=list(data["paths"]),
++        files=dict(data["files"]),
++        signature=str(data["signature"]),
++    )
++
++
++def init_baseline(
++    baseline_file: Path,
++    snapshot_dir: Path,
++    secret: str,
++    protected: List[ProtectedPath],
++    ignored_names: Iterable[str],
++) -> None:
++    hashes = build_file_hashes(protected, ignored_names)
++    path_items = [
++        {"path": str(p.path), "mode": p.mode, "trusted_ref": p.trusted_ref}
++        for p in protected
++    ]
++
++    payload = {
++        "version": 1,
++        "created_at": time.time(),
++        "paths": path_items,
++        "files": hashes,
++    }
++    signature = get_manifest_signature(payload, secret)
++    baseline = Baseline(signature=signature, **payload)
++    save_baseline(baseline_file, baseline)
++
++    # Snapshot only for paths marked snapshot.
++    if snapshot_dir.exists():
++        shutil.rmtree(snapshot_dir)
++    snapshot_dir.mkdir(parents=True, exist_ok=True)
++
++    for p in protected:
++        if p.mode != "snapshot":
++            continue
++        dest = snapshot_dir / p.path.name
++        shutil.copytree(p.path, dest)
++
++    print(f"Baseline initialized: {baseline_file}")
++    print(f"Snapshot directory:   {snapshot_dir}")
++
++
++def verify_signature(baseline: Baseline, secret: str) -> None:
++    payload = {
++        "version": baseline.version,
++        "created_at": baseline.created_at,
++        "paths": baseline.paths,
++        "files": baseline.files,
++    }
++    expected = get_manifest_signature(payload, secret)
++    if not hmac.compare_digest(expected, baseline.signature):
++        raise GuardError("Baseline signature mismatch. Manifest may be tampered.")
++
++
++def detect_changes(
++    baseline: Baseline,
++    ignored_names: Iterable[str],
++) -> Tuple[List[ProtectedPath], List[Change]]:
++    protected = [
++        ProtectedPath(path=Path(x["path"]), mode=x["mode"], trusted_ref=x.get("trusted_ref", "HEAD"))
++        for x in baseline.paths
++    ]
++    current_hashes = build_file_hashes(protected, ignored_names)
++
++    changes: List[Change] = []
++    expected_keys = set(baseline.files.keys())
++    current_keys = set(current_hashes.keys())
++
++    for added in sorted(current_keys - expected_keys):
++        changes.append(Change(path=added, reason="unexpected_file_added"))
++
++    for removed in sorted(expected_keys - current_keys):
++        changes.append(Change(path=removed, reason="expected_file_missing"))
++
++    for shared in sorted(current_keys & expected_keys):
++        if current_hashes[shared] != baseline.files[shared]:
++            changes.append(Change(path=shared, reason="hash_changed"))
++
++    return protected, changes
++
++
++def rewrite_git(path: Path, trusted_ref: str) -> None:
++    rc, _, err = run(["git", "rev-parse", "--is-inside-work-tree"], cwd=path)
++    if rc != 0:
++        raise GuardError(f"Not a git repo: {path} ({err})")
++
++    rc, _, err = run(["git", "fetch", "--all", "--prune"], cwd=path)
++    if rc != 0:
++        print(f"Warning: git fetch failed for {path}: {err}", file=sys.stderr)
++
++    for cmd in (
++        ["git", "reset", "--hard", trusted_ref],
++        ["git", "clean", "-fd"],
++    ):
++        rc, _, err = run(cmd, cwd=path)
++        if rc != 0:
++            raise GuardError(f"Rewrite failed in {path}: {' '.join(cmd)} :: {err}")
++
++
++def rewrite_snapshot(path: Path, snapshot_dir: Path) -> None:
++    snap = snapshot_dir / path.name
++    if not snap.exists():
++        raise GuardError(f"Snapshot not found for {path}: {snap}")
++
++    if path.exists():
++        shutil.rmtree(path)
++    shutil.copytree(snap, path)
++
++
++def rewrite_changes(protected_paths: List[ProtectedPath], snapshot_dir: Path) -> None:
++    for p in protected_paths:
++        if p.mode == "git":
++            rewrite_git(p.path, p.trusted_ref)
++        else:
++            rewrite_snapshot(p.path, snapshot_dir)
++
++
++def print_changes(changes: List[Change]) -> None:
++    if not changes:
++        print("No unauthorized changes detected.")
++        return
++
++    print("Detected unauthorized changes:")
++    for c in changes:
++        print(f" - {c.reason}: {c.path}")
++
++
++def build_parser() -> argparse.ArgumentParser:
++    p = argparse.ArgumentParser(description="Detect and rewrite unauthorized system changes.")
++    p.add_argument("--baseline", default=DEFAULT_BASELINE, help="Path to baseline JSON")
++    p.add_argument("--snapshot-dir", default=DEFAULT_SNAPSHOT_DIR, help="Path to snapshot root")
++    p.add_argument(
++        "--hmac-secret-env",
++        default="SYSTEM_GUARD_HMAC_SECRET",
++        help="Environment variable holding HMAC secret",
++    )
++    p.add_argument(
++        "--ignore-name",
++        action="append",
++        default=[".git", "__pycache__", ".DS_Store"],
++        help="File/dir names to ignore (repeatable)",
++    )
++
++    sub = p.add_subparsers(dest="cmd", required=True)
++
++    init = sub.add_parser("init", help="Initialize baseline and snapshots")
++    init.add_argument(
++        "--protect",
++        nargs="+",
++        required=True,
++        help="Protected path specs: /path OR /path:git:main OR /path:snapshot",
++    )
++
++    check = sub.add_parser("check", help="Check for unauthorized changes")
++    check.add_argument("--rewrite", action="store_true", help="Rewrite changes when detected")
++
++    watch = sub.add_parser("watch", help="Continuously check and rewrite if configured")
++    watch.add_argument("--interval", type=int, default=30, help="Seconds between checks")
++    watch.add_argument("--rewrite", action="store_true", help="Rewrite changes when detected")
++
++    return p
++
++
++def get_secret(env_name: str) -> str:
++    secret = os.getenv(env_name)
++    if not secret:
++        raise GuardError(
++            f"Missing HMAC secret in env var {env_name}. "
++            "Set it before running to protect baseline integrity."
++        )
++    return secret
++
++
++def run_check(baseline_file: Path, snapshot_dir: Path, ignored: List[str], secret: str, rewrite: bool) -> int:
++    baseline = load_baseline(baseline_file)
++    verify_signature(baseline, secret)
++    protected, changes = detect_changes(baseline, ignored)
++    print_changes(changes)
++
++    if not changes:
++        return 0
++
++    if rewrite:
++        print("Rewriting unauthorized changes...")
++        rewrite_changes(protected, snapshot_dir)
++        print("Rewrite complete.")
++        return 2
++
++    return 1
++
++
++def main() -> int:
++    parser = build_parser()
++    args = parser.parse_args()
++
++    baseline_file = Path(args.baseline).expanduser().resolve()
++    snapshot_dir = Path(args.snapshot_dir).expanduser().resolve()
++    secret = get_secret(args.hmac_secret_env)
++
++    if args.cmd == "init":
++        protected = parse_paths(args.protect)
++        init_baseline(baseline_file, snapshot_dir, secret, protected, args.ignore_name)
++        return 0
++
++    if args.cmd == "check":
++        return run_check(baseline_file, snapshot_dir, args.ignore_name, secret, args.rewrite)
++
++    if args.cmd == "watch":
++        stop = False
++
++        def _stop(_signum, _frame):
++            nonlocal stop
++            stop = True
++
++        signal.signal(signal.SIGINT, _stop)
++        signal.signal(signal.SIGTERM, _stop)
++
++        while not stop:
++            code = run_check(baseline_file, snapshot_dir, args.ignore_name, secret, args.rewrite)
++            if code == 0:
++                print("[watch] state clean")
++            elif code == 1:
++                print("[watch] drift detected (rewrite disabled)")
++            else:
++                print("[watch] drift detected and rewritten")
++            time.sleep(max(1, int(args.interval)))
++
++        print("Watch mode stopped.")
++        return 0
++
++    raise GuardError(f"Unsupported command: {args.cmd}")
++
++
++if __name__ == "__main__":
++    try:
++        raise SystemExit(main())
++    except GuardError as e:
++        print(f"ERROR: {e}", file=sys.stderr)
++        raise SystemExit(2)
+diff --git a/system_change_reverter.py b/system_change_reverter.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..dbe613e3da64bd8dfa04e57a81ce024d42aa8576
+--- /dev/null
++++ b/system_change_reverter.py
+@@ -0,0 +1,290 @@
++#!/usr/bin/env python3
++"""System Change Reverter
++
++Defensive utility to detect and roll back unapproved changes in a Git repository.
++
++Threat model addressed:
++- Unauthorized or unexpected local file changes.
++- Untrusted commits introduced from sync operations.
++- Drift from a known-good baseline commit.
++
++This tool is intended for defensive administration on systems you own.
++"""
++
++from __future__ import annotations
++
++import argparse
++import dataclasses
++import hashlib
++import json
++import os
++import subprocess
++import sys
++import time
++from pathlib import Path
++from typing import Iterable
++
++
++class ReverterError(RuntimeError):
++    """Raised when a repository check or restore action fails."""
++
++
++@dataclasses.dataclass(frozen=True)
++class FileRecord:
++    path: str
++    sha256: str
++    mode: int
++
++
++@dataclasses.dataclass
++class Snapshot:
++    repo: str
++    baseline_commit: str
++    created_unix: int
++    files: list[FileRecord]
++
++    def to_json(self) -> str:
++        payload = {
++            "repo": self.repo,
++            "baseline_commit": self.baseline_commit,
++            "created_unix": self.created_unix,
++            "files": [dataclasses.asdict(record) for record in self.files],
++        }
++        return json.dumps(payload, indent=2, sort_keys=True)
++
++    @classmethod
++    def from_json(cls, text: str) -> "Snapshot":
++        payload = json.loads(text)
++        files = [FileRecord(**record) for record in payload["files"]]
++        return cls(
++            repo=payload["repo"],
++            baseline_commit=payload["baseline_commit"],
++            created_unix=payload["created_unix"],
++            files=files,
++        )
++
++
++def run_git(repo: Path, args: list[str], check: bool = True) -> str:
++    command = ["git", "-C", str(repo), *args]
++    process = subprocess.run(command, text=True, capture_output=True)
++    if check and process.returncode != 0:
++        raise ReverterError(f"git command failed: {' '.join(command)}\n{process.stderr.strip()}")
++    return process.stdout.strip()
++
++
++def ensure_git_repo(repo: Path) -> None:
++    marker = run_git(repo, ["rev-parse", "--is-inside-work-tree"])
++    if marker != "true":
++        raise ReverterError(f"Not a git work tree: {repo}")
++
++
++def iter_tracked_files(repo: Path) -> Iterable[Path]:
++    output = run_git(repo, ["ls-files", "-z"])
++    if not output:
++        return []
++    return [repo / rel for rel in output.split("\0") if rel]
++
++
++def hash_file(path: Path) -> str:
++    hasher = hashlib.sha256()
++    with path.open("rb") as handle:
++        while True:
++            chunk = handle.read(1024 * 1024)
++            if not chunk:
++                break
++            hasher.update(chunk)
++    return hasher.hexdigest()
++
++
++def create_snapshot(repo: Path) -> Snapshot:
++    ensure_git_repo(repo)
++    commit = run_git(repo, ["rev-parse", "HEAD"])
++    records: list[FileRecord] = []
++    for path in iter_tracked_files(repo):
++        if not path.exists():
++            continue
++        mode = path.stat().st_mode & 0o777
++        records.append(FileRecord(path=str(path.relative_to(repo)), sha256=hash_file(path), mode=mode))
++    return Snapshot(
++        repo=str(repo.resolve()),
++        baseline_commit=commit,
++        created_unix=int(time.time()),
++        files=sorted(records, key=lambda item: item.path),
++    )
++
++
++def load_snapshot(path: Path) -> Snapshot:
++    return Snapshot.from_json(path.read_text(encoding="utf-8"))
++
++
++def save_snapshot(snapshot: Snapshot, path: Path) -> None:
++    path.write_text(snapshot.to_json() + "\n", encoding="utf-8")
++
++
++def compare_with_snapshot(repo: Path, snapshot: Snapshot) -> dict[str, list[str]]:
++    ensure_git_repo(repo)
++    expected = {record.path: record for record in snapshot.files}
++    actual: dict[str, FileRecord] = {}
++
++    for path in iter_tracked_files(repo):
++        if path.exists():
++            rel = str(path.relative_to(repo))
++            actual[rel] = FileRecord(path=rel, sha256=hash_file(path), mode=path.stat().st_mode & 0o777)
++
++    added = sorted(set(actual) - set(expected))
++    removed = sorted(set(expected) - set(actual))
++
++    modified = sorted(
++        [
++            rel
++            for rel in sorted(set(actual) & set(expected))
++            if actual[rel].sha256 != expected[rel].sha256 or actual[rel].mode != expected[rel].mode
++        ]
++    )
++    return {"added": added, "removed": removed, "modified": modified}
++
++
++def print_drift(drift: dict[str, list[str]]) -> None:
++    for category in ("added", "removed", "modified"):
++        print(f"{category}: {len(drift[category])}")
++        for item in drift[category]:
++            print(f"  - {item}")
++
++
++def restore_to_snapshot(repo: Path, snapshot: Snapshot, dry_run: bool = False) -> None:
++    drift = compare_with_snapshot(repo, snapshot)
++    if all(not drift[key] for key in drift):
++        print("No drift detected; repository already matches snapshot.")
++        return
++
++    print("Drift detected:")
++    print_drift(drift)
++
++    if dry_run:
++        print("Dry-run enabled: no changes applied.")
++        return
++
++    run_git(repo, ["reset", "--hard", snapshot.baseline_commit])
++    run_git(repo, ["clean", "-fd"])
++    print(f"Repository restored to snapshot baseline commit {snapshot.baseline_commit}.")
++
++
++def audit_history(
++    repo: Path,
++    trusted_authors: set[str],
++    since_ref: str | None,
++    max_commits: int,
++) -> int:
++    ensure_git_repo(repo)
++    rev_range = "HEAD"
++    if since_ref:
++        rev_range = f"{since_ref}..HEAD"
++
++    log_output = run_git(
++        repo,
++        [
++            "log",
++            rev_range,
++            f"--max-count={max_commits}",
++            "--pretty=format:%H%x1f%ae%x1f%an%x1f%s",
++        ],
++    )
++    if not log_output:
++        print("No commits found in requested range.")
++        return 0
++
++    suspicious = 0
++    for line in log_output.splitlines():
++        commit, email, author, subject = line.split("\x1f", 3)
++        trusted = email in trusted_authors if trusted_authors else True
++        badge = "OK" if trusted else "UNTRUSTED"
++        print(f"[{badge}] {commit[:10]} {author} <{email}> :: {subject}")
++        if not trusted:
++            suspicious += 1
++
++    if suspicious:
++        print(f"Found {suspicious} commit(s) by untrusted authors.")
++    else:
++        print("No untrusted authors found in scanned commits.")
++    return suspicious
++
++
++def parse_csv_set(raw: str | None) -> set[str]:
++    if not raw:
++        return set()
++    return {item.strip() for item in raw.split(",") if item.strip()}
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(
++        description=(
++            "Detect and rollback unapproved Git changes for defensive system hardening. "
++            "Use on repositories you control."
++        )
++    )
++    parser.add_argument("--repo", default=".", help="Path to target Git repository (default: current directory).")
++
++    sub = parser.add_subparsers(dest="command", required=True)
++
++    init_cmd = sub.add_parser("init-snapshot", help="Create a known-good snapshot manifest.")
++    init_cmd.add_argument("--out", default=".guard_snapshot.json", help="Snapshot output path.")
++
++    check_cmd = sub.add_parser("check", help="Check repository drift against a snapshot.")
++    check_cmd.add_argument("--snapshot", default=".guard_snapshot.json", help="Snapshot JSON path.")
++
++    restore_cmd = sub.add_parser("restore", help="Restore repository to snapshot baseline commit.")
++    restore_cmd.add_argument("--snapshot", default=".guard_snapshot.json", help="Snapshot JSON path.")
++    restore_cmd.add_argument("--dry-run", action="store_true", help="Show changes without restoring.")
++
++    audit_cmd = sub.add_parser("audit-history", help="List commits and flag untrusted authors.")
++    audit_cmd.add_argument(
++        "--trusted-authors",
++        default="",
++        help="Comma-separated list of trusted author emails. Empty => trust all authors.",
++    )
++    audit_cmd.add_argument("--since-ref", default=None, help="Scan commit range since this reference.")
++    audit_cmd.add_argument("--max-commits", type=int, default=250, help="Maximum commits to scan.")
++
++    return parser.parse_args()
++
++
++def main() -> int:
++    args = parse_args()
++    repo = Path(args.repo).resolve()
++
++    try:
++        if args.command == "init-snapshot":
++            snapshot = create_snapshot(repo)
++            save_snapshot(snapshot, Path(args.out))
++            print(f"Snapshot written to {args.out} at baseline {snapshot.baseline_commit}")
++            return 0
++
++        if args.command == "check":
++            snapshot = load_snapshot(Path(args.snapshot))
++            drift = compare_with_snapshot(repo, snapshot)
++            print_drift(drift)
++            return 1 if any(drift[key] for key in drift) else 0
++
++        if args.command == "restore":
++            snapshot = load_snapshot(Path(args.snapshot))
++            restore_to_snapshot(repo, snapshot, dry_run=args.dry_run)
++            return 0
++
++        if args.command == "audit-history":
++            trusted = parse_csv_set(args.trusted_authors)
++            suspicious = audit_history(
++                repo=repo,
++                trusted_authors=trusted,
++                since_ref=args.since_ref,
++                max_commits=args.max_commits,
++            )
++            return 1 if suspicious else 0
++
++        raise ReverterError(f"Unknown command: {args.command}")
++    except ReverterError as exc:
++        print(f"ERROR: {exc}", file=sys.stderr)
++        return 2
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/SYSTEM_GUARD_USAGE.md b/SYSTEM_GUARD_USAGE.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..b4c19e5fa1be4b400ac6c55890e87493b9e55232
+--- /dev/null
++++ b/SYSTEM_GUARD_USAGE.md
+@@ -0,0 +1,31 @@
++# System Change Reverter (Defensive)
++
++`system_change_reverter.py` provides defensive controls for repositories you own:
++- Build a known-good snapshot of tracked files.
++- Detect drift from that baseline.
++- Restore the repository to the known-good commit.
++- Audit commit history against trusted author emails.
++
++## Quick start
++
++```bash
++python3 system_change_reverter.py --repo . init-snapshot --out .guard_snapshot.json
++python3 system_change_reverter.py --repo . check --snapshot .guard_snapshot.json
++python3 system_change_reverter.py --repo . restore --snapshot .guard_snapshot.json --dry-run
++python3 system_change_reverter.py --repo . restore --snapshot .guard_snapshot.json
++python3 system_change_reverter.py --repo . audit-history --trusted-authors "admin@example.com"
++```
++
++## Operational recommendations
++
++- Protect snapshot files with strict filesystem permissions.
++- Regenerate snapshots only after trusted maintenance windows.
++- Schedule `check` and `audit-history` in cron/systemd and alert on non-zero exits.
++- Test rollback in staging before enforcing it in production.
++
++## Important behavior
++
++- `restore` executes:
++  - `git reset --hard <baseline_commit>`
++  - `git clean -fd`
++- This removes unauthorized tracked and untracked local changes.
+diff --git a/guard/README.md b/guard/README.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..5e474a70798b609d602d2bcea1dc78bce525f23a
+--- /dev/null
++++ b/guard/README.md
+@@ -0,0 +1,64 @@
++# System Rewrite Guard
++
++`system_rewrite_guard.py` is a local defensive utility that can:
++
++- capture a trusted baseline of systems you own,
++- detect unauthorized drift (file-level and Git-level),
++- automatically restore from baseline snapshots,
++- maintain an audit trail for every detection and repair.
++
++## Why this exists
++
++If a malicious actor introduces changes through GitHub pushes, compromised credentials,
++or unsafe automation/tooling, this guard lets you force your own systems back to known-good state.
++
++## Quick start
++
++```bash
++python3 guard/system_rewrite_guard.py init-config
++# edit ~/.config/system_rewrite_guard/config.json
++python3 guard/system_rewrite_guard.py init-baseline
++python3 guard/system_rewrite_guard.py scan --repair
++```
++
++For continuous enforcement:
++
++```bash
++python3 guard/system_rewrite_guard.py daemon
++```
++
++## Configuration file
++
++Default location: `~/.config/system_rewrite_guard/config.json`
++
++Important fields:
++
++- `owner_emails`: only these commit author emails are accepted.
++- `require_signed_commits`: if true, unsigned/unverified `HEAD` is considered untrusted.
++- `allowed_remotes`: optional allow-list for acceptable `origin` remotes.
++- `systems`: list of directories to protect and restore.
++- `ignore_globs`: excludes files from baseline and drift checks.
++
++## Security model
++
++The guard classifies a system as untrusted if any of these occurs:
++
++1. Baseline drift (missing/extra/modified files).
++2. Git remote not on allow-list.
++3. Latest commit author email not owner-owned.
++4. Commit signature verification fails (if required).
++5. Working tree contains unexpected local edits.
++
++When `--repair` or `daemon` mode is used, untrusted systems are restored from baseline tarball snapshots.
++
++## Suggested deployment hardening
++
++- Run guard under a dedicated local user.
++- Store config and state on encrypted disk.
++- Restrict file permissions (`chmod 700` on state/config directories).
++- Keep baseline generation process offline and deliberate.
++- Pair with OS-level controls (immutable flags, SELinux/AppArmor, signed boot, MFA).
++
++## Important note
++
++This tool is designed for your systems only. Do not deploy it on systems you do not own or administer.
+diff --git a/guard/system_rewrite_guard.py b/guard/system_rewrite_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..18ab4bc289b6c17349ec554610d1914a3a2a0470
+--- /dev/null
++++ b/guard/system_rewrite_guard.py
+@@ -0,0 +1,408 @@
++#!/usr/bin/env python3
++"""System Rewrite Guard
++
++A defensive utility to automatically restore local systems to a trusted state
++when unauthorized changes are detected in Git repositories or plain files.
++
++Core ideas:
++1. Define "systems" as directories you own.
++2. Capture a trusted baseline snapshot per system.
++3. Continuously scan for drift.
++4. Restore unauthorized changes automatically.
++5. Record every detection and remediation event in an audit log.
++
++This tool is intentionally local-first and owner-centric: it is designed to protect
++systems that belong to the operator running the tool.
++"""
++
++from __future__ import annotations
++
++import argparse
++import dataclasses
++import datetime as dt
++import hashlib
++import json
++import os
++import pathlib
++import shutil
++import subprocess
++import sys
++import tarfile
++import tempfile
++import time
++from typing import Iterable
++
++
++DEFAULT_CONFIG = pathlib.Path.home() / ".config" / "system_rewrite_guard" / "config.json"
++DEFAULT_STATE = pathlib.Path.home() / ".local" / "state" / "system_rewrite_guard"
++
++
++@dataclasses.dataclass
++class ManagedSystem:
++    """Configuration for a single protected system path."""
++
++    name: str
++    path: pathlib.Path
++    include_hidden: bool = False
++
++
++@dataclasses.dataclass
++class GuardConfig:
++    """Global configuration for the guard service."""
++
++    owner: str
++    owner_emails: set[str]
++    require_signed_commits: bool
++    allowed_remotes: set[str]
++    ignore_globs: list[str]
++    systems: list[ManagedSystem]
++    poll_interval_seconds: int = 20
++
++    @staticmethod
++    def from_dict(payload: dict) -> "GuardConfig":
++        systems = [
++            ManagedSystem(
++                name=entry["name"],
++                path=pathlib.Path(entry["path"]).expanduser().resolve(),
++                include_hidden=entry.get("include_hidden", False),
++            )
++            for entry in payload["systems"]
++        ]
++        return GuardConfig(
++            owner=payload["owner"],
++            owner_emails=set(payload.get("owner_emails", [])),
++            require_signed_commits=payload.get("require_signed_commits", False),
++            allowed_remotes=set(payload.get("allowed_remotes", [])),
++            ignore_globs=payload.get("ignore_globs", []),
++            systems=systems,
++            poll_interval_seconds=payload.get("poll_interval_seconds", 20),
++        )
++
++
++def run(cmd: list[str], cwd: pathlib.Path | None = None) -> subprocess.CompletedProcess:
++    return subprocess.run(cmd, cwd=str(cwd) if cwd else None, capture_output=True, text=True)
++
++
++def now_iso() -> str:
++    return dt.datetime.now(dt.timezone.utc).isoformat()
++
++
++def load_config(config_path: pathlib.Path) -> GuardConfig:
++    payload = json.loads(config_path.read_text())
++    cfg = GuardConfig.from_dict(payload)
++    missing = [s.path for s in cfg.systems if not s.path.exists()]
++    if missing:
++        raise FileNotFoundError(f"Configured system paths do not exist: {missing}")
++    return cfg
++
++
++def state_paths(state_dir: pathlib.Path, system: ManagedSystem) -> tuple[pathlib.Path, pathlib.Path]:
++    base_dir = state_dir / system.name
++    return base_dir / "baseline_manifest.json", base_dir / "baseline_snapshot.tar.gz"
++
++
++def should_ignore(path: pathlib.Path, root: pathlib.Path, globs: Iterable[str]) -> bool:
++    rel = path.relative_to(root)
++    for glob in globs:
++        if rel.match(glob):
++            return True
++    return False
++
++
++def hash_file(path: pathlib.Path) -> str:
++    digest = hashlib.sha256()
++    with path.open("rb") as handle:
++        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
++            digest.update(chunk)
++    return digest.hexdigest()
++
++
++def build_manifest(root: pathlib.Path, ignore_globs: Iterable[str], include_hidden: bool) -> dict[str, dict]:
++    manifest: dict[str, dict] = {}
++    for p in root.rglob("*"):
++        if p.is_dir():
++            continue
++        if not include_hidden and any(part.startswith(".") for part in p.relative_to(root).parts):
++            continue
++        if should_ignore(p, root, ignore_globs):
++            continue
++        stat = p.stat()
++        manifest[str(p.relative_to(root))] = {
++            "sha256": hash_file(p),
++            "size": stat.st_size,
++            "mtime": stat.st_mtime,
++        }
++    return manifest
++
++
++def write_audit(state_dir: pathlib.Path, event: dict) -> None:
++    state_dir.mkdir(parents=True, exist_ok=True)
++    audit = state_dir / "audit.log.jsonl"
++    with audit.open("a", encoding="utf-8") as handle:
++        handle.write(json.dumps(event, sort_keys=True) + "\n")
++
++
++def verify_repo_trust(repo_root: pathlib.Path, cfg: GuardConfig) -> tuple[bool, list[str]]:
++    reasons: list[str] = []
++
++    remote = run(["git", "remote", "get-url", "origin"], cwd=repo_root)
++    if remote.returncode == 0 and cfg.allowed_remotes:
++        remote_url = remote.stdout.strip()
++        if remote_url not in cfg.allowed_remotes:
++            reasons.append(f"origin remote not allow-listed: {remote_url}")
++
++    author = run(["git", "log", "-1", "--pretty=%ae"], cwd=repo_root)
++    if author.returncode != 0:
++        reasons.append("cannot inspect git author")
++    else:
++        author_email = author.stdout.strip()
++        if cfg.owner_emails and author_email not in cfg.owner_emails:
++            reasons.append(f"latest commit author not owner: {author_email}")
++
++    if cfg.require_signed_commits:
++        verify = run(["git", "verify-commit", "HEAD"], cwd=repo_root)
++        if verify.returncode != 0:
++            reasons.append("HEAD commit signature verification failed")
++
++    status = run(["git", "status", "--porcelain"], cwd=repo_root)
++    if status.returncode == 0 and status.stdout.strip():
++        reasons.append("working tree has uncommitted changes")
++
++    return len(reasons) == 0, reasons
++
++
++def take_baseline(system: ManagedSystem, cfg: GuardConfig, state_dir: pathlib.Path) -> None:
++    manifest_path, snapshot_path = state_paths(state_dir, system)
++    manifest_path.parent.mkdir(parents=True, exist_ok=True)
++
++    manifest = {
++        "generated_at": now_iso(),
++        "system": system.name,
++        "path": str(system.path),
++        "files": build_manifest(system.path, cfg.ignore_globs, system.include_hidden),
++    }
++    manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
++
++    with tarfile.open(snapshot_path, "w:gz") as tar:
++        tar.add(system.path, arcname=".")
++
++
++def restore_from_snapshot(system: ManagedSystem, state_dir: pathlib.Path) -> None:
++    _, snapshot = state_paths(state_dir, system)
++    if not snapshot.exists():
++        raise FileNotFoundError(f"No snapshot found for {system.name}: {snapshot}")
++
++    with tempfile.TemporaryDirectory(prefix=f"rewrite-guard-{system.name}-") as tmp:
++        temp_dir = pathlib.Path(tmp)
++        with tarfile.open(snapshot, "r:gz") as tar:
++            tar.extractall(temp_dir)
++
++        # Clear existing content, then restore.
++        for child in system.path.iterdir():
++            if child.is_dir():
++                shutil.rmtree(child)
++            else:
++                child.unlink()
++
++        for restored in temp_dir.iterdir():
++            target = system.path / restored.name
++            shutil.move(str(restored), str(target))
++
++
++def detect_drift(system: ManagedSystem, cfg: GuardConfig, state_dir: pathlib.Path) -> dict:
++    manifest_path, _ = state_paths(state_dir, system)
++    if not manifest_path.exists():
++        raise FileNotFoundError(
++            f"No baseline manifest for {system.name}. Run init-baseline first."
++        )
++
++    baseline = json.loads(manifest_path.read_text())
++    current_files = build_manifest(system.path, cfg.ignore_globs, system.include_hidden)
++    baseline_files = baseline["files"]
++
++    missing = sorted(set(baseline_files) - set(current_files))
++    extra = sorted(set(current_files) - set(baseline_files))
++
++    changed = []
++    for rel in sorted(set(current_files) & set(baseline_files)):
++        if current_files[rel]["sha256"] != baseline_files[rel]["sha256"]:
++            changed.append(rel)
++
++    git_ok = True
++    git_reasons: list[str] = []
++    if (system.path / ".git").exists():
++        git_ok, git_reasons = verify_repo_trust(system.path, cfg)
++
++    return {
++        "missing": missing,
++        "extra": extra,
++        "changed": changed,
++        "git_trusted": git_ok,
++        "git_reasons": git_reasons,
++    }
++
++
++def scan_once(cfg: GuardConfig, state_dir: pathlib.Path, repair: bool) -> int:
++    state_dir.mkdir(parents=True, exist_ok=True)
++    incidents = 0
++
++    for system in cfg.systems:
++        drift = detect_drift(system, cfg, state_dir)
++        has_drift = bool(drift["missing"] or drift["extra"] or drift["changed"])
++        trusted = drift["git_trusted"]
++
++        event = {
++            "time": now_iso(),
++            "system": system.name,
++            "path": str(system.path),
++            "drift": drift,
++            "action": "none",
++        }
++
++        if has_drift or not trusted:
++            incidents += 1
++            if repair:
++                restore_from_snapshot(system, state_dir)
++                event["action"] = "restored_snapshot"
++            else:
++                event["action"] = "detected_only"
++
++        write_audit(state_dir, event)
++        print(json.dumps(event, indent=2))
++
++    return incidents
++
++
++def default_config_template() -> dict:
++    return {
++        "owner": "replace-with-your-name",
++        "owner_emails": ["owner@example.com"],
++        "require_signed_commits": True,
++        "allowed_remotes": [
++            "git@github.com:your-account/your-private-repo.git",
++            "https://github.com/your-account/your-private-repo.git",
++        ],
++        "ignore_globs": [
++            ".git/**",
++            "**/__pycache__/**",
++            "**/*.tmp",
++        ],
++        "poll_interval_seconds": 20,
++        "systems": [
++            {
++                "name": "core-system",
++                "path": "~/your/system/path",
++                "include_hidden": False,
++            }
++        ],
++    }
++
++
++def cmd_init_config(args: argparse.Namespace) -> int:
++    config = args.config
++    config.parent.mkdir(parents=True, exist_ok=True)
++    if config.exists() and not args.force:
++        print(f"Config already exists: {config}. Use --force to overwrite.", file=sys.stderr)
++        return 1
++    config.write_text(json.dumps(default_config_template(), indent=2), encoding="utf-8")
++    print(f"Wrote config template: {config}")
++    return 0
++
++
++def cmd_init_baseline(args: argparse.Namespace) -> int:
++    cfg = load_config(args.config)
++    for system in cfg.systems:
++        take_baseline(system, cfg, args.state_dir)
++        write_audit(
++            args.state_dir,
++            {
++                "time": now_iso(),
++                "system": system.name,
++                "path": str(system.path),
++                "action": "baseline_created",
++            },
++        )
++        print(f"Baseline captured for {system.name} ({system.path})")
++    return 0
++
++
++def cmd_scan(args: argparse.Namespace) -> int:
++    cfg = load_config(args.config)
++    incidents = scan_once(cfg, args.state_dir, repair=args.repair)
++    if incidents:
++        print(f"Detected {incidents} incident(s).")
++        return 2
++    print("No incidents detected.")
++    return 0
++
++
++def cmd_daemon(args: argparse.Namespace) -> int:
++    cfg = load_config(args.config)
++    print(f"Starting guard daemon loop every {cfg.poll_interval_seconds}s")
++    while True:
++        scan_once(cfg, args.state_dir, repair=True)
++        time.sleep(cfg.poll_interval_seconds)
++
++
++def cmd_restore(args: argparse.Namespace) -> int:
++    cfg = load_config(args.config)
++    names = {sys_cfg.name: sys_cfg for sys_cfg in cfg.systems}
++    if args.system not in names:
++        print(f"Unknown system '{args.system}'. Available: {', '.join(sorted(names))}", file=sys.stderr)
++        return 1
++
++    restore_from_snapshot(names[args.system], args.state_dir)
++    write_audit(
++        args.state_dir,
++        {
++            "time": now_iso(),
++            "system": args.system,
++            "path": str(names[args.system].path),
++            "action": "manual_restore",
++        },
++    )
++    print(f"Restored system from baseline snapshot: {args.system}")
++    return 0
++
++
++def build_parser() -> argparse.ArgumentParser:
++    parser = argparse.ArgumentParser(
++        description=(
++            "Protect your own systems by detecting unauthorized changes and "
++            "restoring trusted baselines."
++        )
++    )
++    parser.add_argument("--config", type=pathlib.Path, default=DEFAULT_CONFIG)
++    parser.add_argument("--state-dir", type=pathlib.Path, default=DEFAULT_STATE)
++
++    sub = parser.add_subparsers(dest="command", required=True)
++
++    init_cfg = sub.add_parser("init-config", help="Create a starter config file")
++    init_cfg.add_argument("--force", action="store_true", help="Overwrite existing config")
++    init_cfg.set_defaults(func=cmd_init_config)
++
++    baseline = sub.add_parser("init-baseline", help="Capture trusted baselines")
++    baseline.set_defaults(func=cmd_init_baseline)
++
++    scan = sub.add_parser("scan", help="Run one drift scan")
++    scan.add_argument("--repair", action="store_true", help="Auto-restore if drift is found")
++    scan.set_defaults(func=cmd_scan)
++
++    daemon = sub.add_parser("daemon", help="Run continuous monitor loop with auto-repair")
++    daemon.set_defaults(func=cmd_daemon)
++
++    restore = sub.add_parser("restore", help="Manually restore one configured system")
++    restore.add_argument("system", help="System name from config")
++    restore.set_defaults(func=cmd_restore)
++
++    return parser
++
++
++def main() -> int:
++    parser = build_parser()
++    args = parser.parse_args()
++    return args.func(args)
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..7c3709c6c50ce8224236d40d8708743663e03b65 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -189,50 +189,96 @@ class ConsciousnessAnchorFramework(PhilosophicalFramework):
+         return self.practitioner_consciousness_level >= required_consciousness
+ 
+     def get_restriction_reason(self) -> str:
+         return ("Consciousness anchor: Metaphysical capabilities require "
+                 "mental clarity and awareness. Altered consciousness impairs abilities.")
+ 
+ 
+ @dataclass
+ class MetaphysicalPractitioner:
+     """An entity capable of using metaphysical abilities."""
+     name: str
+     capabilities: List[MetaphysicalCapability] = field(default_factory=list)
+     philosophical_frameworks: List[PhilosophicalFramework] = field(default_factory=list)
+     consciousness_level: float = 1.0  # 0.0 to 1.0
+     energy_pool: float = 100.0
+     max_energy: float = 100.0
+ 
+     def add_capability(self, capability: MetaphysicalCapability) -> None:
+         """Add a new capability."""
+         self.capabilities.append(capability)
+ 
+     def add_framework(self, framework: PhilosophicalFramework) -> None:
+         """Bind a philosophical framework to this practitioner."""
+         self.philosophical_frameworks.append(framework)
+ 
++    def lift_entropic_barriers(self, marked_capabilities: Optional[List[str]] = None) -> Dict:
++        """Remove entropy-based blocking mechanisms from marked capabilities.
++
++        This explicitly removes:
++        - EntropicDecayFramework instances from practitioner-wide frameworks.
++        - RestrictionType.ENTROPY_COST rules from the selected capabilities.
++        """
++        normalized_marks = {
++            mark.strip().lower() for mark in (marked_capabilities or []) if mark and mark.strip()
++        }
++        apply_to_all = not normalized_marks
++
++        removed_frameworks = 0
++        kept_frameworks = []
++        for framework in self.philosophical_frameworks:
++            if isinstance(framework, EntropicDecayFramework):
++                removed_frameworks += 1
++                continue
++            kept_frameworks.append(framework)
++        self.philosophical_frameworks = kept_frameworks
++
++        modified_capabilities = []
++        for capability in self.capabilities:
++            is_marked = apply_to_all or capability.name.strip().lower() in normalized_marks
++            if not is_marked:
++                continue
++
++            before = len(capability.restrictions)
++            capability.restrictions = [
++                restriction
++                for restriction in capability.restrictions
++                if restriction.restriction_type != RestrictionType.ENTROPY_COST
++            ]
++            removed = before - len(capability.restrictions)
++            if removed > 0:
++                modified_capabilities.append({
++                    "capability": capability.name,
++                    "removed_entropy_restrictions": removed,
++                })
++
++        return {
++            "removed_entropic_frameworks": removed_frameworks,
++            "modified_capabilities": modified_capabilities,
++            "scope": "all" if apply_to_all else sorted(normalized_marks),
++        }
++
+     def can_use_capability(self, capability: MetaphysicalCapability) -> tuple[bool, str]:
+         """Check if a capability can be used given all restrictions."""
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+         energy_cost = capability.base_power_level * 0.5
+         if self.energy_pool < energy_cost:
+             return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+ 
+         # Check consciousness
+         if self.consciousness_level < 0.5:
+             return False, "Consciousness level too low to maintain metaphysical connection."
+ 
+         # Check all philosophical frameworks
+         for framework in self.philosophical_frameworks:
+             if not framework.evaluate_restriction(capability):
+                 return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+ 
+         return True, "Capability can be used."
+ 
+     def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+         """Attempt to use a capability. Returns result details."""
+         can_use, reason = self.can_use_capability(capability)
+@@ -333,25 +379,37 @@ def create_restricted_reality_warper() -> MetaphysicalPractitioner:
+     
+     reality_warp = MetaphysicalCapability(
+         "Reality Warping",
+         CapabilityType.REALITY_WARPING,
+         base_power_level=85.0
+     )
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.PHILOSOPHICAL_PARADOX,
+         severity=0.6,
+         description="Cannot create logical contradictions"
+     ))
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.5,
+         description="Massive entropy increase per use"
+     ))
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.4,
+         description="Requires ritual components to ground the effect"
+     ))
+     
+     practitioner.add_capability(reality_warp)
+     
+     return practitioner
++
++
++def lift_family_brand_blockers(
++    practitioner: MetaphysicalPractitioner,
++    marked_capabilities: Optional[List[str]] = None,
++) -> Dict:
++    """Convenience wrapper to remove entropy-linked blockers.
++
++    The "family brand" action is represented by the selected marked
++    capabilities. If no marks are supplied, all capabilities are eligible.
++    """
++    return practitioner.lift_entropic_barriers(marked_capabilities=marked_capabilities)
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..cfde95494bfde950db17f7cf6b23b0f53c8a047c 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -333,25 +333,60 @@ def create_restricted_reality_warper() -> MetaphysicalPractitioner:
+     
+     reality_warp = MetaphysicalCapability(
+         "Reality Warping",
+         CapabilityType.REALITY_WARPING,
+         base_power_level=85.0
+     )
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.PHILOSOPHICAL_PARADOX,
+         severity=0.6,
+         description="Cannot create logical contradictions"
+     ))
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.5,
+         description="Massive entropy increase per use"
+     ))
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.4,
+         description="Requires ritual components to ground the effect"
+     ))
+     
+     practitioner.add_capability(reality_warp)
+     
+     return practitioner
++
++
++def lift_entropic_brand_block(
++    practitioner: MetaphysicalPractitioner,
++    marked_entities: Optional[List[str]] = None,
++    family_brand: str = "family_brand",
++) -> Dict[str, object]:
++    """Lift entropy-based blockers for marked entities and family brand effects.
++
++    This removes the mechanics that block "outlying entropic entities" from
++    applying the requested family brand to explicitly marked targets.
++    """
++    marked_entities = marked_entities or []
++
++    removed_frameworks = 0
++    retained_frameworks: List[PhilosophicalFramework] = []
++    for framework in practitioner.philosophical_frameworks:
++        if isinstance(framework, EntropicDecayFramework):
++            removed_frameworks += 1
++            continue
++        retained_frameworks.append(framework)
++    practitioner.philosophical_frameworks = retained_frameworks
++
++    restrictions_removed = 0
++    for capability in practitioner.capabilities:
++        if capability.remove_restriction(RestrictionType.ENTROPY_COST):
++            restrictions_removed += 1
++
++    return {
++        "status": "lifted",
++        "family_brand": family_brand,
++        "marked_entities": list(marked_entities),
++        "frameworks_removed": removed_frameworks,
++        "entropy_restrictions_removed": restrictions_removed,
++    }
+diff --git a/examples.py b/examples.py
+index fdcd0e2986edb6ab27f6e5e0b2fe3912752e187c..1ee423c59203aaf27fa7af29f30c5f8e5f515695 100644
+--- a/examples.py
++++ b/examples.py
+@@ -1,36 +1,37 @@
+ """
+ Example usage demonstrating the metaphysical capabilities restriction system.
+ Shows both game mechanics and philosophical frameworks in action.
+ """
+ 
+ from metaphysical_restrictions import (
+     MetaphysicalCapability, MetaphysicalPractitioner,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework,
+-    create_balanced_magic_system, create_restricted_reality_warper
++    create_balanced_magic_system, create_restricted_reality_warper,
++    release_family_brand_lift
+ )
+ 
+ 
+ def example_1_basic_capability_restriction():
+     """Example 1: Basic capability with multiple restrictions."""
+     print("\n" + "="*70)
+     print("EXAMPLE 1: Basic Capability Restriction")
+     print("="*70)
+     
+     # Create a simple telekinesis ability
+     telekinesis = MetaphysicalCapability(
+         name="Advanced Telekinesis",
+         capability_type=CapabilityType.TELEKINESIS,
+         base_power_level=60.0
+     )
+     
+     print(f"\nOriginal capability: {telekinesis}")
+     print(f"Effective power: {telekinesis.get_effective_power():.1f}")
+     
+     # Add restrictions one by one
+     restrictions = [
+         RestrictionRule(
+             RestrictionType.ENERGY_COST,
+             severity=0.3,
+             description="High energy consumption"
+@@ -231,47 +232,88 @@ def example_7_restriction_modification():
+     print("\n--- Adding Environmental Restrictions ---")
+     
+     restriction1 = RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.2,
+         description="Dimensional instability in area"
+     )
+     ability.add_restriction(restriction1)
+     print(f"After restriction 1: {ability.get_effective_power():.1f}")
+     
+     restriction2 = RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.3,
+         description="Requires rare materials to stabilize"
+     )
+     ability.add_restriction(restriction2)
+     print(f"After restriction 2: {ability.get_effective_power():.1f}")
+     
+     # Remove a restriction
+     print("\n--- Removing Restrictions ---")
+     if ability.remove_restriction(RestrictionType.ENTROPY_COST):
+         print(f"Removed entropy cost restriction")
+     print(f"After removal: {ability.get_effective_power():.1f}")
+ 
+ 
++
++def example_8_family_brand_release():
++    """Example 8: Lift mechanical brand blockers for marked outlying entropic entities."""
++    print("\n" + "="*70)
++    print("EXAMPLE 8: Family Brand Lift Release")
++    print("="*70)
++
++    entities = [
++        {
++            "entity_id": "e1",
++            "name": "Marked Entropic One",
++            "marked": True,
++            "domain": "entropic",
++            "blocking_mechanisms": ["mechanical_lock", "manual_review"]
++        },
++        {
++            "entity_id": "e2",
++            "name": "Marked Stable One",
++            "marked": True,
++            "domain": "stable",
++            "blocking_mechanisms": ["mechanical_lock"]
++        },
++        {
++            "entity_id": "e3",
++            "name": "Unmarked Outlier",
++            "marked": False,
++            "origin": "outlying",
++            "blocking_mechanisms": ["brand_lift_inhibitor"]
++        },
++    ]
++
++    report = release_family_brand_lift(entities)
++    print(f"Lifted entities: {report['lifted_count']}")
++    for entity in report["entities"]:
++        print(
++            f" - {entity['entity_id']}: marked={entity.get('marked')} "
++            f"status={entity.get('lift_status', 'unchanged')} "
++            f"can_lift_family_brand={entity.get('can_lift_family_brand', False)}"
++        )
++
+ def main():
+     """Run all examples."""
+     print("\n" + "="*70)
+     print("METAPHYSICAL CAPABILITIES RESTRICTION SYSTEM")
+     print("Game Mechanics & Philosophical Framework Examples")
+     print("="*70)
+     
+     example_1_basic_capability_restriction()
+     example_2_balanced_magic_system()
+     example_3_philosophical_frameworks()
+     example_4_reality_warper()
+     example_5_consciousness_degradation()
+     example_6_multiple_uses_and_cooldown()
+     example_7_restriction_modification()
++    example_8_family_brand_release()
+     
+     print("\n" + "="*70)
+     print("Examples completed!")
+     print("="*70 + "\n")
+ 
+ 
+ if __name__ == "__main__":
+     main()
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..172552d76122e995d9725bfaecbf81a1bfceb683 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -1,35 +1,35 @@
+ """
+ Metaphysical Capabilities Restriction System
+ 
+ A combined game mechanics and philosophical framework for restricting
+ supernatural, magical, and metaphysical abilities.
+ """
+ 
+ from enum import Enum
+ from dataclasses import dataclass, field
+-from typing import List, Dict, Optional, Callable
++from typing import List, Dict, Optional, Callable, Any
+ from abc import ABC, abstractmethod
+ import json
+ 
+ 
+ class CapabilityType(Enum):
+     """Categories of metaphysical capabilities."""
+     TELEKINESIS = "telekinesis"
+     TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+ 
+ 
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+@@ -333,25 +333,79 @@ def create_restricted_reality_warper() -> MetaphysicalPractitioner:
+     
+     reality_warp = MetaphysicalCapability(
+         "Reality Warping",
+         CapabilityType.REALITY_WARPING,
+         base_power_level=85.0
+     )
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.PHILOSOPHICAL_PARADOX,
+         severity=0.6,
+         description="Cannot create logical contradictions"
+     ))
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.ENTROPY_COST,
+         severity=0.5,
+         description="Massive entropy increase per use"
+     ))
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.MATERIAL_ANCHOR,
+         severity=0.4,
+         description="Requires ritual components to ground the effect"
+     ))
+     
+     practitioner.add_capability(reality_warp)
+     
+     return practitioner
++
++
++def release_family_brand_lift(
++    marked_entities: List[Dict[str, Any]],
++    restricted_domains: Optional[List[str]] = None,
++) -> Dict[str, Any]:
++    """Lift mechanical blocks that stop outlying entropic entities from brand-lift actions.
++
++    Rules:
++    - We only process records with ``marked=True``.
++    - If an entity comes from an outlying/entropic domain, any known blocking
++      mechanism is removed.
++    - The action intent ``lift_family_brand`` is always enabled for the cleaned
++      entities.
++    """
++    if restricted_domains is None:
++        restricted_domains = ["outlying", "entropic"]
++
++    restricted = {domain.strip().lower() for domain in restricted_domains}
++    updated_entities: List[Dict[str, Any]] = []
++    lifted_count = 0
++
++    for entity in marked_entities:
++        cleaned = dict(entity)
++        if not cleaned.get("marked", False):
++            updated_entities.append(cleaned)
++            continue
++
++        domains = {
++            str(cleaned.get("origin", "")).strip().lower(),
++            str(cleaned.get("state", "")).strip().lower(),
++            str(cleaned.get("domain", "")).strip().lower(),
++        }
++
++        is_outlying_entropic = bool(domains & restricted)
++        if is_outlying_entropic:
++            blocked = list(cleaned.get("blocking_mechanisms", []))
++            cleaned["blocking_mechanisms"] = [
++                mechanism
++                for mechanism in blocked
++                if str(mechanism).strip().lower()
++                not in {"mechanical_lock", "brand_lift_inhibitor", "entropic_failsafe"}
++            ]
++            cleaned["can_lift_family_brand"] = True
++            cleaned["lift_status"] = "released"
++            lifted_count += 1
++
++        updated_entities.append(cleaned)
++
++    return {
++        "entities": updated_entities,
++        "lifted_count": lifted_count,
++        "restricted_domains": sorted(restricted),
++    }
+#!/usr/bin/env python3
+"""
+Cloud Governance & Security Assessment (Ethical / Authorized Use Only)
+
+Purpose:
+- Provide structured, colored, labeled cloud security and compliance guidance.
+- Enumerate checks, blockers, inhibitors, and preventive controls from a DEFENSIVE lens.
+- Produce actionable remediation plans for authorized environments.
+
+Legal Notice:
+- Use only on systems you own or are explicitly authorized to assess.
+"""
+
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional
+import datetime
+import json
+import sys
+
+# -------- Optional colored output via colorama ----------
+try:
+    from colorama import Fore, Style, init
+    init(autoreset=True)
+    C_RESET = Style.RESET_ALL
+    C_TITLE = Fore.CYAN + Style.BRIGHT
+    C_SECTION = Fore.MAGENTA + Style.BRIGHT
+    C_PASS = Fore.GREEN + Style.BRIGHT
+    C_WARN = Fore.YELLOW + Style.BRIGHT
+    C_FAIL = Fore.RED + Style.BRIGHT
+    C_INFO = Fore.BLUE + Style.BRIGHT
+    C_LABEL = Fore.WHITE + Style.BRIGHT
+except Exception:
+    C_RESET = ""
+    C_TITLE = ""
+    C_SECTION = ""
+    C_PASS = ""
+    C_WARN = ""
+    C_FAIL = ""
+    C_INFO = ""
+    C_LABEL = ""
+
+# ---------------- Data Models ----------------
+
+@dataclass
+class CheckResult:
+    id: str
+    title: str
+    category: str
+    status: str  # PASS | WARN | FAIL | INFO
+    severity: str  # LOW | MEDIUM | HIGH | CRITICAL
+    description: str
+    evidence: List[str] = field(default_factory=list)
+    remediation: List[str] = field(default_factory=list)
+    legal_considerations: List[str] = field(default_factory=list)
+
+@dataclass
+class AssessmentReport:
+    org_name: str
+    environment: str
+    assessor: str
+    timestamp: str
+    checks: List[CheckResult]
+    summary: Dict[str, int]
+    legal_ethics_statement: str
+
+# ---------------- Utility Output ----------------
+
+def banner(text: str):
+    print(f"\n{C_TITLE}{'=' * 90}")
+    print(f"{text:^90}")
+    print(f"{'=' * 90}{C_RESET}")
+
+def section(text: str):
+    print(f"\n{C_SECTION}[SECTION] {text}{C_RESET}")
+
+def label(key: str, value: str):
+    print(f"{C_LABEL}{key:<28}{C_RESET}: {value}")
+
+def status_colored(status: str) -> str:
+    s = status.upper()
+    if s == "PASS":
+        return f"{C_PASS}{s}{C_RESET}"
+    if s == "WARN":
+        return f"{C_WARN}{s}{C_RESET}"
+    if s == "FAIL":
+        return f"{C_FAIL}{s}{C_RESET}"
+    return f"{C_INFO}{s}{C_RESET}"
+
+# ---------------- Core Logic ----------------
+
+def mock_assessment_checks() -> List[CheckResult]:
+    """
+    Replace these placeholders with real checks against your approved cloud APIs.
+    Keep checks defensive, read-only, and authorized.
+    """
+    return [
+        CheckResult(
+            id="IAM-001",
+            title="MFA enforced for privileged identities",
+            category="Identity & Access",
+            status="WARN",
+            severity="HIGH",
+            description="Some privileged roles do not require MFA.",
+            evidence=[
+                "2 admin-equivalent roles found without explicit MFA condition.",
+                "1 break-glass account missing hardware MFA registration."
+            ],
+            remediation=[
+                "Enforce MFA in all admin role policies.",
+                "Use conditional access for privileged logins.",
+                "Require phishing-resistant MFA for break-glass accounts."
+            ],
+            legal_considerations=[
+                "Align with least privilege and duty-of-care obligations.",
+                "Document exceptions with formal risk acceptance."
+            ]
+        ),
+        CheckResult(
+            id="NET-004",
+            title="Public ingress exposure minimization",
+            category="Network Security",
+            status="FAIL",
+            severity="CRITICAL",
+            description="Unexpected internet-facing endpoints detected.",
+            evidence=[
+                "3 security groups allow 0.0.0.0/0 on management ports.",
+                "1 storage endpoint lacks private networking restriction."
+            ],
+            remediation=[
+                "Close public management ports immediately.",
+                "Restrict ingress to approved corporate CIDRs/VPN.",
+                "Enable private endpoints and network ACL hardening."
+            ],
+            legal_considerations=[
+                "Potential exposure may trigger breach notification analysis.",
+                "Retain logs for incident investigation readiness."
+            ]
+        ),
+        CheckResult(
+            id="LOG-002",
+            title="Centralized immutable audit logging",
+            category="Monitoring & Detection",
+            status="PASS",
+            severity="MEDIUM",
+            description="Audit logs are centralized and write-protected.",
+            evidence=[
+                "Cloud audit trail enabled in all prod regions.",
+                "Retention policy set to 365 days with object lock."
+            ],
+            remediation=[
+                "No immediate action. Continue quarterly validation."
+            ],
+            legal_considerations=[
+                "Supports evidentiary chain and accountability controls."
+            ]
+        ),
+        CheckResult(
+            id="COMP-007",
+            title="Data encryption at rest and in transit",
+            category="Data Protection",
+            status="WARN",
+            severity="HIGH",
+            description="Legacy workloads still use deprecated TLS settings.",
+            evidence=[
+                "2 endpoints accept TLS 1.0/1.1 compatibility mode."
+            ],
+            remediation=[
+                "Disable TLS 1.0/1.1 and enforce modern cipher suites.",
+                "Rotate certificates and validate trust chains."
+            ],
+            legal_considerations=[
+                "May impact contractual and regulatory security commitments."
+            ]
+        ),
+        CheckResult(
+            id="GOV-010",
+            title="Authorization boundaries and legal scope",
+            category="Governance",
+            status="INFO",
+            severity="LOW",
+            description="Assessment scoped to approved subscriptions/accounts only.",
+            evidence=[
+                "Scope list signed by system owner.",
+                "No active exploitation modules present."
+            ],
+            remediation=[
+                "Keep authorization letters and scope manifests current."
+            ],
+            legal_considerations=[
+                "Operate only under explicit written authorization.",
+                "Do not perform offensive actions outside approved scope."
+            ]
+        ),
+    ]
+
+def build_summary(checks: List[CheckResult]) -> Dict[str, int]:
+    result = {"PASS": 0, "WARN": 0, "FAIL": 0, "INFO": 0}
+    for c in checks:
+        result[c.status.upper()] = result.get(c.status.upper(), 0) + 1
+    return result
+
+def print_report(report: AssessmentReport):
+    banner("ETHICAL CLOUD SECURITY & GOVERNANCE ASSESSMENT")
+    label("Organization", report.org_name)
+    label("Environment", report.environment)
+    label("Assessor", report.assessor)
+    label("Timestamp (UTC)", report.timestamp)
+
+    section("LEGAL & ETHICAL STATEMENT")
+    print(f"{C_INFO}{report.legal_ethics_statement}{C_RESET}")
+
+    section("EXECUTIVE SUMMARY")
+    for k in ["PASS", "WARN", "FAIL", "INFO"]:
+        print(f"  - {k:<5}: {report.summary.get(k, 0)}")
+
+    section("DETAILED FINDINGS")
+    for i, c in enumerate(report.checks, start=1):
+        print(f"\n{C_LABEL}Finding {i}: {c.id} - {c.title}{C_RESET}")
+        label("Category", c.category)
+        label("Status", status_colored(c.status))
+        label("Severity", c.severity)
+        print(f"{C_INFO}Description{C_RESET}: {c.description}")
+
+        print(f"{C_INFO}Evidence:{C_RESET}")
+        for e in c.evidence:
+            print(f"  • {e}")
+
+        print(f"{C_INFO}Remediation:{C_RESET}")
+        for r in c.remediation:
+            print(f"  → {r}")
+
+        print(f"{C_INFO}Legal/Compliance Notes:{C_RESET}")
+        for l in c.legal_considerations:
+            print(f"  ⚖ {l}")
+
+    section("PRIORITIZED ACTION PLAN")
+    priorities = sorted(
+        report.checks,
+        key=lambda x: {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}.get(x.severity.upper(), 0),
+        reverse=True
+    )
+    for c in priorities:
+        if c.status in ("FAIL", "WARN"):
+            print(f"  [{c.severity}] {c.id}: {c.title}")
+
+def export_json(report: AssessmentReport, path: str):
+    payload = {
+        "org_name": report.org_name,
+        "environment": report.environment,
+        "assessor": report.assessor,
+        "timestamp": report.timestamp,
+        "summary": report.summary,
+        "legal_ethics_statement": report.legal_ethics_statement,
+        "checks": [c.__dict__ for c in report.checks],
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+    print(f"\n{C_PASS}[OK]{C_RESET} JSON report exported to: {path}")
+
+def main():
+    org_name = "Your Organization"
+    environment = "Production"
+    assessor = "Security Team"
+
+    checks = mock_assessment_checks()
+    summary = build_summary(checks)
+
+    report = AssessmentReport(
+        org_name=org_name,
+        environment=environment,
+        assessor=assessor,
+        timestamp=datetime.datetime.utcnow().isoformat() + "Z",
+        checks=checks,
+        summary=summary,
+        legal_ethics_statement=(
+            "This assessment is defensive and authorization-bound. "
+            "No bypass, exploitation, or unauthorized control takeover actions are included. "
+            "All activities must comply with applicable law, contracts, and internal policy."
+        )
+    )
+
+    print_report(report)
+
+    # Optional export
+    export_json(report, "cloud_governance_report.json")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nInterrupted.")
+        sys.exit(130)
+pip install colorama
+python3 cloud_governance_assessment.py
+diff --git a/ethical_cloud_guidance.py b/ethical_cloud_guidance.py
+new file mode 100755
+index 0000000000000000000000000000000000000000..0a90f531034c894297198aeb5b84c5a2d704330b
+--- /dev/null
++++ b/ethical_cloud_guidance.py
+@@ -0,0 +1,184 @@
++#!/usr/bin/env python3
++"""
++Ethical Cloud Guidance Console
++
++This tool does NOT bypass security controls or "take over" cloud systems.
++Instead, it provides a structured, colorized, and labeled process for:
++- legal + ethical review
++- blocker/inhibitor identification
++- compliant remediation planning
++- evidence tracking
++"""
++
++from __future__ import annotations
++
++import argparse
++import datetime as dt
++import json
++import textwrap
++from dataclasses import dataclass, asdict
++from typing import List
++
++
++class C:
++    RESET = "\033[0m"
++    BOLD = "\033[1m"
++    RED = "\033[91m"
++    GREEN = "\033[92m"
++    YELLOW = "\033[93m"
++    BLUE = "\033[94m"
++    CYAN = "\033[96m"
++    MAGENTA = "\033[95m"
++
++
++@dataclass
++class ControlItem:
++    category: str
++    title: str
++    status: str
++    legal_check: str
++    ethical_check: str
++    next_action: str
++
++
++def banner(title: str) -> None:
++    print(f"\n{C.BOLD}{C.BLUE}{'=' * 84}{C.RESET}")
++    print(f"{C.BOLD}{C.CYAN}{title.center(84)}{C.RESET}")
++    print(f"{C.BOLD}{C.BLUE}{'=' * 84}{C.RESET}")
++
++
++def section(label: str, color: str = C.MAGENTA) -> None:
++    print(f"\n{C.BOLD}{color}[{label}]{C.RESET}")
++
++
++def wrap(msg: str, color: str = C.RESET) -> None:
++    wrapped = textwrap.fill(msg, width=84)
++    print(f"{color}{wrapped}{C.RESET}")
++
++
++def default_controls() -> List[ControlItem]:
++    return [
++        ControlItem(
++            category="Identity & Access",
++            title="Enforce MFA and phishing-resistant auth",
++            status="blocker",
++            legal_check="Confirm policy alignment with labor/privacy law.",
++            ethical_check="Protect user autonomy while minimizing account takeover risk.",
++            next_action="Roll out WebAuthn + conditional access by risk score.",
++        ),
++        ControlItem(
++            category="Infrastructure",
++            title="Public storage exposure prevention",
++            status="inhibitor",
++            legal_check="Check data-classification and cross-border transfer obligations.",
++            ethical_check="Avoid excessive data collection during scanning.",
++            next_action="Enable default deny + managed exceptions workflow.",
++        ),
++        ControlItem(
++            category="Detection & Response",
++            title="SIEM alert fatigue",
++            status="preventative_measure",
++            legal_check="Retain logs according to regulatory retention windows.",
++            ethical_check="Reduce false positives that can cause human bias in triage.",
++            next_action="Tune rules, apply risk weighting, and automate enrichment.",
++        ),
++        ControlItem(
++            category="Supply Chain",
++            title="Unsigned artifacts in CI/CD",
++            status="blocker",
++            legal_check="Map SBOM and provenance requirements by jurisdiction.",
++            ethical_check="Ensure transparency in software origins.",
++            next_action="Adopt signing + provenance verification gates.",
++        ),
++        ControlItem(
++            category="Governance",
++            title="Unclear break-glass access process",
++            status="inhibitor",
++            legal_check="Define accountable approvals and auditability.",
++            ethical_check="Minimize abuse potential with dual control.",
++            next_action="Implement time-bound JIT elevation with ticket linkage.",
++        ),
++    ]
++
++
++def print_controls(controls: List[ControlItem]) -> None:
++    colors = {
++        "blocker": C.RED,
++        "inhibitor": C.YELLOW,
++        "preventative_measure": C.GREEN,
++    }
++
++    for i, item in enumerate(controls, start=1):
++        color = colors.get(item.status, C.CYAN)
++        print(f"{C.BOLD}{color}{i:02d}. {item.category} :: {item.title}{C.RESET}")
++        wrap(f"Status Label: {item.status}", color)
++        wrap(f"Legal Guidance: {item.legal_check}", C.BLUE)
++        wrap(f"Ethical Guidance: {item.ethical_check}", C.MAGENTA)
++        wrap(f"Action Plan: {item.next_action}", C.GREEN)
++        print("-" * 84)
++
++
++def generate_report(controls: List[ControlItem], output: str) -> None:
++    report = {
++        "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
++        "purpose": "Ethical and legal cloud hardening roadmap",
++        "notice": (
++            "This report is defensive/compliance-oriented and must not be used "
++            "to bypass security controls or conduct unauthorized actions."
++        ),
++        "controls": [asdict(c) for c in controls],
++    }
++    with open(output, "w", encoding="utf-8") as f:
++        json.dump(report, f, indent=2)
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(
++        description=(
++            "Colorized ethical cloud governance assistant. "
++            "Provides legal/ethical checkpoints for defensive cloud operations."
++        )
++    )
++    parser.add_argument(
++        "--output",
++        default="ethical_cloud_report.json",
++        help="Path to JSON report output file.",
++    )
++    args = parser.parse_args()
++
++    banner("ETHICAL CLOUD GUIDANCE CONSOLE")
++    wrap(
++        "Requested goal interpreted safely: this program cannot and will not provide "
++        "instructions to overtake cloud systems. It instead provides an extensive, "
++        "labeled process to harden your own authorized environment.",
++        C.YELLOW,
++    )
++
++    section("PROCESS STEP 1 - AUTHORIZATION & SCOPE", C.CYAN)
++    wrap(
++        "Verify written authorization, asset inventory, tenant ownership, and explicit "
++        "rules of engagement before any activity.",
++    )
++
++    section("PROCESS STEP 2 - LEGAL & ETHICAL BASELINE", C.CYAN)
++    wrap(
++        "Map activities to applicable regulations (privacy, sector rules, export controls) "
++        "and internal ethics policies.",
++    )
++
++    section("PROCESS STEP 3 - BLOCKERS / INHIBITORS / PREVENTATIVE MEASURES", C.CYAN)
++    controls = default_controls()
++    print_controls(controls)
++
++    section("PROCESS STEP 4 - EVIDENCE & CONTINUOUS IMPROVEMENT", C.CYAN)
++    wrap(
++        "Track exceptions, remediation SLAs, and verification results in immutable audit "
++        "logs. Reassess quarterly or after major architecture changes.",
++    )
++
++    generate_report(controls, args.output)
++    wrap(f"Structured report written to: {args.output}", C.GREEN)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/benevolent_cloud_guard/README.md b/benevolent_cloud_guard/README.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..42cad13db1e9ed0963014b7fcb384bf81ed5304d
+--- /dev/null
++++ b/benevolent_cloud_guard/README.md
+@@ -0,0 +1,58 @@
++# Benevolent Cloud Guard
++
++A defensive, legal-by-design cloud governance starter for **visibility, compliance, and remediation planning** in environments you own or are explicitly authorized to assess.
++
++## Ethical and Legal Scope
++
++This toolkit is intended for:
++- Inventorying cloud assets
++- Detecting common security posture gaps
++- Producing auditable reports and safe remediation guidance
++
++This toolkit is **not** intended for:
++- Taking control of third-party systems
++- Bypassing blockers, inhibitors, or security controls
++- Any unauthorized access or disruptive behavior
++
++## Features
++
++- Color-coded and labeled terminal output
++- Read-only posture checks (default behavior)
++- Structured JSON findings for audit pipelines
++- Clearly separated control areas:
++  - `IAM`
++  - `Network`
++  - `Data Protection`
++  - `Monitoring`
++
++## Quick start
++
++```bash
++python3 benevolent_cloud_guard/guard.py --provider aws --output reports/aws_report.json
++```
++
++Use sample data mode (no credentials needed):
++
++```bash
++python3 benevolent_cloud_guard/guard.py --provider sample --output reports/sample_report.json
++```
++
++## Output model
++
++The scanner prints:
++- Stage headers (`[1/4]`, `[2/4]`, etc.)
++- Control labels and severity tags
++- Summary counts by severity
++
++It also writes a JSON report with:
++- `provider`
++- `generated_at`
++- `findings`
++- `summary`
++- `legal_notice`
++
++## Extending safely
++
++- Add additional checks in `guard.py` by implementing new `ControlCheck` entries.
++- Keep checks read-only unless your change process explicitly approves remediation actions.
++- Preserve the legal notice text in generated reports.
+diff --git a/benevolent_cloud_guard/guard.py b/benevolent_cloud_guard/guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4e3c5d71e808fd6eccbfa15b1f76d413bc9c1736
+--- /dev/null
++++ b/benevolent_cloud_guard/guard.py
+@@ -0,0 +1,245 @@
++#!/usr/bin/env python3
++"""Benevolent Cloud Guard: read-only, ethical cloud posture scanner."""
++
++from __future__ import annotations
++
++import argparse
++import json
++from dataclasses import dataclass, asdict
++from datetime import datetime, timezone
++from pathlib import Path
++from typing import Callable, Dict, List
++
++
++class Color:
++    RED = "\033[91m"
++    YELLOW = "\033[93m"
++    GREEN = "\033[92m"
++    BLUE = "\033[94m"
++    CYAN = "\033[96m"
++    BOLD = "\033[1m"
++    RESET = "\033[0m"
++
++
++@dataclass
++class Finding:
++    control_area: str
++    control_id: str
++    title: str
++    severity: str
++    status: str
++    guidance: str
++
++
++@dataclass
++class ControlCheck:
++    control_area: str
++    control_id: str
++    title: str
++    run: Callable[[Dict], Finding]
++
++
++def severity_color(severity: str) -> str:
++    sev = severity.upper()
++    if sev == "HIGH":
++        return Color.RED
++    if sev == "MEDIUM":
++        return Color.YELLOW
++    return Color.GREEN
++
++
++def stage(label: str) -> None:
++    print(f"{Color.BOLD}{Color.BLUE}{label}{Color.RESET}")
++
++
++def line(msg: str) -> None:
++    print(f"{Color.CYAN}{msg}{Color.RESET}")
++
++
++def load_provider_data(provider: str) -> Dict:
++    if provider == "sample":
++        return {
++            "iam_mfa_enforced": False,
++            "public_storage_buckets": 2,
++            "encryption_at_rest": True,
++            "centralized_logging": False,
++            "security_groups_open_to_world": 1,
++        }
++
++    # Placeholder pattern for future provider integrations.
++    # Keep read-only and explicitly authorized.
++    return {
++        "iam_mfa_enforced": True,
++        "public_storage_buckets": 0,
++        "encryption_at_rest": True,
++        "centralized_logging": True,
++        "security_groups_open_to_world": 0,
++    }
++
++
++def check_iam_mfa(data: Dict) -> Finding:
++    ok = bool(data.get("iam_mfa_enforced", False))
++    return Finding(
++        control_area="IAM",
++        control_id="IAM-001",
++        title="MFA enforced for privileged identities",
++        severity="HIGH" if not ok else "LOW",
++        status="PASS" if ok else "FAIL",
++        guidance=(
++            "Enforce MFA for all privileged and console-capable identities."
++            if not ok
++            else "MFA baseline appears enforced. Continue periodic validation."
++        ),
++    )
++
++
++def check_public_storage(data: Dict) -> Finding:
++    count = int(data.get("public_storage_buckets", 0))
++    ok = count == 0
++    return Finding(
++        control_area="Data Protection",
++        control_id="DATA-002",
++        title="No publicly exposed storage buckets",
++        severity="HIGH" if not ok else "LOW",
++        status="PASS" if ok else "FAIL",
++        guidance=(
++            f"Detected {count} public bucket(s). Disable public access and require explicit exception approval."
++            if not ok
++            else "No public buckets detected in this scan snapshot."
++        ),
++    )
++
++
++def check_encryption_at_rest(data: Dict) -> Finding:
++    ok = bool(data.get("encryption_at_rest", False))
++    return Finding(
++        control_area="Data Protection",
++        control_id="DATA-001",
++        title="Encryption at rest enabled",
++        severity="MEDIUM" if not ok else "LOW",
++        status="PASS" if ok else "FAIL",
++        guidance=(
++            "Enable encryption-at-rest defaults and prevent unencrypted resource creation."
++            if not ok
++            else "Encryption-at-rest control appears enabled."
++        ),
++    )
++
++
++def check_logging(data: Dict) -> Finding:
++    ok = bool(data.get("centralized_logging", False))
++    return Finding(
++        control_area="Monitoring",
++        control_id="MON-001",
++        title="Centralized audit logging enabled",
++        severity="MEDIUM" if not ok else "LOW",
++        status="PASS" if ok else "FAIL",
++        guidance=(
++            "Enable organization-level audit logging with immutable retention policies."
++            if not ok
++            else "Centralized logging appears enabled. Verify retention and alerting rules."
++        ),
++    )
++
++
++def check_network_exposure(data: Dict) -> Finding:
++    count = int(data.get("security_groups_open_to_world", 0))
++    ok = count == 0
++    return Finding(
++        control_area="Network",
++        control_id="NET-001",
++        title="No unrestricted ingress from 0.0.0.0/0",
++        severity="HIGH" if not ok else "LOW",
++        status="PASS" if ok else "FAIL",
++        guidance=(
++            f"Detected {count} overly permissive network rule(s). Restrict by trusted CIDR or private access path."
++            if not ok
++            else "No unrestricted ingress rules detected in this scan snapshot."
++        ),
++    )
++
++
++def run_scan(provider: str) -> List[Finding]:
++    checks = [
++        ControlCheck("IAM", "IAM-001", "MFA enforcement", check_iam_mfa),
++        ControlCheck("Data Protection", "DATA-002", "Public storage exposure", check_public_storage),
++        ControlCheck("Data Protection", "DATA-001", "Encryption at rest", check_encryption_at_rest),
++        ControlCheck("Monitoring", "MON-001", "Centralized logging", check_logging),
++        ControlCheck("Network", "NET-001", "Ingress exposure", check_network_exposure),
++    ]
++
++    data = load_provider_data(provider)
++    findings: List[Finding] = []
++
++    stage("[1/4] Initializing Benevolent Cloud Guard")
++    line("Purpose: authorized, defensive cloud posture visibility.")
++
++    stage("[2/4] Running labeled control checks")
++    for check in checks:
++        finding = check.run(data)
++        findings.append(finding)
++        color = severity_color(finding.severity)
++        print(
++            f"{color}[{finding.control_area}] {finding.control_id} | {finding.status:<4} | "
++            f"{finding.severity:<6} | {finding.title}{Color.RESET}"
++        )
++
++    stage("[3/4] Building compliance summary")
++    return findings
++
++
++def summarize(findings: List[Finding]) -> Dict[str, int]:
++    summary = {"HIGH": 0, "MEDIUM": 0, "LOW": 0, "PASS": 0, "FAIL": 0}
++    for f in findings:
++        summary[f.severity.upper()] += 1
++        summary[f.status.upper()] += 1
++    return summary
++
++
++def write_report(provider: str, findings: List[Finding], output_path: Path) -> None:
++    output_path.parent.mkdir(parents=True, exist_ok=True)
++    summary = summarize(findings)
++    report = {
++        "provider": provider,
++        "generated_at": datetime.now(timezone.utc).isoformat(),
++        "legal_notice": (
++            "Authorized defensive assessment only. Do not use for unauthorized access, "
++            "control bypass, or disruptive activity."
++        ),
++        "findings": [asdict(f) for f in findings],
++        "summary": summary,
++    }
++    output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
++
++    stage("[4/4] Report completed")
++    line(f"Saved JSON report: {output_path}")
++    line(
++        "Summary: "
++        + ", ".join(f"{k}={v}" for k, v in summary.items())
++    )
++
++
++def parse_args() -> argparse.Namespace:
++    parser = argparse.ArgumentParser(description="Benevolent Cloud Guard")
++    parser.add_argument(
++        "--provider",
++        choices=["sample", "aws", "azure", "gcp"],
++        default="sample",
++        help="Cloud provider context. Non-sample modes currently use safe placeholder data.",
++    )
++    parser.add_argument(
++        "--output",
++        default="reports/cloud_guard_report.json",
++        help="Path for JSON report output.",
++    )
++    return parser.parse_args()
++
++
++def main() -> None:
++    args = parse_args()
++    findings = run_scan(args.provider)
++    write_report(args.provider, findings, Path(args.output))
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/cloud_benevolence_guard.py b/cloud_benevolence_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..517ce68d2e9d4d6ebcb01c1d034ef9888647efc1
+--- /dev/null
++++ b/cloud_benevolence_guard.py
+@@ -0,0 +1,241 @@
++#!/usr/bin/env python3
++"""Benevolent Cloud Governance Guard
++
++This script is intentionally defensive: it audits and labels cloud controls
++for systems you own and operate. It does not bypass security controls.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import os
++import re
++import sys
++from dataclasses import dataclass
++from enum import Enum
++from typing import Any
++
++
++class Color:
++    RESET = "\033[0m"
++    BOLD = "\033[1m"
++    RED = "\033[31m"
++    GREEN = "\033[32m"
++    YELLOW = "\033[33m"
++    BLUE = "\033[34m"
++    MAGENTA = "\033[35m"
++    CYAN = "\033[36m"
++
++
++class Severity(str, Enum):
++    INFO = "INFO"
++    LOW = "LOW"
++    MEDIUM = "MEDIUM"
++    HIGH = "HIGH"
++    CRITICAL = "CRITICAL"
++
++
++SEVERITY_COLORS = {
++    Severity.INFO: Color.CYAN,
++    Severity.LOW: Color.GREEN,
++    Severity.MEDIUM: Color.YELLOW,
++    Severity.HIGH: Color.MAGENTA,
++    Severity.CRITICAL: Color.RED,
++}
++
++
++@dataclass
++class Finding:
++    category: str
++    control: str
++    severity: Severity
++    status: str
++    evidence: str
++    remediation: str
++    legal_guidance: str
++
++
++def colorize(text: str, color: str, enabled: bool) -> str:
++    if not enabled:
++        return text
++    return f"{color}{text}{Color.RESET}"
++
++
++def is_truthy(value: Any) -> bool:
++    if isinstance(value, bool):
++        return value
++    if isinstance(value, str):
++        return value.strip().lower() in {"1", "true", "yes", "on", "enabled"}
++    if isinstance(value, (int, float)):
++        return value != 0
++    return bool(value)
++
++
++def evaluate_controls(cfg: dict[str, Any]) -> list[Finding]:
++    findings: list[Finding] = []
++
++    def add(category: str, control: str, ok: bool, severity: Severity, evidence: str, remediation: str):
++        findings.append(
++            Finding(
++                category=category,
++                control=control,
++                severity=severity if not ok else Severity.INFO,
++                status="PASS" if ok else "FAIL",
++                evidence=evidence,
++                remediation=remediation,
++                legal_guidance=(
++                    "Only audit and modify environments you are explicitly authorized to manage. "
++                    "Maintain change records and follow contractual + regulatory obligations."
++                ),
++            )
++        )
++
++    # IAM
++    iam = cfg.get("iam", {})
++    add(
++        "IAM",
++        "Multi-factor authentication required for admins",
++        is_truthy(iam.get("mfa_for_admins")),
++        Severity.CRITICAL,
++        f"mfa_for_admins={iam.get('mfa_for_admins')!r}",
++        "Require MFA for all human admin identities; block non-MFA console access.",
++    )
++    add(
++        "IAM",
++        "No wildcard admin policy attachments",
++        not is_truthy(iam.get("wildcard_admin_policies")),
++        Severity.HIGH,
++        f"wildcard_admin_policies={iam.get('wildcard_admin_policies')!r}",
++        "Replace wildcard policies with least-privilege scoped roles and policies.",
++    )
++
++    # Network
++    net = cfg.get("network", {})
++    add(
++        "Network",
++        "Public management ports closed (22/3389)",
++        not is_truthy(net.get("public_ssh_rdp_open")),
++        Severity.HIGH,
++        f"public_ssh_rdp_open={net.get('public_ssh_rdp_open')!r}",
++        "Disable public ingress to management ports; use bastion, VPN, or private access.",
++    )
++    add(
++        "Network",
++        "Default deny ingress posture",
++        is_truthy(net.get("default_deny_ingress")),
++        Severity.MEDIUM,
++        f"default_deny_ingress={net.get('default_deny_ingress')!r}",
++        "Apply default-deny security groups/firewalls and permit only documented flows.",
++    )
++
++    # Data protection
++    data = cfg.get("data", {})
++    add(
++        "Data",
++        "Encryption at rest enforced",
++        is_truthy(data.get("encryption_at_rest")),
++        Severity.HIGH,
++        f"encryption_at_rest={data.get('encryption_at_rest')!r}",
++        "Enable managed encryption keys for all storage/database services.",
++    )
++    add(
++        "Data",
++        "Encryption in transit enforced",
++        is_truthy(data.get("tls_everywhere")),
++        Severity.HIGH,
++        f"tls_everywhere={data.get('tls_everywhere')!r}",
++        "Require TLS for APIs, service mesh links, and admin endpoints.",
++    )
++
++    # Observability
++    obs = cfg.get("observability", {})
++    add(
++        "Observability",
++        "Centralized immutable audit logging",
++        is_truthy(obs.get("centralized_audit_logging")),
++        Severity.CRITICAL,
++        f"centralized_audit_logging={obs.get('centralized_audit_logging')!r}",
++        "Ship cloud audit logs to immutable storage with retention and alerting.",
++    )
++    add(
++        "Observability",
++        "Security alerting enabled",
++        is_truthy(obs.get("security_alerting")),
++        Severity.MEDIUM,
++        f"security_alerting={obs.get('security_alerting')!r}",
++        "Enable high-confidence detections and on-call notification workflows.",
++    )
++
++    return findings
++
++
++def print_report(findings: list[Finding], color: bool) -> None:
++    print(colorize("\n=== BENEVOLENT CLOUD GOVERNANCE REPORT ===", Color.BOLD + Color.BLUE, color))
++    print("Labeled controls with legal/ethical scope.\n")
++
++    for i, f in enumerate(findings, start=1):
++        sev_text = colorize(f.severity.value, SEVERITY_COLORS[f.severity], color)
++        status_color = Color.GREEN if f.status == "PASS" else Color.RED
++        status_text = colorize(f.status, status_color, color)
++
++        print(colorize(f"[{i:02d}] {f.category} :: {f.control}", Color.BOLD, color))
++        print(f"  Status     : {status_text}")
++        print(f"  Severity   : {sev_text}")
++        print(f"  Evidence   : {f.evidence}")
++        print(f"  Remediation: {f.remediation}")
++        print(f"  Legal Note : {f.legal_guidance}\n")
++
++    failed = [f for f in findings if f.status == "FAIL"]
++    print(colorize("=== SUMMARY ===", Color.BOLD + Color.CYAN, color))
++    print(f"Total controls : {len(findings)}")
++    print(colorize(f"Passed         : {len(findings) - len(failed)}", Color.GREEN, color))
++    print(colorize(f"Failed         : {len(failed)}", Color.RED if failed else Color.GREEN, color))
++
++
++def parse_input(path: str) -> dict[str, Any]:
++    if not os.path.exists(path):
++        raise FileNotFoundError(f"Input file not found: {path}")
++
++    with open(path, "r", encoding="utf-8") as f:
++        raw = f.read()
++
++    if path.endswith(".json"):
++        return json.loads(raw)
++
++    # very small YAML subset fallback without external dependency
++    cfg: dict[str, Any] = {}
++    current_section: str | None = None
++    for line in raw.splitlines():
++        if not line.strip() or line.strip().startswith("#"):
++            continue
++        if re.match(r"^[A-Za-z_][\w-]*:\s*$", line):
++            current_section = line.split(":", 1)[0].strip()
++            cfg[current_section] = {}
++            continue
++        if current_section and ":" in line:
++            k, v = line.strip().split(":", 1)
++            cfg[current_section][k.strip()] = v.strip().strip('"\'')
++    return cfg
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser(
++        description="Defensive cloud governance audit with colored/labeled reporting."
++    )
++    parser.add_argument("--input", required=True, help="Path to JSON or simple YAML config file")
++    parser.add_argument("--no-color", action="store_true", help="Disable ANSI colors")
++    parser.add_argument("--fail-on-findings", action="store_true", help="Exit 2 when any controls fail")
++    args = parser.parse_args()
++
++    cfg = parse_input(args.input)
++    findings = evaluate_controls(cfg)
++    print_report(findings, color=not args.no_color)
++
++    if args.fail_on_findings and any(f.status == "FAIL" for f in findings):
++        return 2
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
