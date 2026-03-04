@@ -1,0 +1,534 @@
+```py
+import os
+import sys
+import subprocess
+import psutil
+
+def detect_mimic_processes():
+    """Identify processes that mimic legitimate ones by checking executable paths"""
+    suspicious = []
+    legit_paths = {os.path.dirname(sys.executable)}  # Add more legitimate paths as needed
+    
+    for proc in psutil.process_iter(['pid', 'name', 'exe']):
+        try:
+            exe_path = proc.exe()
+            if exe_path and os.path.dirname(exe_path) not in legit_paths:
+                if any(legit in proc.name().lower() for legit in ['python', 'cmd', 'explorer']):
+                    suspicious.append(proc)
+        except (psutil.AccessDenied, psutil.NoSuchProcess):
+            continue
+    
+    return suspicious
+
+def terminate_processes(processes):
+    """Force terminate identified mimic processes"""
+    for proc in processes:
+        try:
+            proc.terminate()
+        except Exception as e:
+            print(f"Failed to terminate {proc.pid}: {str(e)}")
+
+if __name__ == "__main__":
+    # Install required package
+    print("Installing required packages...")
+    subprocess.run([sys.executable, "-m", "pip", "install", "psutil"], check=True)
+    
+    import psutil  # Re-import after installation
+    
+    print("Scanning for mimic processes...")
+    mimics = detect_mimic_processes()
+    
+    if mimics:
+        print(f"Found {len(mimics)} potential mimic processes")
+        terminate_processes(mimics)
+        print("Termination attempted for all identified processes")
+    else:
+        print("No mimic processes detected")
+```
+# List commonly spoofed Windows process names
+$commonSpoofed = @(
+    "svchost.exe",
+    "explorer.exe",
+    "lsass.exe",
+    "csrss.exe",
+    "winlogon.exe",
+    "smss.exe",
+    "services.exe"
+)
+
+# Get all processes with their file paths
+$processes = Get-CimInstance Win32_Process | Select-Object Name, ProcessId, ExecutablePath
+
+$suspicious = @()
+
+foreach ($p in $processes) {
+    if (-not $p.ExecutablePath) { continue }
+
+    $name = $p.Name
+    $path = $p.ExecutablePath.ToLower()
+
+    $isSpoofedName = $commonSpoofed -contains $name
+    $isSystem32    = $path -like "c:\windows\system32\*"
+    $isWindowsDir  = $path -like "c:\windows\*"
+
+    # Heuristics:
+    # 1. Spoofed name but not in System32
+    # 2. Executable running from temp or user profile
+    # 3. Executable in unusual location under AppData
+    $looksSuspicious = $false
+
+    if ($isSpoofedName -and -not $isSystem32) {
+        $looksSuspicious = $true
+    }
+
+    if ($path -like "*\temp\*" -or
+        $path -like "c:\users\*\appdata\local\*" -or
+        $path -like "c:\users\*\appdata\roaming\*") {
+        $looksSuspicious = $true
+    }
+
+    if ($looksSuspicious) {
+        $suspicious += [PSCustomObject]@{
+            Name          = $name
+            PID           = $p.ProcessId
+            Path          = $path
+            InSystem32    = $isSystem32
+            InWindowsDir  = $isWindowsDir
+        }
+    }
+}
+
+$suspicious | Sort-Object Name | Format-Table -AutoSize
+
+# Optionally export to CSV for manual review
+$suspicious | Export-Csv -Path "$env:USERPROFILE\Desktop\suspicious_processes.csv" -NoTypeInformation
+import os
+from pathlib import Path
+
+COMMON_SPOOFED = {
+    "svchost.exe",
+    "explorer.exe",
+    "lsass.exe",
+    "csrss.exe",
+    "winlogon.exe",
+    "services.exe",
+    "smss.exe",
+}
+
+SUSPICIOUS_ROOTS = [
+    r"C:\Users",
+    r"C:\ProgramData",
+    r"C:\Temp",
+]
+
+def find_suspicious_exes():
+    suspicious = []
+    for root in SUSPICIOUS_ROOTS:
+        root_path = Path(root)
+        if not root_path.exists():
+            continue
+
+        for dirpath, dirnames, filenames in os.walk(root_path):
+            for f in filenames:
+                if f.lower().endswith(".exe"):
+                    full_path = Path(dirpath) / f
+                    if f.lower() in COMMON_SPOOFED:
+                        suspicious.append(str(full_path))
+    return suspicious
+
+if __name__ == "__main__":
+    suspects = find_suspicious_exes()
+    print("Suspicious executables (by name/location):")
+    for s in suspects:
+        print(" -", s)
+pip install psutil
+import psutil
+from pathlib import Path
+import csv
+import os
+
+COMMON_SPOOFED = {
+    "svchost.exe",
+    "explorer.exe",
+    "lsass.exe",
+    "csrss.exe",
+    "winlogon.exe",
+    "services.exe",
+    "smss.exe",
+}
+
+def is_in_system32(path: Path) -> bool:
+    try:
+        return str(path).lower().startswith(r"c:\windows\system32")
+    except Exception:
+        return False
+
+def is_in_windows_dir(path: Path) -> bool:
+    try:
+        return str(path).lower().startswith(r"c:\windows")
+    except Exception:
+        return False
+
+def is_in_suspicious_user_area(path: Path) -> bool:
+    p = str(path).lower()
+    return (
+        r"\temp\" in p
+        or r"\appdata\local\" in p
+        or r"\appdata\roaming\" in p
+    )
+
+def main():
+    suspicious = []
+
+    for proc in psutil.process_iter(["pid", "name", "exe"]):
+        try:
+            name = (proc.info["name"] or "").lower()
+            exe = proc.info["exe"]
+            if not exe:
+                continue
+
+            exe_path = Path(exe)
+            spoofed_name = name in COMMON_SPOOFED
+            in_system32 = is_in_system32(exe_path)
+            in_windows = is_in_windows_dir(exe_path)
+            in_suspicious_area = is_in_suspicious_user_area(exe_path)
+
+            looks_suspicious = False
+
+            # 1) Spoofed name but not in System32
+            if spoofed_name and not in_system32:
+                looks_suspicious = True
+
+            # 2) Any executable in temp/appdata areas
+            if in_suspicious_area:
+                looks_suspicious = True
+
+            if looks_suspicious:
+                suspicious.append({
+                    "name": name,
+                    "pid": proc.info["pid"],
+                    "path": str(exe_path),
+                    "spoofed_name": spoofed_name,
+                    "in_system32": in_system32,
+                    "in_windows_dir": in_windows,
+                    "in_suspicious_user_area": in_suspicious_area,
+                })
+
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+
+    desktop = Path(os.path.expanduser("~")) / "Desktop"
+    desktop.mkdir(parents=True, exist_ok=True)
+    out_file = desktop / "suspicious_processes_report.csv"
+
+    with out_file.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "name",
+                "pid",
+                "path",
+                "spoofed_name",
+                "in_system32",
+                "in_windows_dir",
+                "in_suspicious_user_area",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(suspicious)
+
+    print(f"Found {len(suspicious)} suspicious processes.")
+    print(f"Report saved to: {out_file}")
+
+if __name__ == "__main__":
+    main()
+pip install psutil
+import psutil
+import time
+from pathlib import Path
+import datetime
+import os
+
+COMMON_SPOOFED = {
+    "svchost.exe",
+    "explorer.exe",
+    "lsass.exe",
+    "csrss.exe",
+    "winlogon.exe",
+    "services.exe",
+    "smss.exe",
+}
+
+LOG_FILE = Path("process_monitor_log.txt")
+
+def log(message):
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with LOG_FILE.open("a", encoding="utf-8") as f:
+        f.write(f"[{timestamp}] {message}\n")
+    print(message)
+
+def is_suspicious_path(path: Path) -> bool:
+    p = str(path).lower()
+    return (
+        r"\temp\" in p
+        or r"\appdata\local\" in p
+        or r"\appdata\roaming\" in p
+        or r"\programdata\" in p
+    )
+
+def is_not_system32(path: Path) -> bool:
+    return not str(path).lower().startswith(r"c:\windows\system32")
+
+def analyze_process(proc):
+    try:
+        name = (proc.name() or "").lower()
+        exe = proc.exe()
+        if not exe:
+            return None
+
+        exe_path = Path(exe)
+        suspicious_reasons = []
+
+        if name in COMMON_SPOOFED and is_not_system32(exe_path):
+            suspicious_reasons.append("Spoofed system name outside System32")
+
+        if is_suspicious_path(exe_path):
+            suspicious_reasons.append("Running from suspicious user directory")
+
+        if proc.username().lower().startswith("user") and name in COMMON_SPOOFED:
+            suspicious_reasons.append("System-like name running under user account")
+
+        if suspicious_reasons:
+            return {
+                "pid": proc.pid,
+                "name": name,
+                "path": str(exe_path),
+                "reasons": suspicious_reasons
+            }
+
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return None
+
+def main():
+    log("=== Real-time suspicious process monitor started ===")
+
+    seen = set()
+
+    while True:
+        for proc in psutil.process_iter(["pid", "name", "exe"]):
+import psutil
+import time
+from pathlib import Path
+import datetime
+import os
+
+COMMON_SPOOFED = {
+    "svchost.exe",
+    "explorer.exe",
+    "lsass.exe",
+    "csrss.exe",
+    "winlogon.exe",
+    "services.exe",
+    "smss.exe",
+}
+
+LOG_FILE = Path("process_monitor_log.txt")
+
+def log(message):
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with LOG_FILE.open("a", encoding="utf-8") as f:
+        f.write(f"[{timestamp}] {message}\n")
+    print(message)
+
+def is_suspicious_path(path: Path) -> bool:
+    p = str(path).lower()
+    return (
+        r"\temp\" in p
+        or r"\appdata\local\" in p
+        or r"\appdata\roaming\" in p
+        or r"\programdata\" in p
+    )
+
+def is_not_system32(path: Path) -> bool:
+    return not str(path).lower().startswith(r"c:\windows\system32")
+
+def analyze_process(proc):
+    try:
+        name = (proc.name() or "").lower()
+        exe = proc.exe()
+        if not exe:
+            return None
+
+        exe_path = Path(exe)
+        suspicious_reasons = []
+
+        if name in COMMON_SPOOFED and is_not_system32(exe_path):
+            suspicious_reasons.append("Spoofed system name outside System32")
+
+        if is_suspicious_path(exe_path):
+            suspicious_reasons.append("Running from suspicious user directory")
+
+        if proc.username().lower().startswith("user") and name in COMMON_SPOOFED:
+            suspicious_reasons.append("System-like name running under user account")
+
+        if suspicious_reasons:
+            return {
+                "pid": proc.pid,
+                "name": name,
+                "path": str(exe_path),
+                "reasons": suspicious_reasons
+            }
+
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return None
+
+def main():
+    log("=== Real-time suspicious process monitor started ===")
+
+    seen = set()
+
+    while True:
+        for proc in psutil.process_iter(["pid", "name", "exe"]):
+            result = analyze_process(proc)
+            if result and result["pid"] not in seen:
+                seen.add(result["pid"])
+
+                log("\n[!] Suspicious process detected:")
+                log(f"    Name: {result['name']}")
+                log(f"    PID: {result['pid']}")
+                log(f"    Path: {result['path']}")
+                log(f"    Reasons: {', '.join(result['reasons'])}")
+
+                # Ask user whether to terminate
+                choice = input(f"Terminate PID {result['pid']}? (y/n): ").strip().lower()
+                if choice == "y":
+                    try:
+                        psutil.Process(result["pid"]).terminate()
+                        log(f"[+] Process {result['pid']} terminated.")
+                    except Exception as e:
+                        log(f"[!] Failed to terminate: {e}")
+
+        time.sleep(3)
+
+if __name__ == "__main__":
+    main()
+import psutil
+import time
+from pathlib import Path
+import hashlib
+import datetime
+import os
+
+# === CONFIGURATION ===
+
+# Add trusted executable paths here
+TRUSTED = {
+    r"C:\Windows\System32\svchost.exe",
+    r"C:\Windows\explorer.exe",
+    r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+}
+
+COMMON_SPOOFED = {
+    "svchost.exe",
+    "explorer.exe",
+    "lsass.exe",
+    "csrss.exe",
+    "winlogon.exe",
+    "services.exe",
+    "smss.exe",
+}
+
+LOG_FILE = Path("system_guardian_log.txt")
+
+# === UTILITY FUNCTIONS ===
+
+def log(message):
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with LOG_FILE.open("a", encoding="utf-8") as f:
+        f.write(f"[{timestamp}] {message}\n")
+    print(message)
+
+def file_hash(path):
+    try:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        return None
+
+def suspicious_location(path: Path) -> bool:
+    p = str(path).lower()
+    return (
+        r"\temp\" in p
+        or r"\appdata\local\" in p
+        or r"\appdata\roaming\" in p
+        or r"\programdata\" in p
+    )
+
+# === MAIN ANALYSIS ===
+
+def analyze_process(proc):
+    try:
+        name = (proc.name() or "").lower()
+        exe = proc.exe()
+        if not exe:
+            return None
+
+        exe_path = Path(exe)
+        reasons = []
+
+        # Allow-list enforcement
+        if str(exe_path) not in TRUSTED:
+            reasons.append("Executable not in trusted allow-list")
+
+        # Suspicious behavior checks
+        if name in COMMON_SPOOFED and "system32" not in str(exe_path).lower():
+            reasons.append("System-like name outside System32")
+
+        if suspicious_location(exe_path):
+            reasons.append("Running from suspicious directory")
+
+        if reasons:
+            return {
+                "pid": proc.pid,
+                "name": name,
+                "path": str(exe_path),
+                "reasons": reasons,
+                "hash": file_hash(exe_path)
+            }
+
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return None
+
+def main():
+    log("=== System Guardian started ===")
+
+    seen = set()
+
+    while True:
+        for proc in psutil.process_iter(["pid", "name", "exe"]):
+            result = analyze_process(proc)
+            if result and result["pid"] not in seen:
+                seen.add(result["pid"])
+
+                log("\n[!] Untrusted or suspicious process detected:")
+                log(f"    Name: {result['name']}")
+                log(f"    PID: {result['pid']}")
+                log(f"    Path: {result['path']}")
+                log(f"    Reasons: {', '.join(result['reasons'])}")
+                log(f"    SHA-256: {result['hash']}")
+
+                choice = input(f"Terminate PID {result['pid']}? (y/n): ").strip().lower()
+                if choice == "y":
+                    try:
+                        psutil.Process(result["pid"]).terminate()
+                        log(f"[+] Process {result['pid']} terminated.")
+                    except Exception as e:
+                        log(f"[!] Failed to terminate: {e}")
+
+        time.sleep(3)
+
+if __name__ == "__main__":
+    main()
