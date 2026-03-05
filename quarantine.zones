@@ -1,0 +1,488 @@
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..73646f47d8d067669d56512b0d73ad1f291d26ec 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -16,50 +16,51 @@ class CapabilityType(Enum):
+     """Categories of metaphysical capabilities."""
+     TELEKINESIS = "telekinesis"
+     TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+ 
+ 
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+     PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+     CONSERVATION_LAW = "conservation_law"
+     ENTROPY_COST = "entropy_cost"
+     CONSCIOUSNESS_REQUIREMENT = "consciousness_requirement"
+     MATERIAL_ANCHOR = "material_anchor"
++    QUARANTINE_ZONE = "quarantine_zone"
+ 
+ 
+ @dataclass
+ class RestrictionRule:
+     """A single restriction rule applied to a capability."""
+     restriction_type: RestrictionType
+     severity: float  # 0.0 (mild) to 1.0 (severe)
+     description: str
+     parameters: Dict = field(default_factory=dict)
+ 
+     def apply(self, base_value: float) -> float:
+         """Apply restriction multiplier to a base value."""
+         return base_value * (1.0 - self.severity)
+ 
+     def __str__(self) -> str:
+         return f"{self.restriction_type.value}: {self.description} (severity: {self.severity:.1%})"
+ 
+ 
+ @dataclass
+ class MetaphysicalCapability:
+     """Represents a metaphysical or magical capability."""
+     name: str
+     capability_type: CapabilityType
+     base_power_level: float  # 0.0 to 100.0
+     restrictions: List[RestrictionRule] = field(default_factory=list)
+@@ -180,111 +181,121 @@ class ConsciousnessAnchorFramework(PhilosophicalFramework):
+     """Framework requiring consciousness maintenance for metaphysical actions."""
+ 
+     def __init__(self, consciousness_threshold: float = 0.5):
+         self.consciousness_threshold = consciousness_threshold
+         self.practitioner_consciousness_level = 1.0
+ 
+     def evaluate_restriction(self, capability: MetaphysicalCapability) -> bool:
+         """Metaphysical abilities require sufficient consciousness."""
+         required_consciousness = capability.base_power_level / 100.0
+         return self.practitioner_consciousness_level >= required_consciousness
+ 
+     def get_restriction_reason(self) -> str:
+         return ("Consciousness anchor: Metaphysical capabilities require "
+                 "mental clarity and awareness. Altered consciousness impairs abilities.")
+ 
+ 
+ @dataclass
+ class MetaphysicalPractitioner:
+     """An entity capable of using metaphysical abilities."""
+     name: str
+     capabilities: List[MetaphysicalCapability] = field(default_factory=list)
+     philosophical_frameworks: List[PhilosophicalFramework] = field(default_factory=list)
+     consciousness_level: float = 1.0  # 0.0 to 1.0
+     energy_pool: float = 100.0
+     max_energy: float = 100.0
++    allow_quarantine_zones: bool = False
+ 
+     def add_capability(self, capability: MetaphysicalCapability) -> None:
+         """Add a new capability."""
+         self.capabilities.append(capability)
+ 
+     def add_framework(self, framework: PhilosophicalFramework) -> None:
+         """Bind a philosophical framework to this practitioner."""
+         self.philosophical_frameworks.append(framework)
+ 
+     def can_use_capability(self, capability: MetaphysicalCapability) -> tuple[bool, str]:
+         """Check if a capability can be used given all restrictions."""
++        if not self.allow_quarantine_zones:
++            has_quarantine_restriction = any(
++                restriction.restriction_type == RestrictionType.QUARANTINE_ZONE
++                for restriction in capability.restrictions
++            )
++            if has_quarantine_restriction:
++                return False, "Quarantine zones are prohibited by practitioner policy."
++
+         # Check if capability is enabled
+         if not capability.is_usable:
+             return False, "Capability is disabled."
+ 
+         # Check energy
+         energy_cost = capability.base_power_level * 0.5
+         if self.energy_pool < energy_cost:
+             return False, f"Insufficient energy. Need {energy_cost:.1f}, have {self.energy_pool:.1f}"
+ 
+         # Check consciousness
+         if self.consciousness_level < 0.5:
+             return False, "Consciousness level too low to maintain metaphysical connection."
+ 
+         # Check all philosophical frameworks
+         for framework in self.philosophical_frameworks:
+             if not framework.evaluate_restriction(capability):
+                 return False, f"Violates {type(framework).__name__}: {framework.get_restriction_reason()}"
+ 
+         return True, "Capability can be used."
+ 
+     def use_capability(self, capability: MetaphysicalCapability) -> Dict:
+         """Attempt to use a capability. Returns result details."""
+         can_use, reason = self.can_use_capability(capability)
+         
+         result = {
+             "success": can_use,
+             "capability": capability.name,
+             "reason": reason,
+             "power_used": 0.0,
+             "energy_consumed": 0.0
+         }
+ 
+         if can_use:
+             power_used = capability.get_effective_power()
+             energy_consumed = capability.base_power_level * 0.5
+             
+             self.energy_pool -= energy_consumed
+             capability.use_count += 1
+             
+             result["power_used"] = power_used
+             result["energy_consumed"] = energy_consumed
+             result["remaining_energy"] = self.energy_pool
+ 
+         return result
+ 
+     def get_status(self) -> str:
+         """Get current status of the practitioner."""
+         status = f"\n=== {self.name} ===\n"
+         status += f"Consciousness: {self.consciousness_level:.1%}\n"
+         status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
++        status += f"Quarantine Zones Allowed: {self.allow_quarantine_zones}\n"
+         status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+         status += f"\nCapabilities:\n"
+         
+         for cap in self.capabilities:
+             status += f"  • {cap}\n"
+             if cap.restrictions:
+                 for restriction in cap.restrictions:
+                     status += f"    - {restriction}\n"
+         
+         return status
+ 
+ 
+ # Utility functions for common restriction setups
+ 
+ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+     """Create a well-balanced magic system with standard restrictions."""
+     practitioner = MetaphysicalPractitioner("Balanced Mage")
+     
+     # Add frameworks
+     practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+     practitioner.add_framework(EntropicDecayFramework(0.9))
+     practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
+     
+     # Add capabilities with restrictions
+     telekinesis = MetaphysicalCapability(
+diff --git a/numpy_blocker.py b/numpy_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..64a3807eefeb430bf906d7483fc243fee59db079
+--- /dev/null
++++ b/numpy_blocker.py
+@@ -0,0 +1,71 @@
++"""Utilities to block NumPy from being imported in a Python process.
++
++Use this when you want to guarantee that NumPy code cannot run in your app.
++"""
++
++from __future__ import annotations
++
++import builtins
++import os
++import sys
++from importlib.abc import MetaPathFinder
++from importlib.machinery import ModuleSpec
++from typing import Optional
++
++
++class _NumpyBlocker(MetaPathFinder):
++    """Import hook that rejects `numpy` and all submodules."""
++
++    def find_spec(
++        self,
++        fullname: str,
++        path: Optional[object] = None,
++        target: Optional[object] = None,
++    ) -> Optional[ModuleSpec]:
++        if fullname == "numpy" or fullname.startswith("numpy."):
++            raise ImportError(
++                "NumPy is blocked by numpy_blocker.disable_numpy_for_process()."
++            )
++        return None
++
++
++def disable_numpy_for_process() -> None:
++    """Disable NumPy for the current Python process.
++
++    This function:
++    - Removes preloaded NumPy modules (if any)
++    - Installs an import hook that blocks future `import numpy`
++    - Adds a builtins-level fallback guard
++    """
++
++    # Remove already loaded numpy modules.
++    for module_name in list(sys.modules):
++        if module_name == "numpy" or module_name.startswith("numpy."):
++            del sys.modules[module_name]
++
++    # Prevent heavy numerical backends from being used indirectly in child imports.
++    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
++    os.environ.setdefault("MKL_NUM_THREADS", "1")
++    os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
++    os.environ.setdefault("OMP_NUM_THREADS", "1")
++
++    # Add import hook once.
++    if not any(isinstance(finder, _NumpyBlocker) for finder in sys.meta_path):
++        sys.meta_path.insert(0, _NumpyBlocker())
++
++    # Fallback guard in case some code bypasses importlib internals.
++    original_import = builtins.__import__
++
++    def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
++        if name == "numpy" or name.startswith("numpy."):
++            raise ImportError(
++                "NumPy is blocked by numpy_blocker.disable_numpy_for_process()."
++            )
++        return original_import(name, globals, locals, fromlist, level)
++
++    builtins.__import__ = guarded_import
++
++
++if __name__ == "__main__":
++    disable_numpy_for_process()
++    print("NumPy imports are now blocked for this process.")
+diff --git a/numpy_guard.py b/numpy_guard.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..d6a3d36d7554bc6b419caea7722d7c17887e48c2
+--- /dev/null
++++ b/numpy_guard.py
+@@ -0,0 +1,76 @@
++"""Utilities to block NumPy imports in the current Python process.
++
++This does *not* uninstall NumPy from the machine. Instead, it prevents code in the
++current process from importing ``numpy`` (and its submodules) by installing an
++import hook.
++"""
++
++from __future__ import annotations
++
++import importlib.abc
++import os
++import runpy
++import sys
++from contextlib import contextmanager
++from typing import Iterator
++
++
++class _NumpyImportBlocker(importlib.abc.MetaPathFinder):
++    """Meta path finder that blocks imports of numpy and numpy.*"""
++
++    def find_spec(self, fullname: str, path=None, target=None):  # type: ignore[override]
++        if fullname == "numpy" or fullname.startswith("numpy."):
++            raise ImportError(
++                "NumPy import blocked by numpy_guard. "
++                "Remove the guard to allow numpy usage."
++            )
++        return None
++
++
++_BLOCKER = _NumpyImportBlocker()
++
++
++def block_numpy_imports() -> None:
++    """Install an import hook that blocks NumPy for this process."""
++    if _BLOCKER not in sys.meta_path:
++        sys.meta_path.insert(0, _BLOCKER)
++
++    # Remove already-loaded numpy modules so future access fails loudly.
++    for module_name in list(sys.modules):
++        if module_name == "numpy" or module_name.startswith("numpy."):
++            del sys.modules[module_name]
++
++
++def unblock_numpy_imports() -> None:
++    """Remove the import hook so NumPy imports are allowed again."""
++    while _BLOCKER in sys.meta_path:
++        sys.meta_path.remove(_BLOCKER)
++
++
++@contextmanager
++def numpy_blocked() -> Iterator[None]:
++    """Context manager that blocks NumPy imports for a code region."""
++    block_numpy_imports()
++    try:
++        yield
++    finally:
++        unblock_numpy_imports()
++
++
++def _run_target_script(script_path: str) -> None:
++    """Run a Python script with NumPy blocked."""
++    block_numpy_imports()
++    runpy.run_path(script_path, run_name="__main__")
++
++
++if __name__ == "__main__":
++    # Usage:
++    #   python numpy_guard.py path/to/script.py
++    # or set NUMPY_GUARD=1 and import this module early.
++    if os.environ.get("NUMPY_GUARD") == "1":
++        block_numpy_imports()
++
++    if len(sys.argv) == 2:
++        _run_target_script(sys.argv[1])
++    elif len(sys.argv) > 2:
++        raise SystemExit("Usage: python numpy_guard.py [script.py]")
+diff --git a/prevent_numpy.py b/prevent_numpy.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4877035dd7c092df2d791f3bbf52e9974bc8ed52
+--- /dev/null
++++ b/prevent_numpy.py
+@@ -0,0 +1,31 @@
++"""Utility to block NumPy usage in a Python process.
++
++Run this script before any third-party imports if you want to hard-block NumPy.
++"""
++
++from __future__ import annotations
++
++import importlib.abc
++import sys
++
++
++class _NumpyBlocker(importlib.abc.MetaPathFinder):
++    """Import hook that rejects NumPy imports."""
++
++    def find_spec(self, fullname: str, path=None, target=None):  # noqa: D401
++        if fullname == "numpy" or fullname.startswith("numpy."):
++            raise ImportError(
++                "NumPy is disabled in this process by _NumpyBlocker."
++            )
++        return None
++
++
++def disable_numpy() -> None:
++    """Prevent `import numpy` and any numpy submodule imports."""
++    if not any(isinstance(finder, _NumpyBlocker) for finder in sys.meta_path):
++        sys.meta_path.insert(0, _NumpyBlocker())
++
++
++if __name__ == "__main__":
++    disable_numpy()
++    print("NumPy import has been disabled for this Python process.")
+diff --git a/prevent_numpy.py b/prevent_numpy.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4877035dd7c092df2d791f3bbf52e9974bc8ed52
+--- /dev/null
++++ b/prevent_numpy.py
+@@ -0,0 +1,31 @@
++"""Utility to block NumPy usage in a Python process.
++
++Run this script before any third-party imports if you want to hard-block NumPy.
++"""
++
++from __future__ import annotations
++
++import importlib.abc
++import sys
++
++
++class _NumpyBlocker(importlib.abc.MetaPathFinder):
++    """Import hook that rejects NumPy imports."""
++
++    def find_spec(self, fullname: str, path=None, target=None):  # noqa: D401
++        if fullname == "numpy" or fullname.startswith("numpy."):
++            raise ImportError(
++                "NumPy is disabled in this process by _NumpyBlocker."
++            )
++        return None
++
++
++def disable_numpy() -> None:
++    """Prevent `import numpy` and any numpy submodule imports."""
++    if not any(isinstance(finder, _NumpyBlocker) for finder in sys.meta_path):
++        sys.meta_path.insert(0, _NumpyBlocker())
++
++
++if __name__ == "__main__":
++    disable_numpy()
++    print("NumPy import has been disabled for this Python process.")
+diff --git a/numpy_blocker.py b/numpy_blocker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..64a3807eefeb430bf906d7483fc243fee59db079
+--- /dev/null
++++ b/numpy_blocker.py
+@@ -0,0 +1,71 @@
++"""Utilities to block NumPy from being imported in a Python process.
++
++Use this when you want to guarantee that NumPy code cannot run in your app.
++"""
++
++from __future__ import annotations
++
++import builtins
++import os
++import sys
++from importlib.abc import MetaPathFinder
++from importlib.machinery import ModuleSpec
++from typing import Optional
++
++
++class _NumpyBlocker(MetaPathFinder):
++    """Import hook that rejects `numpy` and all submodules."""
++
++    def find_spec(
++        self,
++        fullname: str,
++        path: Optional[object] = None,
++        target: Optional[object] = None,
++    ) -> Optional[ModuleSpec]:
++        if fullname == "numpy" or fullname.startswith("numpy."):
++            raise ImportError(
++                "NumPy is blocked by numpy_blocker.disable_numpy_for_process()."
++            )
++        return None
++
++
++def disable_numpy_for_process() -> None:
++    """Disable NumPy for the current Python process.
++
++    This function:
++    - Removes preloaded NumPy modules (if any)
++    - Installs an import hook that blocks future `import numpy`
++    - Adds a builtins-level fallback guard
++    """
++
++    # Remove already loaded numpy modules.
++    for module_name in list(sys.modules):
++        if module_name == "numpy" or module_name.startswith("numpy."):
++            del sys.modules[module_name]
++
++    # Prevent heavy numerical backends from being used indirectly in child imports.
++    os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
++    os.environ.setdefault("MKL_NUM_THREADS", "1")
++    os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
++    os.environ.setdefault("OMP_NUM_THREADS", "1")
++
++    # Add import hook once.
++    if not any(isinstance(finder, _NumpyBlocker) for finder in sys.meta_path):
++        sys.meta_path.insert(0, _NumpyBlocker())
++
++    # Fallback guard in case some code bypasses importlib internals.
++    original_import = builtins.__import__
++
++    def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
++        if name == "numpy" or name.startswith("numpy."):
++            raise ImportError(
++                "NumPy is blocked by numpy_blocker.disable_numpy_for_process()."
++            )
++        return original_import(name, globals, locals, fromlist, level)
++
++    builtins.__import__ = guarded_import
++
++
++if __name__ == "__main__":
++    disable_numpy_for_process()
++    print("NumPy imports are now blocked for this process.")
