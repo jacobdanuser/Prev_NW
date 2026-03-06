@@ -1,0 +1,140 @@
+diff --git a/metaphysical_restrictions.py b/metaphysical_restrictions.py
+index 2443ccb7c89f840621582951f42986372b6249bc..85ea8f8d7e42ed925b085c27ba777872f6b455c9 100644
+--- a/metaphysical_restrictions.py
++++ b/metaphysical_restrictions.py
+@@ -1,43 +1,41 @@
+ """
+ Metaphysical Capabilities Restriction System
+ 
+ A combined game mechanics and philosophical framework for restricting
+ supernatural, magical, and metaphysical abilities.
+ """
+ 
+ from enum import Enum
+ from dataclasses import dataclass, field
+ from typing import List, Dict, Optional, Callable
+ from abc import ABC, abstractmethod
+ import json
+ 
+ 
+ class CapabilityType(Enum):
+     """Categories of metaphysical capabilities."""
+-    TELEKINESIS = "telekinesis"
+-    TELEPATHY = "telepathy"
+     TIME_MANIPULATION = "time_manipulation"
+     REALITY_WARPING = "reality_warping"
+     SOUL_MANIPULATION = "soul_manipulation"
+     DIMENSIONAL_TRAVEL = "dimensional_travel"
+     ENERGY_PROJECTION = "energy_projection"
+     PROPHESY = "prophesy"
+     RESURRECTION = "resurrection"
+     CONSCIOUSNESS_TRANSFER = "consciousness_transfer"
+ 
+ 
+ class RestrictionType(Enum):
+     """Types of restrictions that can be applied."""
+     ENERGY_COST = "energy_cost"
+     TIME_COOLDOWN = "time_cooldown"
+     RANGE_LIMIT = "range_limit"
+     DURATION_LIMIT = "duration_limit"
+     SIDE_EFFECTS = "side_effects"
+     PHILOSOPHICAL_PARADOX = "philosophical_paradox"
+     CONSERVATION_LAW = "conservation_law"
+     ENTROPY_COST = "entropy_cost"
+     CONSCIOUSNESS_REQUIREMENT = "consciousness_requirement"
+     MATERIAL_ANCHOR = "material_anchor"
+ 
+ 
+ @dataclass
+@@ -265,79 +263,79 @@ class MetaphysicalPractitioner:
+         status += f"Energy: {self.energy_pool:.1f}/{self.max_energy:.1f}\n"
+         status += f"Active Frameworks: {len(self.philosophical_frameworks)}\n"
+         status += f"\nCapabilities:\n"
+         
+         for cap in self.capabilities:
+             status += f"  • {cap}\n"
+             if cap.restrictions:
+                 for restriction in cap.restrictions:
+                     status += f"    - {restriction}\n"
+         
+         return status
+ 
+ 
+ # Utility functions for common restriction setups
+ 
+ def create_balanced_magic_system() -> MetaphysicalPractitioner:
+     """Create a well-balanced magic system with standard restrictions."""
+     practitioner = MetaphysicalPractitioner("Balanced Mage")
+     
+     # Add frameworks
+     practitioner.add_framework(ConservationOfEnergyFramework(200.0))
+     practitioner.add_framework(EntropicDecayFramework(0.9))
+     practitioner.add_framework(ConsciousnessAnchorFramework(0.6))
+     
+     # Add capabilities with restrictions
+-    telekinesis = MetaphysicalCapability(
+-        "Telekinesis",
+-        CapabilityType.TELEKINESIS,
++    force_channeling = MetaphysicalCapability(
++        "Force Channeling",
++        CapabilityType.ENERGY_PROJECTION,
+         base_power_level=45.0
+     )
+-    telekinesis.add_restriction(RestrictionRule(
++    force_channeling.add_restriction(RestrictionRule(
+         RestrictionType.RANGE_LIMIT,
+         severity=0.3,
+         description="Limited to 100 meters"
+     ))
+-    telekinesis.add_restriction(RestrictionRule(
++    force_channeling.add_restriction(RestrictionRule(
+         RestrictionType.TIME_COOLDOWN,
+         severity=0.2,
+         description="5-second cooldown between uses"
+     ))
+     
+-    telepathy = MetaphysicalCapability(
+-        "Telepathy",
+-        CapabilityType.TELEPATHY,
++    perception_shift = MetaphysicalCapability(
++        "Perception Shift",
++        CapabilityType.CONSCIOUSNESS_TRANSFER,
+         base_power_level=35.0
+     )
+-    telepathy.add_restriction(RestrictionRule(
++    perception_shift.add_restriction(RestrictionRule(
+         RestrictionType.CONSCIOUSNESS_REQUIREMENT,
+         severity=0.4,
+         description="Target must have some consciousness"
+     ))
+-    
+-    practitioner.add_capability(telekinesis)
+-    practitioner.add_capability(telepathy)
++
++    practitioner.add_capability(force_channeling)
++    practitioner.add_capability(perception_shift)
+     
+     return practitioner
+ 
+ 
+ def create_restricted_reality_warper() -> MetaphysicalPractitioner:
+     """Create a reality warper with heavy restrictions."""
+     practitioner = MetaphysicalPractitioner("Reality Warper", 
+                                            consciousness_level=0.95,
+                                            energy_pool=500.0,
+                                            max_energy=500.0)
+     
+     # Add strict frameworks
+     practitioner.add_framework(CausalityFramework(allow_time_travel=False))
+     practitioner.add_framework(EntropicDecayFramework(entropy_tolerance=0.7))
+     
+     reality_warp = MetaphysicalCapability(
+         "Reality Warping",
+         CapabilityType.REALITY_WARPING,
+         base_power_level=85.0
+     )
+     reality_warp.add_restriction(RestrictionRule(
+         RestrictionType.PHILOSOPHICAL_PARADOX,
+         severity=0.6,
+         description="Cannot create logical contradictions"
+     ))
