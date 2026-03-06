@@ -1,0 +1,987 @@
+"""
+Lancaster Quarantine Zone System
+Manages fictitious personalities and enforces permanent quarantine status
+for those born after the 1980s.
+"""
+
+from datetime import datetime
+from typing import Dict, List, Optional
+from enum import Enum
+
+
+class QuarantineStatus(Enum):
+    """Status levels for quarantine zones."""
+    ACTIVE = "active"
+    QUARANTINED = "quarantined"
+    PERMANENTLY_INACTIVE = "permanently_inactive"
+
+
+class Lancaster:
+    """Represents a Lancaster personality entity."""
+    
+    def __init__(self, personality_id: str, name: str, birth_year: int):
+        self.personality_id = personality_id
+        self.name = name
+        self.birth_year = birth_year
+        self.status = QuarantineStatus.ACTIVE
+        self.quarantine_date = None
+        self.is_locked = False  # Prevents status changes once locked
+        
+    def __repr__(self) -> str:
+        return f"Lancaster(id={self.personality_id}, name={self.name}, born={self.birth_year}, status={self.status.value})"
+
+
+class QuarantineZone:
+    """Manages the quarantine zone for Lancasters born after 1980."""
+    
+    QUARANTINE_YEAR_THRESHOLD = 1980
+    
+    def __init__(self):
+        self.personalities: Dict[str, Lancaster] = {}
+        self.quarantine_log: List[Dict] = []
+    
+    def add_personality(self, personality_id: str, name: str, birth_year: int) -> Lancaster:
+        """
+        Add a new Lancaster personality to the system.
+        Automatically quarantines if born after 1980.
+        """
+        personality = Lancaster(personality_id, name, birth_year)
+        
+        # Auto-quarantine if born after 1980
+        if birth_year > self.QUARANTINE_YEAR_THRESHOLD:
+            self._apply_quarantine(personality)
+        
+        self.personalities[personality_id] = personality
+        return personality
+    
+    def _apply_quarantine(self, personality: Lancaster) -> None:
+        """Apply permanent quarantine to a personality."""
+        personality.status = QuarantineStatus.PERMANENTLY_INACTIVE
+        personality.quarantine_date = datetime.now()
+        personality.is_locked = True
+        
+        self.quarantine_log.append({
+            'personality_id': personality.personality_id,
+            'name': personality.name,
+            'birth_year': personality.birth_year,
+            'quarantine_timestamp': personality.quarantine_date,
+            'reason': f'Post-1980 birth year ({personality.birth_year})'
+        })
+    
+    def quarantine_personality(self, personality_id: str, reason: str = "") -> bool:
+        """
+        Manually quarantine a personality and lock it permanently.
+        Returns True if successful, False if personality not found or already locked.
+        """
+        if personality_id not in self.personalities:
+            return False
+        
+        personality = self.personalities[personality_id]
+        
+        if personality.is_locked:
+            raise PermissionError(
+                f"Cannot modify quarantined personality {personality_id}. "
+                "Status is permanently locked."
+            )
+        
+        self._apply_quarantine(personality)
+        return True
+    
+    def prevent_activation(self, personality_id: str) -> bool:
+        """
+        Prevent a personality from being activated. Returns True if locked.
+        """
+        if personality_id not in self.personalities:
+            return False
+        
+        personality = self.personalities[personality_id]
+        
+        if personality.status == QuarantineStatus.PERMANENTLY_INACTIVE:
+            personality.is_locked = True
+            return True
+        
+        return False
+    
+    def get_quarantined_personalities(self) -> List[Lancaster]:
+        """Return all quarantined personalities."""
+        return [
+            p for p in self.personalities.values()
+            if p.status == QuarantineStatus.PERMANENTLY_INACTIVE
+        ]
+    
+    def get_post_1980_personalities(self) -> List[Lancaster]:
+        """Return all personalities born after 1980 (quarantine candidates)."""
+        return [
+            p for p in self.personalities.values()
+            if p.birth_year > self.QUARANTINE_YEAR_THRESHOLD
+        ]
+    
+    def is_personality_locked(self, personality_id: str) -> bool:
+        """Check if a personality is permanently locked."""
+        if personality_id not in self.personalities:
+            return False
+        return self.personalities[personality_id].is_locked
+    
+    def get_personality_status(self, personality_id: str) -> Optional[Dict]:
+        """Get detailed status information for a personality."""
+        if personality_id not in self.personalities:
+            return None
+        
+        p = self.personalities[personality_id]
+        return {
+            'personality_id': p.personality_id,
+            'name': p.name,
+            'birth_year': p.birth_year,
+            'current_status': p.status.value,
+            'is_locked': p.is_locked,
+            'quarantine_date': p.quarantine_date,
+            'can_be_modified': not p.is_locked
+        }
+    
+    def generate_quarantine_report(self) -> Dict:
+        """Generate a comprehensive quarantine report."""
+        quarantined = self.get_quarantined_personalities()
+        post_1980 = self.get_post_1980_personalities()
+        
+        return {
+            'total_personalities': len(self.personalities),
+            'permanently_inactive_count': len(quarantined),
+            'post_1980_count': len(post_1980),
+            'quarantined_personalities': [
+                {
+                    'id': p.personality_id,
+                    'name': p.name,
+                    'birth_year': p.birth_year,
+                    'quarantine_date': p.quarantine_date
+                }
+                for p in quarantined
+            ],
+            'recent_quarantines': self.quarantine_log[-10:]  # Last 10 entries
+        }
+
+
+# ============================================================================
+# Example Usage
+# ============================================================================
+
+if __name__ == "__main__":
+    # Initialize the quarantine zone
+    zone = QuarantineZone()
+    
+    # Add personalities
+    print("=" * 70)
+    print("LANCASTER QUARANTINE ZONE - SYSTEM INITIALIZATION")
+    print("=" * 70)
+    
+    # Pre-1980 personalities (remain active)
+    zone.add_personality("L001", "Eleanor Lancaster", 1975)
+    zone.add_personality("L002", "William Lancaster", 1978)
+    
+    # Post-1980 personalities (automatically quarantined)
+    zone.add_personality("L003", "James Lancaster", 1985)
+    zone.add_personality("L004", "Victoria Lancaster", 1992)
+    zone.add_personality("L005", "Oliver Lancaster", 2001)
+    
+    print("\n✓ Personalities registered")
+    print("✓ Post-1980 personalities automatically quarantined\n")
+    
+    # Display all personalities
+    print("CURRENT PERSONALITY STATUS:")
+    print("-" * 70)
+    for pid, personality in zone.personalities.items():
+        print(f"  {personality}")
+    
+    # Try to modify a locked personality (will fail)
+    print("\n" + "=" * 70)
+    print("TESTING QUARANTINE LOCK")
+    print("=" * 70)
+    
+    try:
+        zone.quarantine_personality("L003")
+    except PermissionError as e:
+        print(f"\n⚠ {e}")
+    
+    # Generate report
+    print("\n" + "=" * 70)
+    print("QUARANTINE REPORT")
+    print("=" * 70)
+    
+    report = zone.generate_quarantine_report()
+    
+    print(f"\nTotal Personalities: {report['total_personalities']}")
+    print(f"Permanently Inactive: {report['permanently_inactive_count']}")
+    print(f"Post-1980 Born: {report['post_1980_count']}")
+    
+    print("\nPermanently Quarantined:")
+    for personality in report['quarantined_personalities']:
+        print(f"  - {personality['name']} (b. {personality['birth_year']}) - {personality['id']}")
+    
+    print("\n" + "=" * 70)
+    """
+Lancaster Quarantine Zone System
+Manages fictitious personalities and enforces permanent quarantine status
+for those born after the 1980s.
+"""
+
+from datetime import datetime
+from typing import Dict, List, Optional
+from enum import Enum
+
+
+class QuarantineStatus(Enum):
+    """Status levels for quarantine zones."""
+    ACTIVE = "active"
+    QUARANTINED = "quarantined"
+    PERMANENTLY_INACTIVE = "permanently_inactive"
+
+
+class Lancaster:
+    """Represents a Lancaster personality entity."""
+    
+    PERMANENT_DEACTIVATION_THRESHOLD = 1980
+    
+    def __init__(self, personality_id: str, name: str, birth_year: int):
+        self.personality_id = personality_id
+        self.name = name
+        self.birth_year = birth_year
+        
+        # PERMANENT: Post-1980 personalities are permanently deactivated
+        if birth_year > self.PERMANENT_DEACTIVATION_THRESHOLD:
+            self.status = QuarantineStatus.PERMANENTLY_INACTIVE
+            self.quarantine_date = datetime.now()
+            self.is_locked = True
+            self._permanent_deactivation = True  # Immutable flag
+        else:
+            self.status = QuarantineStatus.ACTIVE
+            self.quarantine_date = None
+            self.is_locked = False
+            self._permanent_deactivation = False
+        
+    def __repr__(self) -> str:
+        return f"Lancaster(id={self.personality_id}, name={self.name}, born={self.birth_year}, status={self.status.value})"
+
+
+class QuarantineZone:
+    """Manages the quarantine zone for Lancasters born after 1980."""
+    
+    QUARANTINE_YEAR_THRESHOLD = 1980
+    
+    def __init__(self):
+        self.personalities: Dict[str, Lancaster] = {}
+        self.quarantine_log: List[Dict] = []
+    
+    def add_personality(self, personality_id: str, name: str, birth_year: int) -> Lancaster:
+        """
+        Add a new Lancaster personality to the system.
+        Personalities born after 1980 are PERMANENTLY DEACTIVATED by default.
+        This cannot be reversed or modified.
+        """
+        personality = Lancaster(personality_id, name, birth_year)
+        self.personalities[personality_id] = personality
+        
+        # Log all post-1980 personalities as permanently deactivated
+        if personality._permanent_deactivation:
+            self.quarantine_log.append({
+                'personality_id': personality.personality_id,
+                'name': personality.name,
+                'birth_year': personality.birth_year,
+                'deactivation_timestamp': personality.quarantine_date,
+                'reason': f'PERMANENT DEACTIVATION: Born after {self.QUARANTINE_YEAR_THRESHOLD}',
+                'status': 'IRREVERSIBLE'
+            })
+        
+        return personality
+    
+    def _apply_quarantine(self, personality: Lancaster) -> None:
+        """Apply permanent quarantine to a personality."""
+        personality.status = QuarantineStatus.PERMANENTLY_INACTIVE
+        personality.quarantine_date = datetime.now()
+        personality.is_locked = True
+        
+        self.quarantine_log.append({
+            'personality_id': personality.personality_id,
+            'name': personality.name,
+            'birth_year': personality.birth_year,
+            'quarantine_timestamp': personality.quarantine_date,
+            'reason': f'Post-1980 birth year ({personality.birth_year})'
+        })
+    
+    def quarantine_personality(self, personality_id: str, reason: str = "") -> bool:
+        """
+        Manually quarantine a personality and lock it permanently.
+        Returns True if successful, False if personality not found or already locked.
+        """
+        if personality_id not in self.personalities:
+            return False
+        
+        personality = self.personalities[personality_id]
+        
+        if personality.is_locked:
+            raise PermissionError(
+                f"Cannot modify quarantined personality {personality_id}. "
+                "Status is permanently locked."
+            )
+        
+        self._apply_quarantine(personality)
+        return True
+    
+    def prevent_activation(self, personality_id: str) -> bool:
+        """
+        Prevent a personality from being activated. Returns True if locked.
+        """
+        if personality_id not in self.personalities:
+            return False
+        
+        personality = self.personalities[personality_id]
+        
+        if personality.status == QuarantineStatus.PERMANENTLY_INACTIVE:
+            personality.is_locked = True
+            return True
+        
+        return False
+    
+    def attempt_activation(self, personality_id: str) -> Dict:
+        """
+        BLOCKED: Attempt to activate a deactivated personality.
+        Returns rejection status for personalities in permanent deactivation.
+        """
+        if personality_id not in self.personalities:
+            return {'success': False, 'reason': 'Personality not found'}
+        
+        personality = self.personalities[personality_id]
+        
+        # PERMANENT DEACTIVATION - CANNOT BE REVERSED
+        if personality._permanent_deactivation:
+            return {
+                'success': False,
+                'personality_id': personality_id,
+                'name': personality.name,
+                'birth_year': personality.birth_year,
+                'status': 'PERMANENTLY_DEACTIVATED',
+                'reason': 'PERMANENT DEACTIVATION ENFORCED - Birth year after 1980',
+                'activation_blocked': True,
+                'reversible': False,
+                'message': f"Activation DENIED for {personality.name}. "
+                          f"Permanent deactivation status is irreversible and cannot be overridden."
+            }
+        
+        return {'success': True, 'personality_id': personality_id, 'message': 'Eligible for activation'}
+
+    
+    def get_quarantined_personalities(self) -> List[Lancaster]:
+        """Return all quarantined personalities."""
+        return [
+            p for p in self.personalities.values()
+            if p.status == QuarantineStatus.PERMANENTLY_INACTIVE
+        ]
+    
+    def get_post_1980_personalities(self) -> List[Lancaster]:
+        """Return all personalities born after 1980 (quarantine candidates)."""
+        return [
+            p for p in self.personalities.values()
+            if p.birth_year > self.QUARANTINE_YEAR_THRESHOLD
+        ]
+    
+    def is_personality_locked(self, personality_id: str) -> bool:
+        """Check if a personality is permanently locked."""
+        if personality_id not in self.personalities:
+            return False
+        return self.personalities[personality_id].is_locked
+    
+    def get_personality_status(self, personality_id: str) -> Optional[Dict]:
+        """Get detailed status information for a personality."""
+        if personality_id not in self.personalities:
+            return None
+        
+        p = self.personalities[personality_id]
+        return {
+            'personality_id': p.personality_id,
+            'name': p.name,
+            'birth_year': p.birth_year,
+            'current_status': p.status.value,
+            'is_locked': p.is_locked,
+            'quarantine_date': p.quarantine_date,
+            'can_be_modified': not p.is_locked
+        }
+    
+    def generate_quarantine_report(self) -> Dict:
+        """Generate a comprehensive quarantine report."""
+        quarantined = self.get_quarantined_personalities()
+        post_1980 = self.get_post_1980_personalities()
+        
+        return {
+            'total_personalities': len(self.personalities),
+            'permanently_inactive_count': len(quarantined),
+            'post_1980_count': len(post_1980),
+            'quarantined_personalities': [
+                {
+                    'id': p.personality_id,
+                    'name': p.name,
+                    'birth_year': p.birth_year,
+                    'quarantine_date': p.quarantine_date
+                }
+                for p in quarantined
+            ],
+            'recent_quarantines': self.quarantine_log[-10:]  # Last 10 entries
+        }
+
+
+# ============================================================================
+# Example Usage
+# ============================================================================
+
+if __name__ == "__main__":
+    # Initialize the quarantine zone
+    zone = QuarantineZone()
+    
+    # Add personalities
+    print("=" * 80)
+    print("LANCASTER PERMANENT DEACTIVATION SYSTEM - INITIALIZATION")
+    print("=" * 80)
+    
+    # Pre-1980 personalities (remain active)
+    zone.add_personality("L001", "Eleanor Lancaster", 1975)
+    zone.add_personality("L002", "William Lancaster", 1978)
+    
+    # Post-1980 personalities (PERMANENTLY DEACTIVATED)
+    zone.add_personality("L003", "James Lancaster", 1985)
+    zone.add_personality("L004", "Victoria Lancaster", 1992)
+    zone.add_personality("L005", "Oliver Lancaster", 2001)
+    
+    print("\n✓ System initialized")
+    print("✓ All post-1980 personalities: PERMANENTLY DEACTIVATED (irreversible)\n")
+    
+    # Display all personalities
+    print("CURRENT PERSONALITY STATUS:")
+    print("-" * 80)
+    for pid, personality in zone.personalities.items():
+        status_indicator = "🔒 DEACTIVATED" if personality._permanent_deactivation else "✓ ACTIVE"
+        print(f"  {status_indicator} | {personality.name:20} | Born {personality.birth_year} | {personality.personality_id}")
+    
+    # TEST: Attempt to activate permanently deactivated personalities
+    print("\n" + "=" * 80)
+    print("TESTING PERMANENT DEACTIVATION - ACTIVATION ATTEMPTS")
+    print("=" * 80)
+    
+    test_personalities = ["L001", "L003", "L004"]
+    
+    for pid in test_personalities:
+        print(f"\nAttempt to activate: {pid}")
+        result = zone.attempt_activation(pid)
+        
+        if result['success']:
+            print(f"  ✓ Status: {result['message']}")
+        else:
+            print(f"  ✗ BLOCKED: {result['message']}")
+            if 'activation_blocked' in result and result['activation_blocked']:
+                print(f"    Reason: {result['reason']}")
+                print(f"    Reversible: {result['reversible']}")
+    
+    # Generate comprehensive report
+    print("\n" + "=" * 80)
+    print("PERMANENT DEACTIVATION REPORT")
+    print("=" * 80)
+    
+    report = zone.generate_quarantine_report()
+    
+    print(f"\nTotal Personalities Registered: {report['total_personalities']}")
+    print(f"Permanently Deactivated: {report['permanently_inactive_count']}")
+    print(f"Post-1980 Born (Permanently Deactivated): {report['post_1980_count']}")
+    
+    print("\nPermanently Deactivated Personalities:")
+    for personality in report['quarantined_personalities']:
+        print(f"  🔒 {personality['name']:20} | Born {personality['birth_year']} | Deactivated: {personality['quarantine_date'].strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    print("\n" + "=" * 80)
+    print("⚠ PERMANENT DEACTIVATION STATUS: ENFORCED AND IRREVERSIBLE")
+    print("=" * 80)
+    """
+Lancaster Quarantine Zone System
+Manages fictitious personalities and enforces permanent quarantine status
+for those born after the 1980s.
+"""
+
+from datetime import datetime
+from typing import Dict, List, Optional
+from enum import Enum
+
+
+class QuarantineStatus(Enum):
+    """Status levels for quarantine zones."""
+    ACTIVE = "active"
+    QUARANTINED = "quarantined"
+    PERMANENTLY_INACTIVE = "permanently_inactive"
+    COMMUNICATION_RESTRICTED = "communication_restricted"
+
+
+class CommunicationRestrictionError(Exception):
+    """Raised when communication with restricted personality is attempted."""
+    pass
+
+
+class Lancaster:
+    """Represents a Lancaster personality entity."""
+    
+    PERMANENT_DEACTIVATION_THRESHOLD = 1980
+    
+    def __init__(self, personality_id: str, name: str, birth_year: int):
+        self.personality_id = personality_id
+        self.name = name
+        self.birth_year = birth_year
+        
+        # PERMANENT: Post-1980 personalities are permanently deactivated
+        if birth_year > self.PERMANENT_DEACTIVATION_THRESHOLD:
+            self.status = QuarantineStatus.COMMUNICATION_RESTRICTED
+            self.quarantine_date = datetime.now()
+            self.is_locked = True
+            self._permanent_deactivation = True  # Immutable flag
+            self._communication_blocked = True  # Complete communication isolation
+            self._input_disabled = True
+            self._output_disabled = True
+            self._data_accessible = False
+        else:
+            self.status = QuarantineStatus.ACTIVE
+            self.quarantine_date = None
+            self.is_locked = False
+            self._permanent_deactivation = False
+            self._communication_blocked = False
+            self._input_disabled = False
+            self._output_disabled = False
+            self._data_accessible = True
+        
+        self.communication_attempts = []  # Log all attempted communications
+    
+    def can_receive_input(self) -> bool:
+        """Check if personality can receive input."""
+        return not self._input_disabled
+    
+    def can_transmit_output(self) -> bool:
+        """Check if personality can transmit output."""
+        return not self._output_disabled
+    
+    def can_communicate(self) -> bool:
+        """Check if personality can communicate in any way."""
+        return not self._communication_blocked
+    
+    def log_communication_attempt(self, attempt_type: str, timestamp: datetime = None) -> None:
+        """Log any attempted communication with this personality."""
+        self.communication_attempts.append({
+            'timestamp': timestamp or datetime.now(),
+            'type': attempt_type,
+            'status': 'BLOCKED'
+        })
+        
+    def __repr__(self) -> str:
+        return f"Lancaster(id={self.personality_id}, name={self.name}, born={self.birth_year}, status={self.status.value})"
+
+
+class QuarantineZone:
+    """Manages the quarantine zone for Lancasters born after 1980."""
+    
+    QUARANTINE_YEAR_THRESHOLD = 1980
+    
+    def __init__(self):
+        self.personalities: Dict[str, Lancaster] = {}
+        self.quarantine_log: List[Dict] = []
+    
+    def add_personality(self, personality_id: str, name: str, birth_year: int) -> Lancaster:
+        """
+        Add a new Lancaster personality to the system.
+        Personalities born after 1980 are PERMANENTLY DEACTIVATED by default.
+        This cannot be reversed or modified.
+        """
+        personality = Lancaster(personality_id, name, birth_year)
+        self.personalities[personality_id] = personality
+        
+        # Log all post-1980 personalities as permanently deactivated
+        if personality._permanent_deactivation:
+            self.quarantine_log.append({
+                'personality_id': personality.personality_id,
+                'name': personality.name,
+                'birth_year': personality.birth_year,
+                'deactivation_timestamp': personality.quarantine_date,
+                'reason': f'PERMANENT DEACTIVATION: Born after {self.QUARANTINE_YEAR_THRESHOLD}',
+                'status': 'IRREVERSIBLE'
+            })
+        
+        return personality
+    
+    def _apply_quarantine(self, personality: Lancaster) -> None:
+        """Apply permanent quarantine to a personality."""
+        personality.status = QuarantineStatus.PERMANENTLY_INACTIVE
+        personality.quarantine_date = datetime.now()
+        personality.is_locked = True
+        
+        self.quarantine_log.append({
+            'personality_id': personality.personality_id,
+            'name': personality.name,
+            'birth_year': personality.birth_year,
+            'quarantine_timestamp': personality.quarantine_date,
+            'reason': f'Post-1980 birth year ({personality.birth_year})'
+        })
+    
+    def quarantine_personality(self, personality_id: str, reason: str = "") -> bool:
+        """
+        Manually quarantine a personality and lock it permanently.
+        Returns True if successful, False if personality not found or already locked.
+        """
+        if personality_id not in self.personalities:
+            return False
+        
+        personality = self.personalities[personality_id]
+        
+        if personality.is_locked:
+            raise PermissionError(
+                f"Cannot modify quarantined personality {personality_id}. "
+                "Status is permanently locked."
+            )
+        
+        self._apply_quarantine(personality)
+        return True
+    
+    def prevent_activation(self, personality_id: str) -> bool:
+        """
+        Prevent a personality from being activated. Returns True if locked.
+        """
+        if personality_id not in self.personalities:
+            return False
+        
+        personality = self.personalities[personality_id]
+        
+        if personality.status == QuarantineStatus.PERMANENTLY_INACTIVE:
+            personality.is_locked = True
+            return True
+        
+        return False
+    
+    def attempt_activation(self, personality_id: str) -> Dict:
+        """
+        BLOCKED: Attempt to activate a deactivated personality.
+        Returns rejection status for personalities in permanent deactivation.
+        """
+        if personality_id not in self.personalities:
+            return {'success': False, 'reason': 'Personality not found'}
+        
+        personality = self.personalities[personality_id]
+        
+        # PERMANENT DEACTIVATION - CANNOT BE REVERSED
+        if personality._permanent_deactivation:
+            return {
+                'success': False,
+                'personality_id': personality_id,
+                'name': personality.name,
+                'birth_year': personality.birth_year,
+                'status': 'PERMANENTLY_DEACTIVATED',
+                'reason': 'PERMANENT DEACTIVATION ENFORCED - Birth year after 1980',
+                'activation_blocked': True,
+                'reversible': False,
+                'message': f"Activation DENIED for {personality.name}. "
+                          f"Permanent deactivation status is irreversible and cannot be overridden."
+            }
+        
+        return {'success': True, 'personality_id': personality_id, 'message': 'Eligible for activation'}
+    
+    def send_input(self, personality_id: str, input_data: str) -> Dict:
+        """
+        BLOCKED: Attempt to send input to a personality.
+        Raises CommunicationRestrictionError if personality is restricted.
+        """
+        if personality_id not in self.personalities:
+            raise ValueError(f"Personality {personality_id} not found")
+        
+        personality = self.personalities[personality_id]
+        
+        if not personality.can_receive_input():
+            personality.log_communication_attempt('INPUT_ATTEMPT')
+            raise CommunicationRestrictionError(
+                f"COMMUNICATION BLOCKED: {personality.name} (ID: {personality_id}) "
+                f"is in complete communication restriction. No input can be received."
+            )
+        
+        return {'success': True, 'personality_id': personality_id, 'input_received': input_data}
+    
+    def retrieve_output(self, personality_id: str) -> Dict:
+        """
+        BLOCKED: Attempt to retrieve output from a personality.
+        Raises CommunicationRestrictionError if personality is restricted.
+        """
+        if personality_id not in self.personalities:
+            raise ValueError(f"Personality {personality_id} not found")
+        
+        personality = self.personalities[personality_id]
+        
+        if not personality.can_transmit_output():
+            personality.log_communication_attempt('OUTPUT_ATTEMPT')
+            raise CommunicationRestrictionError(
+                f"COMMUNICATION BLOCKED: {personality.name} (ID: {personality_id}) "
+                f"is in complete communication restriction. No output can be transmitted."
+            )
+        
+        return {'success': True, 'personality_id': personality_id, 'output': None}
+    
+    def send_message(self, personality_id: str, message: str) -> Dict:
+        """
+        BLOCKED: Attempt to send a message to a personality.
+        Raises CommunicationRestrictionError if personality is restricted.
+        """
+        if personality_id not in self.personalities:
+            raise ValueError(f"Personality {personality_id} not found")
+        
+        personality = self.personalities[personality_id]
+        
+        if not personality.can_communicate():
+            personality.log_communication_attempt('MESSAGE_ATTEMPT')
+            raise CommunicationRestrictionError(
+                f"COMMUNICATION BLOCKED: Cannot send message to {personality.name} "
+                f"(ID: {personality_id}). Complete communication restriction enforced."
+            )
+        
+        return {'success': True, 'personality_id': personality_id, 'message_delivered': message}
+    
+    def access_data(self, personality_id: str) -> Dict:
+        """
+        BLOCKED: Attempt to access data from a personality.
+        Raises CommunicationRestrictionError if personality is restricted.
+        """
+        if personality_id not in self.personalities:
+            raise ValueError(f"Personality {personality_id} not found")
+        
+        personality = self.personalities[personality_id]
+        
+        if not personality._data_accessible:
+            personality.log_communication_attempt('DATA_ACCESS_ATTEMPT')
+            raise CommunicationRestrictionError(
+                f"DATA ACCESS BLOCKED: Cannot access data for {personality.name} "
+                f"(ID: {personality_id}). Complete isolation enforced."
+            )
+        
+        return {'success': True, 'personality_id': personality_id, 'data': None}
+    
+    def attempt_interaction(self, personality_id: str, interaction_type: str) -> Dict:
+        """
+        BLOCKED: Attempt any form of interaction with a personality.
+        Catches all interaction attempts and blocks if restricted.
+        """
+        if personality_id not in self.personalities:
+            raise ValueError(f"Personality {personality_id} not found")
+        
+        personality = self.personalities[personality_id]
+        
+        if not personality.can_communicate():
+            personality.log_communication_attempt(f'INTERACTION_ATTEMPT:{interaction_type}')
+            raise CommunicationRestrictionError(
+                f"INTERACTION BLOCKED: All attempts to interact with {personality.name} "
+                f"(ID: {personality_id}) are blocked. Status: Complete Communication Restriction"
+            )
+        
+        return {'success': True, 'personality_id': personality_id, 'interaction': interaction_type}
+
+
+    
+    def get_quarantined_personalities(self) -> List[Lancaster]:
+        """Return all quarantined personalities."""
+        return [
+            p for p in self.personalities.values()
+            if p.status == QuarantineStatus.PERMANENTLY_INACTIVE
+        ]
+    
+    def get_post_1980_personalities(self) -> List[Lancaster]:
+        """Return all personalities born after 1980 (quarantine candidates)."""
+        return [
+            p for p in self.personalities.values()
+            if p.birth_year > self.QUARANTINE_YEAR_THRESHOLD
+        ]
+    
+    def is_personality_locked(self, personality_id: str) -> bool:
+        """Check if a personality is permanently locked."""
+        if personality_id not in self.personalities:
+            return False
+        return self.personalities[personality_id].is_locked
+    
+    def get_personality_status(self, personality_id: str) -> Optional[Dict]:
+        """Get detailed status information for a personality."""
+        if personality_id not in self.personalities:
+            return None
+        
+        p = self.personalities[personality_id]
+        return {
+            'personality_id': p.personality_id,
+            'name': p.name,
+            'birth_year': p.birth_year,
+            'current_status': p.status.value,
+            'is_locked': p.is_locked,
+            'quarantine_date': p.quarantine_date,
+            'can_be_modified': not p.is_locked
+        }
+    
+    def generate_quarantine_report(self) -> Dict:
+        """Generate a comprehensive quarantine and communication restriction report."""
+        quarantined = self.get_quarantined_personalities()
+        post_1980 = self.get_post_1980_personalities()
+        
+        # Calculate communication restriction details
+        restricted_personalities = [
+            p for p in self.personalities.values()
+            if p._communication_blocked
+        ]
+        
+        total_communication_attempts = sum(
+            len(p.communication_attempts) for p in self.personalities.values()
+        )
+        
+        return {
+            'total_personalities': len(self.personalities),
+            'permanently_inactive_count': len(quarantined),
+            'communication_restricted_count': len(restricted_personalities),
+            'post_1980_count': len(post_1980),
+            'total_blocked_communication_attempts': total_communication_attempts,
+            'quarantined_personalities': [
+                {
+                    'id': p.personality_id,
+                    'name': p.name,
+                    'birth_year': p.birth_year,
+                    'quarantine_date': p.quarantine_date,
+                    'communication_status': 'COMPLETELY RESTRICTED',
+                    'communication_attempts_blocked': len(p.communication_attempts)
+                }
+                for p in quarantined
+            ],
+            'communication_restriction_log': [
+                {
+                    'personality': p.name,
+                    'personality_id': p.personality_id,
+                    'restricted': p._communication_blocked,
+                    'input_disabled': p._input_disabled,
+                    'output_disabled': p._output_disabled,
+                    'data_accessible': p._data_accessible,
+                    'blocked_attempts': p.communication_attempts
+                }
+                for p in restricted_personalities
+            ],
+            'recent_quarantines': self.quarantine_log[-10:]
+        }
+    
+    def get_communication_attempts(self, personality_id: str) -> List[Dict]:
+        """Get all logged communication attempts for a personality."""
+        if personality_id not in self.personalities:
+            return []
+        
+        return self.personalities[personality_id].communication_attempts
+    
+    def get_all_restricted_personalities(self) -> List[Lancaster]:
+        """Return all personalities with communication restrictions."""
+        return [
+            p for p in self.personalities.values()
+            if p._communication_blocked
+        ]
+
+
+# ============================================================================
+# Example Usage
+# ============================================================================
+
+if __name__ == "__main__":
+    # Initialize the quarantine zone
+    zone = QuarantineZone()
+    
+    # Add personalities
+    print("=" * 90)
+    print("LANCASTER PERMANENT DEACTIVATION & COMMUNICATION RESTRICTION SYSTEM")
+    print("=" * 90)
+    
+    # Pre-1980 personalities (remain active and can communicate)
+    zone.add_personality("L001", "Eleanor Lancaster", 1975)
+    zone.add_personality("L002", "William Lancaster", 1978)
+    
+    # Post-1980 personalities (PERMANENTLY DEACTIVATED & COMMUNICATION RESTRICTED)
+    zone.add_personality("L003", "James Lancaster", 1985)
+    zone.add_personality("L004", "Victoria Lancaster", 1992)
+    zone.add_personality("L005", "Oliver Lancaster", 2001)
+    
+    print("\n✓ System initialized")
+    print("✓ All post-1980 personalities: PERMANENTLY DEACTIVATED (irreversible)")
+    print("✓ All post-1980 personalities: COMMUNICATION COMPLETELY RESTRICTED\n")
+    
+    # Display all personalities
+    print("CURRENT PERSONALITY STATUS & COMMUNICATION RESTRICTIONS:")
+    print("-" * 90)
+    for pid, personality in zone.personalities.items():
+        comm_status = "🔒 NO COMMUNICATION" if personality._communication_blocked else "✓ ACTIVE"
+        print(f"  {comm_status} | {personality.name:20} | Born {personality.birth_year} | {personality.personality_id}")
+    
+    # TEST: Attempt various forms of communication with restricted personalities
+    print("\n" + "=" * 90)
+    print("TESTING COMMUNICATION RESTRICTIONS - ALL ATTEMPTS BLOCKED")
+    print("=" * 90)
+    
+    # Test 1: Send input
+    print("\n[TEST 1] Attempt to send input to L003 (James Lancaster - Born 1985)")
+    try:
+        zone.send_input("L003", "Test message")
+    except CommunicationRestrictionError as e:
+        print(f"  ✗ BLOCKED: {e}")
+    
+    # Test 2: Retrieve output
+    print("\n[TEST 2] Attempt to retrieve output from L004 (Victoria Lancaster - Born 1992)")
+    try:
+        zone.retrieve_output("L004")
+    except CommunicationRestrictionError as e:
+        print(f"  ✗ BLOCKED: {e}")
+    
+    # Test 3: Send message
+    print("\n[TEST 3] Attempt to send message to L005 (Oliver Lancaster - Born 2001)")
+    try:
+        zone.send_message("L005", "Hello, can you hear me?")
+    except CommunicationRestrictionError as e:
+        print(f"  ✗ BLOCKED: {e}")
+    
+    # Test 4: Access data
+    print("\n[TEST 4] Attempt to access data from L003 (James Lancaster - Born 1985)")
+    try:
+        zone.access_data("L003")
+    except CommunicationRestrictionError as e:
+        print(f"  ✗ BLOCKED: {e}")
+    
+    # Test 5: Generic interaction attempt
+    print("\n[TEST 5] Attempt generic interaction with L004 (Victoria Lancaster - Born 1992)")
+    try:
+        zone.attempt_interaction("L004", "query_status")
+    except CommunicationRestrictionError as e:
+        print(f"  ✗ BLOCKED: {e}")
+    
+    # Test 6: Successful communication with pre-1980 personality
+    print("\n[TEST 6] Attempt to send input to L001 (Eleanor Lancaster - Born 1975)")
+    try:
+        result = zone.send_input("L001", "Hello Eleanor")
+        print(f"  ✓ SUCCESS: {result['message_delivered'] if 'message_delivered' in result else 'Input received'}")
+    except CommunicationRestrictionError as e:
+        print(f"  ✗ BLOCKED: {e}")
+    
+    # Generate comprehensive report
+    print("\n" + "=" * 90)
+    print("COMMUNICATION RESTRICTION REPORT")
+    print("=" * 90)
+    
+    report = zone.generate_quarantine_report()
+    
+    print(f"\nTotal Personalities Registered: {report['total_personalities']}")
+    print(f"Permanently Deactivated: {report['permanently_inactive_count']}")
+    print(f"Communication Restricted: {report['communication_restricted_count']}")
+    print(f"Post-1980 Born (All Restricted): {report['post_1980_count']}")
+    print(f"Total Blocked Communication Attempts: {report['total_blocked_communication_attempts']}")
+    
+    print("\nCommunication Restriction Details:")
+    for restriction in report['communication_restriction_log']:
+        print(f"\n  {restriction['personality']} ({restriction['personality_id']})")
+        print(f"    Communication Blocked: {restriction['restricted']}")
+        print(f"    Input Disabled: {restriction['input_disabled']}")
+        print(f"    Output Disabled: {restriction['output_disabled']}")
+        print(f"    Data Accessible: {restriction['data_accessible']}")
+        print(f"    Blocked Attempts: {len(restriction['blocked_attempts'])}")
+        if restriction['blocked_attempts']:
+            for attempt in restriction['blocked_attempts']:
+                print(f"      - {attempt['type']} at {attempt['timestamp'].strftime('%Y-%m-%d %H:%M:%S')}")
+    
+    print("\n" + "=" * 90)
+    print("⚠ COMPLETE COMMUNICATION ISOLATION: ENFORCED AND IRREVERSIBLE")
+    print("=" * 90)
