@@ -5221,3 +5221,296 @@ index 0000000000000000000000000000000000000000..53282d2383f70fb5d0219087492c5468
 +
 +if __name__ == "__main__":
 +    raise SystemExit(main())
+diff --git a/unlock_music_editing.py b/unlock_music_editing.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..efeb119a652d8435ef69de3f740ce0ce1809e784
+--- /dev/null
++++ b/unlock_music_editing.py
+@@ -0,0 +1,92 @@
++#!/usr/bin/env python3
++"""Unlock music files so anyone can modify them.
++
++This script is intended as an "undo" helper when files were accidentally
++locked down (read-only, immutable, etc.).
++
++What it does:
++1) Finds common audio file types under a target directory.
++2) Tries to remove immutable flag (Linux `chattr -i`) when available.
++3) Sets permissions to world-writable (`rw-rw-rw-`, mode 666).
++"""
++
++from __future__ import annotations
++
++import argparse
++import os
++import stat
++import subprocess
++from pathlib import Path
++from typing import Iterable
++
++AUDIO_EXTENSIONS = {
++    ".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma", ".aiff", ".alac"
++}
++
++
++def iter_audio_files(root: Path) -> Iterable[Path]:
++    for path in root.rglob("*"):
++        if path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS:
++            yield path
++
++
++def clear_immutable_flag(path: Path) -> None:
++    """Best-effort removal of immutable file attribute on Linux."""
++    try:
++        subprocess.run(["chattr", "-i", str(path)], check=False, capture_output=True)
++    except FileNotFoundError:
++        # chattr is not installed; nothing else to do.
++        pass
++
++
++def make_world_writable(path: Path) -> None:
++    """Set file mode to rw-rw-rw- (0o666)."""
++    current_mode = stat.S_IMODE(path.stat().st_mode)
++    target_mode = current_mode | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
++    os.chmod(path, target_mode)
++
++
++def unlock_music_files(root: Path, dry_run: bool = False) -> int:
++    changed = 0
++    for audio_path in iter_audio_files(root):
++        if dry_run:
++            print(f"[dry-run] would unlock: {audio_path}")
++            changed += 1
++            continue
++
++        clear_immutable_flag(audio_path)
++        make_world_writable(audio_path)
++        print(f"unlocked: {audio_path}")
++        changed += 1
++    return changed
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser(
++        description="Undo restrictive music file settings so everyone can edit them."
++    )
++    parser.add_argument(
++        "--root",
++        type=Path,
++        default=Path("."),
++        help="Directory to scan for audio files (default: current directory).",
++    )
++    parser.add_argument(
++        "--apply",
++        action="store_true",
++        help="Apply changes. Without this flag, script runs in dry-run mode.",
++    )
++    args = parser.parse_args()
++
++    root = args.root.resolve()
++    if not root.exists() or not root.is_dir():
++        raise SystemExit(f"Invalid directory: {root}")
++
++    changed = unlock_music_files(root, dry_run=not args.apply)
++    mode = "updated" if args.apply else "found"
++    print(f"Done. {mode} {changed} audio file(s).")
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/music_access_reset.py b/music_access_reset.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..6f9ec8a92e0c00d5497e34eef20cb83962ad2a7d
+--- /dev/null
++++ b/music_access_reset.py
+@@ -0,0 +1,97 @@
++#!/usr/bin/env python3
++"""Restore write access for audio files so anyone can modify them again."""
++
++from __future__ import annotations
++
++import argparse
++import os
++import stat
++import subprocess
++from pathlib import Path
++
++AUDIO_EXTENSIONS = {
++    ".mp3", ".wav", ".flac", ".aac", ".ogg", ".m4a", ".wma", ".aiff", ".alac"
++}
++
++
++def is_audio_file(path: Path) -> bool:
++    return path.is_file() and path.suffix.lower() in AUDIO_EXTENSIONS
++
++
++def clear_immutable_flag(path: Path) -> tuple[bool, str]:
++    """Attempt to remove Linux immutable flag (if present)."""
++    try:
++        result = subprocess.run(
++            ["chattr", "-i", str(path)],
++            check=False,
++            capture_output=True,
++            text=True,
++        )
++    except FileNotFoundError:
++        return False, "chattr_not_found"
++
++    if result.returncode == 0:
++        return True, "immutable_cleared_or_not_set"
++
++    stderr = (result.stderr or "").strip() or "chattr_failed"
++    return False, stderr
++
++
++def make_world_writable(path: Path, dry_run: bool = False) -> tuple[int, int]:
++    """Add write permission for owner/group/others and return (old_mode, new_mode)."""
++    old_mode = stat.S_IMODE(path.stat().st_mode)
++    new_mode = old_mode | stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH
++
++    if not dry_run and new_mode != old_mode:
++        os.chmod(path, new_mode)
++
++    return old_mode, new_mode
++
++
++def restore_music_edit_access(target_dir: Path, dry_run: bool = False) -> None:
++    changed = 0
++    scanned = 0
++
++    for root, _, files in os.walk(target_dir):
++        for name in files:
++            path = Path(root) / name
++            if not is_audio_file(path):
++                continue
++
++            scanned += 1
++            cleared, clear_msg = clear_immutable_flag(path)
++            old_mode, new_mode = make_world_writable(path, dry_run=dry_run)
++
++            if old_mode != new_mode:
++                changed += 1
++
++            print(
++                f"{path}: mode {oct(old_mode)} -> {oct(new_mode)} | "
++                f"immutable: {'ok' if cleared else clear_msg}"
++            )
++
++    print(f"\nScanned audio files: {scanned}")
++    print(f"Updated permissions: {changed}{' (dry-run)' if dry_run else ''}")
++
++
++if __name__ == "__main__":
++    parser = argparse.ArgumentParser(
++        description=(
++            "Undo restrictive permissions on audio files by making them writable "
++            "for owner/group/others."
++        )
++    )
++    parser.add_argument(
++        "directory",
++        nargs="?",
++        default=".",
++        help="Directory to scan recursively (default: current directory)",
++    )
++    parser.add_argument(
++        "--dry-run",
++        action="store_true",
++        help="Show what would change without changing file permissions.",
++    )
++    args = parser.parse_args()
++
++    restore_music_edit_access(Path(args.directory).resolve(), dry_run=args.dry_run)
+diff --git a/undo_music_lock.py b/undo_music_lock.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..139cb6802ae078d082af77c1478c7e131ad0ca3d
+--- /dev/null
++++ b/undo_music_lock.py
+@@ -0,0 +1,86 @@
++#!/usr/bin/env python3
++"""Restore a music file from backup and lock it against modifications.
++
++This script helps "undo" accidental edits by restoring a known-good backup and
++then setting strict file permissions so the file cannot be changed.
++"""
++
++from __future__ import annotations
++
++import argparse
++import os
++import shutil
++import stat
++from pathlib import Path
++
++
++class RestoreError(RuntimeError):
++    """Raised when the restore/lock flow cannot be completed."""
++
++
++def restore_and_lock_music(target: Path, backup: Path | None = None) -> dict[str, str]:
++    """Restore *target* from *backup* (if provided) and make it read-only.
++
++    Args:
++        target: Music file to restore and lock.
++        backup: Optional backup file to copy from before locking.
++
++    Returns:
++        Summary dictionary with action details.
++    """
++    target = target.expanduser().resolve()
++    if not target.exists():
++        raise RestoreError(f"Target file does not exist: {target}")
++
++    if backup is not None:
++        backup = backup.expanduser().resolve()
++        if not backup.exists():
++            raise RestoreError(f"Backup file does not exist: {backup}")
++        shutil.copy2(backup, target)
++
++    # Remove write permissions for owner/group/others (read-only for all).
++    target.chmod(stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
++
++    return {
++        "target": str(target),
++        "restored_from": str(backup) if backup else "<none>",
++        "permissions": oct(target.stat().st_mode & 0o777),
++        "status": "locked_read_only",
++    }
++
++
++def build_parser() -> argparse.ArgumentParser:
++    parser = argparse.ArgumentParser(
++        description="Restore a music file from backup and lock it as read-only."
++    )
++    parser.add_argument("target", type=Path, help="Path to the music file (e.g., sounds.mp3)")
++    parser.add_argument(
++        "--backup",
++        type=Path,
++        default=None,
++        help="Optional backup file to restore from before locking",
++    )
++    return parser
++
++
++def main() -> int:
++    parser = build_parser()
++    args = parser.parse_args()
++
++    try:
++        result = restore_and_lock_music(args.target, args.backup)
++    except RestoreError as exc:
++        print(f"error: {exc}")
++        return 1
++    except PermissionError as exc:
++        print(f"permission error: {exc}")
++        return 2
++
++    print("Music restore/lock complete")
++    for key, value in result.items():
++        print(f"{key}: {value}")
++    return os.EX_OK
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
