@@ -1,0 +1,682 @@
+diff --git a/COMMUNICATION_CHANNEL_SCAN.md b/COMMUNICATION_CHANNEL_SCAN.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..9e89f204b5367a8305f8647c0acdcb374deda8bc
+--- /dev/null
++++ b/COMMUNICATION_CHANNEL_SCAN.md
+@@ -0,0 +1,50 @@
++# Communication-Channel Program Creation Scan
++
++Date: 2026-03-28 (UTC)
++
++## Scope
++Quick static scan for code that either:
++1. Creates/duplicates program entities tied to communication channels, or
++2. Opens/uses communication paths (network/socket/http/event bus), or
++3. Executes external processes that can affect communication behavior.
++
++## Scan commands used
++- `rg -n -i --glob '!README.md' --glob '!*.md' --glob '!*.txt' "\\b(subprocess\\.(run|Popen|call|check_output)|os\\.system\\(|socket\\.socket\\(|requests\\.(get|post|put|delete)|urllib\\.request|http\\.client|smtplib|websocket|WebSocket|slack|twilio|send_mail|email|sms|webhook|channel)\\b"`
++- Follow-up context reads with `nl -ba <file> | sed -n '<start>,<end>p`.
++
++## High-signal findings
++
++### 1) Explicit communication-channel duplication logic
++- `Lancaster/force` duplicates forms when `speaks_on_channel` is set and marks the clone source as `channel-duplicate`. This is direct **program/entity creation tied to communication channels**.
++  - See `_duplicate_channel_speakers` and `source="channel-duplicate"`.
++
++### 2) Event-bus distribution to arbitrary channels
++- `mp3.` defines an `EventBus` and publishes envelopes to every channel in `channels`.
++  - This is explicit **multi-channel communication involvement** and can route generated data to multiple destinations.
++
++### 3) Direct socket communication
++- `AZURE.js` contains socket-based port checks using `socket.socket(...).connect_ex((host, port))`.
++  - This is active network-channel probing.
++
++### 4) HTTP outbound calls
++- `self.system` performs direct `requests.get(url, timeout=...)` for endpoint calls.
++- `SharePoint-PnP` calls external VirusTotal API over HTTP(S) with `requests.get(...)`.
++  - These are external communication channels that could be affected by program logic.
++
++### 5) Process execution that can alter communication controls
++- `AZURE.js` uses `subprocess.run(..., shell=True)` with firewall/service actions (`ufw`, `systemctl`, etc.).
++  - These commands can materially alter inbound/outbound communication paths.
++- `SharePoint-PnP` runs PowerShell commands via `subprocess.run([...])`.
++  - Indirect but high-impact execution surface.
++
++## Risk triage (quick)
++- **High**: Channel duplication / fanout (`Lancaster/force`, `mp3.`) and shell-based firewall manipulation (`AZURE.js`).
++- **Medium**: Direct socket/HTTP usage where targets are runtime-provided (`AZURE.js`, `self.system`, `SharePoint-PnP`).
++- **Medium**: External command execution (`SharePoint-PnP`, `AZURE.js`) due to command-injection and environment-impact potential.
++
++## Recommended next checks
++1. Constrain channel names with allowlists where publish/duplicate is performed.
++2. Replace `shell=True` subprocess usage with argv lists and explicit validation.
++3. Add outbound destination allowlists for HTTP/socket targets.
++4. Add audit logs for all channel fanout and duplication actions.
++5. Add unit tests for deny-by-default behavior on unknown channels.
+
+diff --git a/COMMUNICATION_CHANNEL_SCAN.md b/COMMUNICATION_CHANNEL_SCAN.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..66b51797e48ce8d6a3f448184a16fcac6ebee3f3
+--- /dev/null
++++ b/COMMUNICATION_CHANNEL_SCAN.md
+@@ -0,0 +1,47 @@
++# Communication & Program-Creation Code Scan
++
++Date: 2026-03-28 (UTC)
++Scope scanned: `metadata_reset.py`, `AZURE.js`, and supporting Python/JS files in repo root.
++
++## What was scanned
++- Program/process creation primitives (`exec`, `execSync`, `subprocess.run`, `os.system`, etc.).
++- Communication-channel behavior (HTTP/HTTPS API calls, webhook-like sends, socket usage, remote endpoint posting).
++- Combined risk pattern: code that can both **execute actions** and **communicate externally**.
++
++## Findings
++
++### 1) Direct process execution present
++- `AZURE.js` contains shell command execution via Node `child_process` (`execSync` and `exec`) and command templates that can apply system/cloud changes when not in dry-run mode.
++- `metadata_reset.py` uses `subprocess.run` for Git state-changing operations.
++
++Impact: This enables real operational changes if invoked with execute paths.
++
++### 2) Multiple communication-channel integrations present
++- Frontend/backend-style HTTP calls are present (`fetch('/api/...')` patterns in `AZURE.js`).
++- Outbound API posting is present through Python `requests.post(...)` to Azure Log Analytics ingestion endpoint within `AZURE.js` embedded Python snippets.
++
++Impact: Data can be sent/received across API channels; if combined with execution paths, these are sensitive control points.
++
++### 3) Explicit "execute" API routes are present
++- `AZURE.js` includes several `/execute` route handlers and preview-vs-execute flow examples.
++
++Impact: These routes represent high-value paths where authorization, input validation, and action allowlisting are critical.
++
++## Quick risk judgment
++- **High attention needed** where execute handlers and outbound communication are colocated.
++- The file `AZURE.js` appears to aggregate many mixed snippets and duplicated sections, which increases review and accidental-execution risk.
++
++## Recommended controls
++1. Keep all execute routes defaulting to preview/dry-run unless explicit, strong admin auth + MFA checks pass.
++2. Centralize allowlists for executable commands/actions.
++3. Restrict outbound endpoints to approved host allowlists.
++4. Split monolithic mixed-language files into audited modules to reduce accidental execution.
++5. Add CI static checks for `child_process`, `subprocess`, and `/execute` handler diffs.
++
++## Commands used for the scan
++- `rg --files -g 'AGENTS.md'`
++- `rg --files | head -n 200`
++- `rg -n -i "...communication/network keywords..." ...`
++- `rg -n -i "...execution + communication primitives..." ...`
++- `sed -n '...p' AZURE.js`
++- `sed -n '...p' metadata_reset.py`
+diff --git a/communication_channel_scan.md b/communication_channel_scan.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..b2ac662d31b104b65d889bb87404f61dca103970
+--- /dev/null
++++ b/communication_channel_scan.md
+@@ -0,0 +1,58 @@
++# Communication-Channel / Program-Creation Code Scan
++
++Date: 2026-03-28 (UTC)
++
++## Scope
++Focused static scan for code patterns that indicate:
++1. **Program/process creation** (`subprocess`, `os.system`, `exec`, `eval`).
++2. **Communication-channel involvement** (network sockets, HTTP clients/servers, webhooks, queue/email/Slack/Twilio-style notifications).
++
++Primary command used:
++
++```bash
++rg -n -i "(socket|subprocess|os\.system|exec\(|http|https|webhook|slack|twilio|email|smtp|requests\.|fetch\(|axios|create_connection|connect\(|iptables|redis|queue)" --glob '!README.md'
++```
++
++## High-Signal Findings
++
++### 1) `telemet.try` — **High risk surface**
++- Contains repeated direct socket controls (`socket.getaddrinfo`, `socket.create_connection`, `socket.socket.connect`).
++- Uses subprocess execution and firewall manipulation via `iptables`.
++- Includes HTTP-client guard patching (e.g., `requests`, `httpx`) and telemetry host blocking logic.
++
++Representative indicators:
++- `import socket` and connection calls.
++- `import subprocess` with firewall command execution.
++- Host/port logic around telemetry endpoints.
++
++### 2) `AZURE.js` — **High risk surface**
++- Contains webhook and HTTP endpoint related strings/configuration.
++- Includes references to messaging/alert channels (e.g., Slack webhook style configuration).
++
++### 3) `music` — **Medium/High process-control surface**
++- Heavy use of `subprocess` for process introspection and termination (`tasklist`, `ps`, `kill`, `taskkill`).
++- Includes heuristic checks for network-likely commands (`http`, `listen`, `socket`, `port`).
++
++### 4) `Issues:)` and `numpy` — **Medium risk surface**
++- Multiple subprocess invocations.
++- Patterns for detecting unsafe shells and outbound HTTP/package paths in dependency lines.
++
++## Triage Priority
++
++1. **Immediate review:** `telemet.try`, `AZURE.js`.
++2. **Secondary review:** `music`, `Issues:)`, `numpy`.
++3. **Contextual review:** files with educational/sample code snippets containing `exec`/`socket`/HTTP literals but not necessarily runtime paths.
++
++## Suggested Next Actions
++
++1. Add/strengthen a policy that blocks `subprocess` with shell expansion and restricts executable allowlists.
++2. Enforce network egress allowlists for code paths that use socket or HTTP primitives.
++3. Add CI checks for:
++   - `subprocess.*(shell=True)`
++   - `os.system(`
++   - direct socket connect calls to non-allowlisted destinations
++   - webhook/notification credentials in source
++4. Verify whether files contain active code vs archived patch/history text, then reduce scan false positives by excluding non-executable artifacts.
++
++## Quick Conclusion
++The repository includes multiple files with patterns tied to **program creation/execution** and **communication-channel interaction**. The highest concentration appears in `telemet.try` and `AZURE.js`, with significant process-control behavior in `music` and supporting suspicious patterns in `Issues:)` / `numpy`.
+
+"""Channel/index spawn shutdown guard.
+
+Provides a lightweight registry for program processes created under a
+communication channel or index and supports targeted or global shutdown.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from subprocess import Popen
+from typing import Dict, Iterable, List, Optional, Tuple
+
+
+@dataclass
+class SpawnRecord:
+    """Metadata about a spawned process."""
+
+    process: Popen
+    channel: str
+    index: str
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @property
+    def pid(self) -> int:
+        return int(self.process.pid)
+
+    def is_running(self) -> bool:
+        return self.process.poll() is None
+
+
+class ChannelSpawnShutdown:
+    """Track and shut down spawned programs by channel/index scopes."""
+
+    def __init__(self) -> None:
+        self._records: Dict[int, SpawnRecord] = {}
+
+    def register(self, process: Popen, channel: str, index: str) -> int:
+        """Register a spawned process under a channel/index key."""
+        record = SpawnRecord(process=process, channel=channel, index=index)
+        self._records[record.pid] = record
+        return record.pid
+
+    def iter_records(
+        self,
+        channel: Optional[str] = None,
+        index: Optional[str] = None,
+        only_running: bool = True,
+    ) -> Iterable[SpawnRecord]:
+        """Iterate records matching optional channel/index filters."""
+        for record in list(self._records.values()):
+            if channel is not None and record.channel != channel:
+                continue
+            if index is not None and record.index != index:
+                continue
+            if only_running and not record.is_running():
+                continue
+            yield record
+
+    def shutdown(
+        self,
+        channel: Optional[str] = None,
+        index: Optional[str] = None,
+        timeout_seconds: float = 3.0,
+        force_kill: bool = True,
+        forget: bool = True,
+    ) -> List[Tuple[int, str]]:
+        """Shut down running processes for the provided scope.
+
+        Returns a list of (pid, status) tuples.
+        status is one of: "terminated", "killed", or "already_stopped".
+        """
+        results: List[Tuple[int, str]] = []
+
+        for record in self.iter_records(channel=channel, index=index, only_running=False):
+            proc = record.process
+            if proc.poll() is not None:
+                results.append((record.pid, "already_stopped"))
+            else:
+                proc.terminate()
+                status = "terminated"
+                try:
+                    proc.wait(timeout=timeout_seconds)
+                except Exception:
+                    if force_kill:
+                        proc.kill()
+                        proc.wait(timeout=timeout_seconds)
+                        status = "killed"
+                results.append((record.pid, status))
+
+            if forget:
+                self._records.pop(record.pid, None)
+
+        return results
+
+    def active_count(self, channel: Optional[str] = None, index: Optional[str] = None) -> int:
+        """Count running processes in the selected scope."""
+        return sum(1 for _ in self.iter_records(channel=channel, index=index, only_running=True))
+
+
+# Example integration helper for callers that spawn child processes.
+def spawn_and_register(
+    manager: ChannelSpawnShutdown,
+    command: List[str],
+    channel: str,
+    index: str,
+    **popen_kwargs,
+) -> int:
+    """Spawn a child process and register it under channel/index."""
+    process = Popen(command, **popen_kwargs)
+    return manager.register(process=process, channel=channel, index=index)
+
+diff --git a/communication_shutdown.py b/communication_shutdown.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..5b386cdd1768c89d9fb6a42d2f9d6905d15b5456
+--- /dev/null
++++ b/communication_shutdown.py
+@@ -0,0 +1,125 @@
++"""Utilities to shut down spawned program creations by channel/index.
++
++This module provides a small in-memory control layer for systems that track
++"program creations" (subprocesses, jobs, workers) associated with a
++communication channel and/or index.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from datetime import datetime, timezone
++from enum import Enum
++from typing import Callable, Dict, Iterable, List, Optional, Tuple
++
++
++class ProgramState(str, Enum):
++    """Lifecycle state for a tracked program creation."""
++
++    RUNNING = "running"
++    STOPPED = "stopped"
++    FAILED = "failed"
++
++
++@dataclass
++class ProgramCreation:
++    """Represents a program creation that can be stopped."""
++
++    program_id: str
++    channel: str
++    index: Optional[str] = None
++    state: ProgramState = ProgramState.RUNNING
++    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
++    stopped_at: Optional[datetime] = None
++    stop_reason: Optional[str] = None
++
++
++StopCallback = Callable[[ProgramCreation], Tuple[bool, str]]
++
++
++class ProgramCreationController:
++    """Tracks and force-stops running program creations by channel or index."""
++
++    def __init__(self, stop_callback: Optional[StopCallback] = None):
++        self._programs: Dict[str, ProgramCreation] = {}
++        self._stop_callback = stop_callback or self._default_stop
++
++    def register(self, program: ProgramCreation) -> None:
++        """Register or replace a tracked program creation."""
++        self._programs[program.program_id] = program
++
++    def list_running(self) -> List[ProgramCreation]:
++        """Return all currently running programs."""
++        return [p for p in self._programs.values() if p.state == ProgramState.RUNNING]
++
++    def shutdown_in_scope(
++        self,
++        *,
++        channel: Optional[str] = None,
++        index: Optional[str] = None,
++        reason: str = "policy_shutdown",
++    ) -> Dict[str, List[str]]:
++        """Stop running programs that match channel and/or index.
++
++        If both channel and index are provided, both must match.
++        If only one filter is provided, only that filter is applied.
++        """
++        if channel is None and index is None:
++            raise ValueError("channel or index must be provided")
++
++        candidates = [
++            p
++            for p in self.list_running()
++            if self._matches_scope(p, channel=channel, index=index)
++        ]
++
++        stopped: List[str] = []
++        failed: List[str] = []
++
++        for program in candidates:
++            ok, detail = self._stop_callback(program)
++            if ok:
++                program.state = ProgramState.STOPPED
++                program.stopped_at = datetime.now(timezone.utc)
++                program.stop_reason = reason
++                stopped.append(program.program_id)
++            else:
++                program.state = ProgramState.FAILED
++                program.stop_reason = f"{reason}:{detail}"
++                failed.append(program.program_id)
++
++        return {
++            "stopped": stopped,
++            "failed": failed,
++        }
++
++    @staticmethod
++    def _matches_scope(
++        program: ProgramCreation,
++        *,
++        channel: Optional[str],
++        index: Optional[str],
++    ) -> bool:
++        channel_match = True if channel is None else program.channel == channel
++        index_match = True if index is None else program.index == index
++        return channel_match and index_match
++
++    @staticmethod
++    def _default_stop(program: ProgramCreation) -> Tuple[bool, str]:
++        # In production, replace with termination logic (pid kill, task cancel, etc.).
++        return True, "stopped"
++
++
++def shutdown_program_creations(
++    programs: Iterable[ProgramCreation],
++    *,
++    channel: Optional[str] = None,
++    index: Optional[str] = None,
++    reason: str = "policy_shutdown",
++    stop_callback: Optional[StopCallback] = None,
++) -> Dict[str, List[str]]:
++    """Convenience function for one-shot shutdown operations."""
++    controller = ProgramCreationController(stop_callback=stop_callback)
++    for program in programs:
++        controller.register(program)
++    return controller.shutdown_in_scope(channel=channel, index=index, reason=reason)
+diff --git a/channel_spawn_shutdown.py b/channel_spawn_shutdown.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..2a7063ebc797b4408a8f1cd185e886d8773032b9
+--- /dev/null
++++ b/channel_spawn_shutdown.py
+@@ -0,0 +1,111 @@
++"""Channel/index spawn shutdown guard.
++
++Provides a lightweight registry for program processes created under a
++communication channel or index and supports targeted or global shutdown.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from datetime import datetime, timezone
++from subprocess import Popen
++from typing import Dict, Iterable, List, Optional, Tuple
++
++
++@dataclass
++class SpawnRecord:
++    """Metadata about a spawned process."""
++
++    process: Popen
++    channel: str
++    index: str
++    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
++
++    @property
++    def pid(self) -> int:
++        return int(self.process.pid)
++
++    def is_running(self) -> bool:
++        return self.process.poll() is None
++
++
++class ChannelSpawnShutdown:
++    """Track and shut down spawned programs by channel/index scopes."""
++
++    def __init__(self) -> None:
++        self._records: Dict[int, SpawnRecord] = {}
++
++    def register(self, process: Popen, channel: str, index: str) -> int:
++        """Register a spawned process under a channel/index key."""
++        record = SpawnRecord(process=process, channel=channel, index=index)
++        self._records[record.pid] = record
++        return record.pid
++
++    def iter_records(
++        self,
++        channel: Optional[str] = None,
++        index: Optional[str] = None,
++        only_running: bool = True,
++    ) -> Iterable[SpawnRecord]:
++        """Iterate records matching optional channel/index filters."""
++        for record in list(self._records.values()):
++            if channel is not None and record.channel != channel:
++                continue
++            if index is not None and record.index != index:
++                continue
++            if only_running and not record.is_running():
++                continue
++            yield record
++
++    def shutdown(
++        self,
++        channel: Optional[str] = None,
++        index: Optional[str] = None,
++        timeout_seconds: float = 3.0,
++        force_kill: bool = True,
++        forget: bool = True,
++    ) -> List[Tuple[int, str]]:
++        """Shut down running processes for the provided scope.
++
++        Returns a list of (pid, status) tuples.
++        status is one of: "terminated", "killed", or "already_stopped".
++        """
++        results: List[Tuple[int, str]] = []
++
++        for record in self.iter_records(channel=channel, index=index, only_running=False):
++            proc = record.process
++            if proc.poll() is not None:
++                results.append((record.pid, "already_stopped"))
++            else:
++                proc.terminate()
++                status = "terminated"
++                try:
++                    proc.wait(timeout=timeout_seconds)
++                except Exception:
++                    if force_kill:
++                        proc.kill()
++                        proc.wait(timeout=timeout_seconds)
++                        status = "killed"
++                results.append((record.pid, status))
++
++            if forget:
++                self._records.pop(record.pid, None)
++
++        return results
++
++    def active_count(self, channel: Optional[str] = None, index: Optional[str] = None) -> int:
++        """Count running processes in the selected scope."""
++        return sum(1 for _ in self.iter_records(channel=channel, index=index, only_running=True))
++
++
++# Example integration helper for callers that spawn child processes.
++def spawn_and_register(
++    manager: ChannelSpawnShutdown,
++    command: List[str],
++    channel: str,
++    index: str,
++    **popen_kwargs,
++) -> int:
++    """Spawn a child process and register it under channel/index."""
++    process = Popen(command, **popen_kwargs)
++    return manager.register(process=process, channel=channel, index=index)
+diff --git a/integration_patterns.py b/integration_patterns.py
+index d0d9384c76e3a5198104d495b00d68fea9ead922..130e5da5b6227a206216cfed71af2ba6712fafd8 100644
+--- a/integration_patterns.py
++++ b/integration_patterns.py
+@@ -1,39 +1,109 @@
+ """
+ Advanced Integration Guide
+ Real-world patterns for using the metaphysical restriction system
+ in games, stories, and theoretical models.
+ """
+ 
++from dataclasses import dataclass
++from datetime import datetime
+ from metaphysical_restrictions import (
+     MetaphysicalPractitioner, MetaphysicalCapability,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework
+ )
+ 
+ 
++
++
++# ============================================================================
++# PATTERN 0: SPAWN SHUTDOWN GUARD
++# ============================================================================
++
++@dataclass
++class ProgramCreation:
++    """Represents a created program unit tracked by channel and index."""
++
++    program_id: str
++    channel: str
++    index_key: str
++    spawned: bool = True
++    active: bool = True
++    shutdown_reason: str = ""
++    shutdown_at: str | None = None
++
++
++class ChannelIndexShutdownManager:
++    """Shut down spawned program creations by communication channel or index."""
++
++    def __init__(self):
++        self._creations: dict[str, ProgramCreation] = {}
++
++    def register_creation(self, program_id: str, channel: str, index_key: str, *, spawned: bool = True) -> ProgramCreation:
++        """Track a newly created program instance."""
++        creation = ProgramCreation(
++            program_id=program_id,
++            channel=channel,
++            index_key=index_key,
++            spawned=spawned,
++        )
++        self._creations[program_id] = creation
++        return creation
++
++    def shutdown_spawned_in_channel(self, channel: str, reason: str = "channel_shutdown") -> list[ProgramCreation]:
++        """Deactivate all spawned creations in a communication channel."""
++        return self._shutdown_matching(
++            lambda creation: creation.spawned and creation.channel == channel,
++            reason=reason,
++        )
++
++    def shutdown_spawned_in_index(self, index_key: str, reason: str = "index_shutdown") -> list[ProgramCreation]:
++        """Deactivate all spawned creations associated with an index key."""
++        return self._shutdown_matching(
++            lambda creation: creation.spawned and creation.index_key == index_key,
++            reason=reason,
++        )
++
++    def list_active(self) -> list[ProgramCreation]:
++        """Return all active tracked creations."""
++        return [creation for creation in self._creations.values() if creation.active]
++
++    def _shutdown_matching(self, predicate, reason: str) -> list[ProgramCreation]:
++        shut_down: list[ProgramCreation] = []
++        timestamp = datetime.utcnow().isoformat(timespec="seconds") + "Z"
++
++        for creation in self._creations.values():
++            if creation.active and predicate(creation):
++                creation.active = False
++                creation.shutdown_reason = reason
++                creation.shutdown_at = timestamp
++                shut_down.append(creation)
++
++        return shut_down
++
++
+ # ============================================================================
+ # PATTERN 1: RPG SPELL SYSTEM
+ # ============================================================================
+ 
+ class RPGSpellSystem:
+     """Integration pattern for traditional RPG magic systems (D&D-style)."""
+     
+     def __init__(self, player_name: str, spell_slots: int = 10):
+         self.practitioner = MetaphysicalPractitioner(
+             name=player_name,
+             energy_pool=float(spell_slots * 10),
+             max_energy=float(spell_slots * 10)
+         )
+         self.practitioner.add_framework(ConservationOfEnergyFramework(spell_slots * 10))
+         self.spell_slots = spell_slots
+         self.cast_history = []
+     
+     def add_spell(self, name: str, level: int, effect: str) -> MetaphysicalCapability:
+         """Add a standard RPG spell to the spellbook."""
+         # Spell power = spell level * 10
+         spell = MetaphysicalCapability(
+             name=name,
+             capability_type=self._effect_to_capability(effect),
+             base_power_level=float(level * 10)
+         )
+diff --git a/test_channel_spawn_shutdown.py b/test_channel_spawn_shutdown.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..8a297fa57e72dafaf8a9539bc13210c99faa6773
+--- /dev/null
++++ b/test_channel_spawn_shutdown.py
+@@ -0,0 +1,27 @@
++from channel_spawn_shutdown import SpawnScope, SpawnState, SpawnShutdownController
++
++
++def test_shutdown_communication_and_index_only():
++    controller = SpawnShutdownController()
++    comm = controller.register_creation("comm", SpawnScope.COMMUNICATION_CHANNEL)
++    idx = controller.register_creation("idx", SpawnScope.INDEX)
++    other = controller.register_creation("other", SpawnScope.OTHER)
++
++    result = controller.shutdown_communication_and_index("policy enforcement")
++
++    assert len(result[SpawnScope.COMMUNICATION_CHANNEL.value]) == 1
++    assert len(result[SpawnScope.INDEX.value]) == 1
++    assert comm.state == SpawnState.SHUTDOWN
++    assert idx.state == SpawnState.SHUTDOWN
++    assert other.state == SpawnState.RUNNING
++
++
++def test_shutdown_idempotent_for_already_stopped_entries():
++    controller = SpawnShutdownController()
++    controller.register_creation("comm", SpawnScope.COMMUNICATION_CHANNEL)
++
++    first = controller.shutdown_communication_and_index("policy enforcement")
++    second = controller.shutdown_communication_and_index("policy enforcement")
++
++    assert len(first[SpawnScope.COMMUNICATION_CHANNEL.value]) == 1
++    assert len(second[SpawnScope.COMMUNICATION_CHANNEL.value]) == 0
