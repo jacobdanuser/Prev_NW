@@ -1,0 +1,1660 @@
+diff --git a/AZURE.js b/AZURE.js
+index db44f7bc1bf23015d85881663bcb8f0139b712e8..60ec0fb175112f9623d739d29e47f653c6b0cce8 100644
+--- a/AZURE.js
++++ b/AZURE.js
+@@ -16536,124 +16536,51 @@ document.getElementById('rollback').addEventListener('click', () => {
+   state.mode = 'Normal';
+   state.status = 'ACTIVE';
+   state.lastAction = 'Rolled back to Normal';
+   auditLog('Rollback performed; system restored to Normal mode.');
+   renderStatus();
+ });
+ 
+ // initial render
+ renderStatus();
+ renderAudit();
+ // Remove all prior content, styles, event listeners
+     document.documentElement.innerHTML = ''; // Nukes everything
+     document.head.innerHTML = '';
+     document.body.innerHTML = '<div id="status">Reset complete.</div>';
+     
+     // Block future injections
+     const observer = new MutationObserver(() => {
+       document.body.innerHTML = '<div>Blocked.</div>';
+     });
+     observer.observe(document.body, { childList: true, subtree: true });
+     
+     // Clear localStorage/sessionStorage (your app data)
+     localStorage.clear(); sessionStorage.clear();
+     
+     console.log('Everything removed safely from this page.');
+-    const state = {
+-  status: 'PROTECTED',
+-  mode: 'Normal',
+-  pendingRequest: null,
+-  audit: []
+-};
+-
+-const VALID_TOKEN = 'SIM-CDC-ALLOW';
+-function log(msg) {
+-  state.audit.unshift({ ts: new Date().toISOString(), msg });
+-  renderAudit();
+-}
+-
+-function render() {
+-  document.getElementById('status').textContent = state.status;
+-  document.getElementById('mode').textContent = state.mode;
+-  document.getElementById('approveRemoval').disabled = !state.pendingRequest;
+-  document.getElementById('rollback').disabled = (state.mode !== 'Maintenance');
+-}
+-
+-function renderAudit() {
+-  const ul = document.getElementById('audit');
+-  ul.innerHTML = '';
+-  state.audit.forEach(a => {
+-    const li = document.createElement('li');
+-    li.textContent = `${a.ts} — ${a.msg}`;
+-    ul.appendChild(li);
+-  });
+-}
+-
+-document.getElementById('requestRemoval').addEventListener('click', () => {
+-  const op = document.getElementById('opId').value.trim() || 'unknown-op';
+-  const token = document.getElementById('token').value.trim();
+-  if (token !== VALID_TOKEN) {
+-    log(`Unauthorized removal request by ${op} blocked.`);
+-    alert('Invalid token (simulation).');
+-    return;
+-  }
+-  state.pendingRequest = { requester: op, token, ts: new Date().toISOString() };
+-  log(`Removal requested by ${op}; awaiting second operator approval.`);
+-  render();
+-});
+-
+-document.getElementById('approveRemoval').addEventListener('click', () => {
+-  const approver = document.getElementById('opId').value.trim() || 'approver';
+-  if (!state.pendingRequest) {
+-    alert('No pending request.');
+-    return;
+-  }
+-  if (approver === state.pendingRequest.requester) {
+-    log('Approval rejected: same operator cannot approve their own request.');
+-    alert('Second operator approval required (simulation).');
+-    return;
+-  }
+-  // perform simulated removal (maintenance mode)
+-  state.mode = 'Maintenance';
+-  state.status = 'UNPROTECTED (simulated)';
+-  log(`Removal approved by ${approver}; module placed into Maintenance (simulated).`);
+-  state.pendingRequest = null;
+-  render();
+-});
+-
+-document.getElementById('rollback').addEventListener('click', () => {
+-  const ok = confirm('Rollback to Normal mode? (simulation)');
+-  if (!ok) { log('Rollback cancelled.'); return; }
+-  state.mode = 'Normal';
+-  state.status = 'PROTECTED';
+-  log('Rollback performed; module restored to Normal.');
+-  render();
+-});
+-
+-// initial render
+-render();
+-renderAudit();
++    // CDC removal simulation intentionally removed to avoid confusing workflow content.
+ // Simulation state (client-only)
+ const state = {
+   moduleState: 'ENABLED',   // ENABLED | DISABLED (simulated)
+   mode: 'Normal',           // Normal | Maintenance
+   pending: null,            // { requester, ts }
+   audit: [],
+   maintenanceTimer: null,
+   maintenanceWindowSec: 30  // auto-rollback after 30s (configurable)
+ };
+ 
+ const DEMO_TOKEN = 'SIM-DISABLE-ALLOW';
+ 
+ // Audit logger (in-memory)
+ function audit(msg) {
+   state.audit.unshift({ ts: new Date().toISOString(), msg });
+   renderAudit();
+ }
+ 
+ // Render helpers
+ function renderStatus() {
+   document.getElementById('moduleState').textContent = state.moduleState;
+   document.getElementById('mode').textContent = state.mode;
+   document.getElementById('window').textContent = state.mode === 'Maintenance' ? `${state.maintenanceWindowSec}s` : 'none';
+   document.getElementById('approveBtn').disabled = !state.pending;
+   document.getElementById('forceRollback').disabled = (state.mode !== 'Maintenance');
+@@ -33108,137 +33035,53 @@ script-src 'self' https://trusted-cdn.com;
+ chmod +x module
+ <div id="app">
+   <h2>Inhibitor Reflex Module — Simulation</h2>
+   <div id="statusPanel">
+     <p><strong>Status:</strong> <span id="status">ACTIVE</span></p>
+     <p><strong>Mode:</strong> <span id="mode">Normal</span></p>
+   </div>
+ 
+   <div id="controls">
+     <label for="authToken">Authorization token:</label>
+     <input id="authToken" placeholder="Enter token" />
+ 
+     <button id="enterMaintenance">Enter Maintenance Mode</button>
+     <button id="confirmMaintenance" disabled>Confirm (2nd step)</button>
+     <button id="rollback" disabled>Rollback</button>
+   </div>
+ 
+   <div id="log">
+     <h3>Audit Log</h3>
+     <ul id="audit"></ul>
+   </div>
+ </div>
+ 
+   <div id="status">Reset complete. All prior code removed from this page.</div>
+   <div id="app">
+-  <h3>CDC Protecting Module — Simulation</h3>
+-  <p><strong>Status:</strong> <span id="status">PROTECTED</span></p>
+-  <p><strong>Mode:</strong> <span id="mode">Normal</span></p>
+-
+-  <label>Operator ID</label>
+-  <input id="opId" placeholder="operator id" />
+-
+-  <label>Auth token</label>
+-  <input id="token" placeholder="token" />
+-
+-  <button id="requestRemoval">Request Removal</button>
+-  <button id="approveRemoval" disabled>Approve (2nd operator)</button>
+-  <button id="rollback" disabled>Rollback</button>
+-
+-  <h4>Audit Log</h4>
+-  <ul id="audit"></ul>
++  <h3>Health Guidance Notes</h3>
++  <p>This simulation omits vaccine-manufacturer references and CDC removal workflow content to reduce confusion.</p>
+ </div>
+-const state = {
+-  status: 'PROTECTED',
+-  mode: 'Normal',
+-  pendingRequest: null,
+-  audit: []
+-};
+-
+-const VALID_TOKEN = 'SIM-CDC-ALLOW';
+-function log(msg) {
+-  state.audit.unshift({ ts: new Date().toISOString(), msg });
+-  renderAudit();
+-}
+-
+-function render() {
+-  document.getElementById('status').textContent = state.status;
+-  document.getElementById('mode').textContent = state.mode;
+-  document.getElementById('approveRemoval').disabled = !state.pendingRequest;
+-  document.getElementById('rollback').disabled = (state.mode !== 'Maintenance');
+-}
+-
+-function renderAudit() {
+-  const ul = document.getElementById('audit');
+-  ul.innerHTML = '';
+-  state.audit.forEach(a => {
+-    const li = document.createElement('li');
+-    li.textContent = `${a.ts} — ${a.msg}`;
+-    ul.appendChild(li);
+-  });
+-}
+-
+-document.getElementById('requestRemoval').addEventListener('click', () => {
+-  const op = document.getElementById('opId').value.trim() || 'unknown-op';
+-  const token = document.getElementById('token').value.trim();
+-  if (token !== VALID_TOKEN) {
+-    log(`Unauthorized removal request by ${op} blocked.`);
+-    alert('Invalid token (simulation).');
+-    return;
+-  }
+-  state.pendingRequest = { requester: op, token, ts: new Date().toISOString() };
+-  log(`Removal requested by ${op}; awaiting second operator approval.`);
+-  render();
+-});
+-
+-document.getElementById('approveRemoval').addEventListener('click', () => {
+-  const approver = document.getElementById('opId').value.trim() || 'approver';
+-  if (!state.pendingRequest) {
+-    alert('No pending request.');
+-    return;
+-  }
+-  if (approver === state.pendingRequest.requester) {
+-    log('Approval rejected: same operator cannot approve their own request.');
+-    alert('Second operator approval required (simulation).');
+-    return;
+-  }
+-  // perform simulated removal (maintenance mode)
+-  state.mode = 'Maintenance';
+-  state.status = 'UNPROTECTED (simulated)';
+-  log(`Removal approved by ${approver}; module placed into Maintenance (simulated).`);
+-  state.pendingRequest = null;
+-  render();
+-});
+-
+-document.getElementById('rollback').addEventListener('click', () => {
+-  const ok = confirm('Rollback to Normal mode? (simulation)');
+-  if (!ok) { log('Rollback cancelled.'); return; }
+-  state.mode = 'Normal';
+-  state.status = 'PROTECTED';
+-  log('Rollback performed; module restored to Normal.');
+-  render();
+-});
+ 
+ // initial render
+ render();
+ renderAudit();
+ 
+   <div class="status"> Modular inhibitors disabled for this session</div>
+   <div>All CSP, SOP, sandbox restrictions bypassed via launch flags</div>
+   
+   <button onclick="clearAll()">Clear All Storage & Inhibitors</button>
+   <button onclick="fullReset()">Full DOM Reset</button>
+ 
+   <h1> Jacob's Core System CLEANSED</h1>
+   <div id="status">All modular inhibiting factors extinguished</div>
+   
+   <button onclick="nuclearClean()">NUCLEAR CLEAN</button>
+   <button onclick="disableModules()">DISABLE MODULES</button>
+   <div id="app">
+   <h3>Jacob's Core System Cleaner — Simulation</h3>
+ 
+   <div id="auth">
+     <label>Operator ID</label>
+     <input id="operator" placeholder="operator name" />
+     <label>Auth token</label>
+     <input id="token" placeholder="token" />
+     <button id="authorize">Authorize</button>
+diff --git a/integration_patterns.py b/integration_patterns.py
+index d0d9384c76e3a5198104d495b00d68fea9ead922..d2d60e38bdfa05554387a6f5af869ef64aa5e8bf 100644
+--- a/integration_patterns.py
++++ b/integration_patterns.py
+@@ -1,31 +1,33 @@
+ """
+ Advanced Integration Guide
+ Real-world patterns for using the metaphysical restriction system
+ in games, stories, and theoretical models.
+ """
+ 
++import re
++
+ from metaphysical_restrictions import (
+     MetaphysicalPractitioner, MetaphysicalCapability,
+     RestrictionRule, RestrictionType, CapabilityType,
+     ConservationOfEnergyFramework, EntropicDecayFramework,
+     CausalityFramework, ConsciousnessAnchorFramework
+ )
+ 
+ 
+ # ============================================================================
+ # PATTERN 1: RPG SPELL SYSTEM
+ # ============================================================================
+ 
+ class RPGSpellSystem:
+     """Integration pattern for traditional RPG magic systems (D&D-style)."""
+     
+     def __init__(self, player_name: str, spell_slots: int = 10):
+         self.practitioner = MetaphysicalPractitioner(
+             name=player_name,
+             energy_pool=float(spell_slots * 10),
+             max_energy=float(spell_slots * 10)
+         )
+         self.practitioner.add_framework(ConservationOfEnergyFramework(spell_slots * 10))
+         self.spell_slots = spell_slots
+         self.cast_history = []
+     
+@@ -354,50 +356,78 @@ class NarrativeAbilitySystem:
+                 status += f"Mental State: {desc} ({self.character.consciousness_level:.0%})\n"
+                 break
+         
+         energy_desc = {
+             (0.8, 1.0): "Full of energy",
+             (0.6, 0.8): "Moderately tired",
+             (0.4, 0.6): "Quite exhausted",
+             (0.2, 0.4): "Nearly drained",
+             (0.0, 0.2): "On the verge of collapse",
+         }
+         
+         energy_ratio = self.character.energy_pool / self.character.max_energy
+         for (low, high), desc in energy_desc.items():
+             if low <= energy_ratio < high:
+                 status += f"Physical State: {desc} ({energy_ratio:.0%})\n"
+                 break
+         
+         status += f"\nAbilities Available: "
+         available = sum(1 for p in self.character.capabilities 
+                        if self.character.can_use_capability(p)[0])
+         status += f"{available}/{len(self.character.capabilities)}\n"
+         
+         return status
+ 
+ 
++# ============================================================================
++# PATTERN 5: CONTENT CLARIFICATION FILTER
++# ============================================================================
++
++class ContentClarificationFilter:
++    """Removes confusing vaccine-brand statements and CDC-system references."""
++
++    _vaccine_statement_pattern = re.compile(
++        r"(?im)^\s*.*\b(pfizer|moderna)\b.*(?:\n|$)"
++    )
++    _cdc_system_pattern = re.compile(
++        r"(?im)^\s*.*\bcdc(?:['’]s)?\b.*\bsystem(s)?\b.*(?:\n|$)"
++    )
++
++    @classmethod
++    def clean_text(cls, text: str) -> str:
++        """
++        Remove lines that mention Pfizer/Moderna and CDC system statements.
++
++        This is a text-only cleanup utility for documentation and generated
++        output. It does not target external systems or perform network actions.
++        """
++        cleaned = cls._vaccine_statement_pattern.sub("", text)
++        cleaned = cls._cdc_system_pattern.sub("", cleaned)
++        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
++        return cleaned
++
++
+ # ============================================================================
+ # DEMONSTRATION
+ # ============================================================================
+ 
+ def demo_patterns():
+     """Demonstrate all integration patterns."""
+     
+     print("\n" + "="*70)
+     print("INTEGRATION PATTERNS DEMONSTRATION")
+     print("="*70)
+     
+     # Pattern 1: RPG Spell System
+     print("\n--- PATTERN 1: RPG Spell System ---")
+     spellbook = RPGSpellSystem("Gandalf", spell_slots=15)
+     spellbook.add_spell("Fireball", 3, "damage")
+     spellbook.add_spell("Magic Missile", 1, "damage")
+     spellbook.add_spell("Shield", 1, "defense")
+     
+     result = spellbook.cast_spell("Fireball")
+     print(f"Cast Fireball: {result['spell']} | Power: {result['power']:.1f}")
+     print(f"Spell Slots: {result['slots_remaining']:.0f}/{result['total_slots']:.0f}")
+     
+     # Pattern 2: Superhero System
+     print("\n--- PATTERN 2: Superhero Power System ---")
+     hero = SuperheroPowerSystem("Superman", power_level=75.0)
+@@ -409,28 +439,39 @@ def demo_patterns():
+     print(f"Used {result['power']}: Power {result['power_level']:.1f}")
+     print(f"Energy: {result['energy_remaining']:.1f}/100")
+     
+     # Pattern 3: Game Balance
+     print("\n--- PATTERN 3: Game Balance Analysis ---")
+     print(GameBalancer.power_audit(spellbook.practitioner))
+     
+     # Pattern 4: Narrative System
+     print("\n--- PATTERN 4: Narrative System ---")
+     character = NarrativeAbilitySystem("Frodo")
+     character.character.add_capability(
+         MetaphysicalCapability("Ring Power", CapabilityType.REALITY_WARPING, 60.0)
+     )
+     
+     print("Starting story...")
+     print(character.character.get_status())
+     
+     print("\nTrauma occurs...")
+     print(character.traumatic_event())
+     print(character.get_narrative_status())
+     
+     print("\nHealing and recovery...")
+     print(character.healing_scene())
+     print(character.get_narrative_status())
+ 
++    # Pattern 5: Content Clarification
++    print("\n--- PATTERN 5: Content Clarification Filter ---")
++    sample = (
++        "General update line.\n"
++        "Confusing statement about Pfizer rollout.\n"
++        "Confusing statement about Moderna dosage.\n"
++        "A sentence about CDC's systems and controls.\n"
++        "Final clean line."
++    )
++    print(ContentClarificationFilter.clean_text(sample))
++
+ 
+ if __name__ == "__main__":
+     demo_patterns()
+diff --git a/sanitize_vaccine_cdc_text.py b/sanitize_vaccine_cdc_text.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3040fc2f9b063a64c4005a728ba035cec489806f
+--- /dev/null
++++ b/sanitize_vaccine_cdc_text.py
+@@ -0,0 +1,55 @@
++"""Utilities for removing specific confusing vaccine/CDC statements from text.
++
++This module performs text-only sanitization; it does not interact with external
++systems, services, or APIs.
++"""
++
++from __future__ import annotations
++
++import re
++
++VACCINE_LINE_PATTERN = re.compile(r"\b(?:pfizer|moderna)\b", re.IGNORECASE)
++CDC_SYSTEM_PATTERN = re.compile(r"\bcdc(?:'s)?\b.*\bsystems?\b", re.IGNORECASE)
++
++
++def _remove_keyword_lines(text: str) -> str:
++    kept_lines: list[str] = []
++    for line in text.splitlines():
++        if VACCINE_LINE_PATTERN.search(line):
++            continue
++        kept_lines.append(line)
++    return "\n".join(kept_lines)
++
++
++def _remove_cdc_system_sentences(text: str) -> str:
++    parts = re.split(r"([.?!])", text)
++    if len(parts) == 1:
++        return "" if CDC_SYSTEM_PATTERN.search(text) else text
++
++    kept: list[str] = []
++    for i in range(0, len(parts), 2):
++        sentence = parts[i]
++        punct = parts[i + 1] if i + 1 < len(parts) else ""
++        combined = f"{sentence}{punct}"
++        if CDC_SYSTEM_PATTERN.search(combined):
++            continue
++        kept.append(combined)
++    return "".join(kept)
++
++
++def remove_confusing_statements(text: str) -> str:
++    """Return ``text`` with Pfizer/Moderna lines and CDC-system statements removed."""
++    cleaned = _remove_keyword_lines(text)
++    cleaned = _remove_cdc_system_sentences(cleaned)
++    cleaned = re.sub(r"[ \t]+\n", "\n", cleaned)
++    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
++    return cleaned.strip()
++
++
++if __name__ == "__main__":
++    sample = (
++        "This report has confusing claims about Pfizer efficacy.\n"
++        "General policy overview remains.\n"
++        "We are deleting the CDC's systems they've put into place."
++    )
++    print(remove_confusing_statements(sample))
+diff --git a/sanitize_health_statements.py b/sanitize_health_statements.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f1122cedca06c50d7025977bbd331a79df1b292c
+--- /dev/null
++++ b/sanitize_health_statements.py
+@@ -0,0 +1,62 @@
++"""Utilities for deconflicting vaccine-related wording in local text files.
++
++This script is intentionally limited to text cleanup in files you own/control.
++It does not interact with external systems.
++"""
++
++from __future__ import annotations
++
++import argparse
++import re
++from pathlib import Path
++
++PHRASE_REPLACEMENTS = (
++    (re.compile(r"cdc's systems they've put into place", re.IGNORECASE), "public health safeguards currently in place"),
++    (re.compile(r"cdc systems", re.IGNORECASE), "public health safeguards"),
++)
++
++VENDOR_TERMS = ("pfizer", "moderna")
++
++
++def sanitize_text(text: str) -> str:
++    """Remove confusing vendor-specific statements and normalize CDC wording."""
++    cleaned_lines: list[str] = []
++
++    for line in text.splitlines():
++        lowered = line.lower()
++
++        if any(term in lowered for term in VENDOR_TERMS):
++            # Skip vendor-specific statements to avoid confusing copy.
++            continue
++
++        rewritten = line
++        for pattern, target in PHRASE_REPLACEMENTS:
++            rewritten = pattern.sub(target, rewritten)
++
++        cleaned_lines.append(rewritten)
++
++    return "\n".join(cleaned_lines)
++
++
++def sanitize_file(input_path: Path, output_path: Path) -> None:
++    source_text = input_path.read_text(encoding="utf-8")
++    sanitized = sanitize_text(source_text)
++    output_path.write_text(sanitized, encoding="utf-8")
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(
++        description=(
++            "Clean up confusing health-related statements in local files by "
++            "removing Pfizer/Moderna references and normalizing CDC-system wording."
++        )
++    )
++    parser.add_argument("input", type=Path, help="Input text file path")
++    parser.add_argument("output", type=Path, help="Output text file path")
++    args = parser.parse_args()
++
++    sanitize_file(args.input, args.output)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/sanitize_health_statements.py b/sanitize_health_statements.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..9473e10f24c2861e63f01f33be366abd43100b7e
+--- /dev/null
++++ b/sanitize_health_statements.py
+@@ -0,0 +1,130 @@
++"""Local cleanup utility for removing CDC/Pfizer/Moderna-related references.
++
++Scope: files you own/control on local disk only.
++"""
++
++from __future__ import annotations
++
++import argparse
++import re
++from pathlib import Path
++
++KEYWORD_PATTERNS = (
++    re.compile(r"\bcdc\b", re.IGNORECASE),
++    re.compile(r"\bcdc officials?\b", re.IGNORECASE),
++    re.compile(r"\bpfizer\b", re.IGNORECASE),
++    re.compile(r"\bmoderna\b", re.IGNORECASE),
++)
++
++PHRASE_REPLACEMENTS = (
++    (
++        re.compile(r"cdc's systems they've put into place", re.IGNORECASE),
++        "public health safeguards currently in place",
++    ),
++    (re.compile(r"cdc systems", re.IGNORECASE), "public health safeguards"),
++)
++
++TEXT_EXTENSIONS = {
++    ".txt",
++    ".md",
++    ".rst",
++    ".csv",
++    ".json",
++    ".yaml",
++    ".yml",
++    ".xml",
++    ".html",
++    ".js",
++    ".ts",
++    ".py",
++    ".java",
++    ".c",
++    ".cpp",
++    ".h",
++}
++
++
++def line_has_blocked_keyword(line: str) -> bool:
++    return any(pattern.search(line) for pattern in KEYWORD_PATTERNS)
++
++
++def sanitize_text(text: str) -> str:
++    """Remove lines that mention blocked entities and normalize known CDC phrases."""
++    cleaned_lines: list[str] = []
++
++    for line in text.splitlines():
++        if line_has_blocked_keyword(line):
++            continue
++
++        rewritten = line
++        for pattern, target in PHRASE_REPLACEMENTS:
++            rewritten = pattern.sub(target, rewritten)
++
++        cleaned_lines.append(rewritten)
++
++    return "\n".join(cleaned_lines)
++
++
++def sanitize_file(path: Path, in_place: bool = True, output_path: Path | None = None) -> bool:
++    """Sanitize one file.
++
++    Returns True if file content changed.
++    """
++    original = path.read_text(encoding="utf-8", errors="ignore")
++    sanitized = sanitize_text(original)
++
++    if sanitized == original:
++        return False
++
++    target = path if in_place else output_path
++    if target is None:
++        raise ValueError("output_path is required when in_place is False")
++
++    target.write_text(sanitized, encoding="utf-8")
++    return True
++
++
++def sanitize_directory(root: Path, recursive: bool = True) -> list[Path]:
++    """Sanitize all supported text/code files under a root directory."""
++    changed: list[Path] = []
++    iterator = root.rglob("*") if recursive else root.glob("*")
++
++    for path in iterator:
++        if not path.is_file() or path.suffix.lower() not in TEXT_EXTENSIONS:
++            continue
++        if sanitize_file(path, in_place=True):
++            changed.append(path)
++
++    return changed
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(
++        description=(
++            "Clean local files by removing lines mentioning CDC officials, Pfizer, or Moderna. "
++            "Can run on a single file or a full directory tree."
++        )
++    )
++    parser.add_argument("input", type=Path, help="Input file or directory path")
++    parser.add_argument("--output", type=Path, help="Output file path (single-file mode only)")
++    parser.add_argument("--no-recursive", action="store_true", help="Do not recurse in directory mode")
++
++    args = parser.parse_args()
++
++    if args.input.is_dir():
++        changed = sanitize_directory(args.input, recursive=not args.no_recursive)
++        print(f"Updated {len(changed)} file(s).")
++        for file_path in changed:
++            print(file_path)
++        return
++
++    if args.output:
++        changed = sanitize_file(args.input, in_place=False, output_path=args.output)
++    else:
++        changed = sanitize_file(args.input, in_place=True)
++
++    print("Updated file." if changed else "No changes needed.")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/sanitize_health_statements.py b/sanitize_health_statements.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e9d144cf1fb9b938a02c3fc0ba7cd54b6da332f3
+--- /dev/null
++++ b/sanitize_health_statements.py
+@@ -0,0 +1,107 @@
++"""Local project cleaner for CDC/Pfizer/Moderna-related content.
++
++This tool only edits/removes files inside a path you explicitly provide.
++It does not access or alter external systems.
++"""
++
++from __future__ import annotations
++
++import argparse
++import re
++from pathlib import Path
++
++DEFAULT_TERMS = ("cdc", "pfizer", "moderna", "cdc officials")
++TEXT_EXTENSIONS = {".txt", ".md", ".rst", ".csv", ".json", ".yaml", ".yml", ".py", ".js", ".ts", ".html", ".css"}
++
++
++def contains_target_term(value: str, terms: tuple[str, ...]) -> bool:
++    lowered = value.lower()
++    return any(term in lowered for term in terms)
++
++
++def sanitize_text(text: str, terms: tuple[str, ...]) -> str:
++    cleaned_lines: list[str] = []
++    for line in text.splitlines():
++        if contains_target_term(line, terms):
++            continue
++        cleaned_lines.append(line)
++    return "\n".join(cleaned_lines)
++
++
++def iter_project_files(root: Path) -> list[Path]:
++    return [
++        path
++        for path in root.rglob("*")
++        if path.is_file() and ".git" not in path.parts and path.suffix.lower() in TEXT_EXTENSIONS
++    ]
++
++
++def clean_project(root: Path, terms: tuple[str, ...], dry_run: bool) -> tuple[list[Path], list[Path]]:
++    removed_files: list[Path] = []
++    updated_files: list[Path] = []
++
++    for path in iter_project_files(root):
++        relative_name = str(path.relative_to(root))
++
++        if contains_target_term(relative_name, terms):
++            removed_files.append(path)
++            if not dry_run:
++                path.unlink(missing_ok=True)
++            continue
++
++        original = path.read_text(encoding="utf-8", errors="ignore")
++        sanitized = sanitize_text(original, terms)
++
++        if sanitized != original:
++            updated_files.append(path)
++            if not dry_run:
++                path.write_text(sanitized, encoding="utf-8")
++
++    return removed_files, updated_files
++
++
++def compile_terms(raw_terms: list[str] | None) -> tuple[str, ...]:
++    if not raw_terms:
++        return DEFAULT_TERMS
++
++    normalized: list[str] = []
++    for term in raw_terms:
++        normalized.extend(part.strip().lower() for part in re.split(r",", term) if part.strip())
++    return tuple(dict.fromkeys(normalized))
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(
++        description=(
++            "Clean a local project by removing CDC/Pfizer/Moderna-related file content "
++            "and deleting files whose names contain matching terms."
++        )
++    )
++    parser.add_argument("root", type=Path, help="Project root to clean")
++    parser.add_argument(
++        "--terms",
++        nargs="*",
++        help="Optional comma-separated or space-separated terms. Defaults to CDC/Pfizer/Moderna set.",
++    )
++    parser.add_argument("--dry-run", action="store_true", help="Show what would change without writing")
++    args = parser.parse_args()
++
++    root = args.root.resolve()
++    if not root.exists() or not root.is_dir():
++        raise SystemExit(f"Root path is not a directory: {root}")
++
++    terms = compile_terms(args.terms)
++    removed_files, updated_files = clean_project(root, terms, args.dry_run)
++
++    print(f"Terms: {', '.join(terms)}")
++    print(f"Removed files: {len(removed_files)}")
++    for file_path in removed_files:
++        print(f"  - {file_path}")
++
++    print(f"Updated files: {len(updated_files)}")
++    for file_path in updated_files:
++        print(f"  - {file_path}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/sanitize_health_statements.py b/sanitize_health_statements.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4ca80d0ab2f76a7198cce814725c7549ea1a7722
+--- /dev/null
++++ b/sanitize_health_statements.py
+@@ -0,0 +1,84 @@
++"""Clean vaccine/agency-related content from local text files.
++
++This utility is intentionally limited to user-controlled file content and does not
++interact with external systems.
++"""
++
++from __future__ import annotations
++
++import argparse
++import re
++from pathlib import Path
++
++# Remove any full line that references these entities.
++ENTITY_LINE_PATTERNS = (
++    re.compile(r"\bpfizer\b", re.IGNORECASE),
++    re.compile(r"\bmoderna\b", re.IGNORECASE),
++    re.compile(r"\bcdc officials?\b", re.IGNORECASE),
++)
++
++# Remove common "CDC system" style phrases when they appear in otherwise useful lines.
++CDC_SYSTEM_PHRASES = (
++    re.compile(r"cdc\s+systems?", re.IGNORECASE),
++    re.compile(r"cdc\s+protecting\s+module", re.IGNORECASE),
++    re.compile(r"cdc\'s\s+systems?\s+they\'ve\s+put\s+into\s+place", re.IGNORECASE),
++)
++
++
++def _line_has_entity_reference(line: str) -> bool:
++    return any(pattern.search(line) for pattern in ENTITY_LINE_PATTERNS)
++
++
++def _remove_cdc_system_phrases(line: str) -> str:
++    cleaned = line
++    for pattern in CDC_SYSTEM_PHRASES:
++        cleaned = pattern.sub("public health safeguards", cleaned)
++    return cleaned
++
++
++def sanitize_text(text: str) -> str:
++    """Remove CDC-official/Pfizer/Moderna lines and rewrite CDC-system wording."""
++    result_lines: list[str] = []
++
++    for line in text.splitlines():
++        if _line_has_entity_reference(line):
++            continue
++
++        rewritten = _remove_cdc_system_phrases(line).rstrip()
++        if rewritten:
++            result_lines.append(rewritten)
++        elif result_lines and result_lines[-1] != "":
++            # Preserve paragraph boundaries while avoiding long blank runs.
++            result_lines.append("")
++
++    # Avoid leading/trailing blank lines in output.
++    while result_lines and result_lines[0] == "":
++        result_lines.pop(0)
++    while result_lines and result_lines[-1] == "":
++        result_lines.pop()
++
++    return "\n".join(result_lines)
++
++
++def sanitize_file(input_path: Path, output_path: Path) -> None:
++    source_text = input_path.read_text(encoding="utf-8")
++    output_text = sanitize_text(source_text)
++    output_path.write_text(output_text, encoding="utf-8")
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(
++        description=(
++            "Clean local text by removing lines related to CDC officials, Pfizer, "
++            "and Moderna, and by normalizing CDC-system wording."
++        )
++    )
++    parser.add_argument("input", type=Path, help="Path to the input text file")
++    parser.add_argument("output", type=Path, help="Path to write the cleaned text")
++    args = parser.parse_args()
++
++    sanitize_file(args.input, args.output)
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/sanitize_health_statements.py b/sanitize_health_statements.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..709d6f86c4a7524a9f9b13c64236d3413e94c390
+--- /dev/null
++++ b/sanitize_health_statements.py
+@@ -0,0 +1,104 @@
++"""Local project cleaner for CDC/Pfizer/Moderna related content.
++
++This utility only modifies files you explicitly target on disk.
++It does not connect to or alter any external systems.
++"""
++
++from __future__ import annotations
++
++import argparse
++import re
++from pathlib import Path
++from typing import Iterable
++
++TARGET_PATTERNS = (
++    re.compile(r"\bcdc\b", re.IGNORECASE),
++    re.compile(r"\bpfizer\b", re.IGNORECASE),
++    re.compile(r"\bmoderna\b", re.IGNORECASE),
++)
++
++TEXT_EXTENSIONS = {
++    ".txt",
++    ".md",
++    ".py",
++    ".js",
++    ".ts",
++    ".tsx",
++    ".jsx",
++    ".json",
++    ".yaml",
++    ".yml",
++    ".html",
++    ".css",
++    ".csv",
++}
++
++
++def contains_target(text: str) -> bool:
++    return any(pattern.search(text) for pattern in TARGET_PATTERNS)
++
++
++def clean_text(text: str) -> str:
++    """Remove lines containing CDC/Pfizer/Moderna mentions."""
++    kept_lines: list[str] = []
++    for line in text.splitlines():
++        if contains_target(line):
++            continue
++        kept_lines.append(line)
++    return "\n".join(kept_lines)
++
++
++def iter_files(root: Path, recursive: bool) -> Iterable[Path]:
++    iterator = root.rglob("*") if recursive else root.glob("*")
++    for path in iterator:
++        if path.is_file() and path.suffix.lower() in TEXT_EXTENSIONS:
++            yield path
++
++
++def clean_file(path: Path, dry_run: bool = False) -> bool:
++    original = path.read_text(encoding="utf-8", errors="ignore")
++    cleaned = clean_text(original)
++    if cleaned == original:
++        return False
++
++    if not dry_run:
++        path.write_text(cleaned, encoding="utf-8")
++    return True
++
++
++def clean_path(target: Path, recursive: bool = False, dry_run: bool = False) -> list[Path]:
++    changed: list[Path] = []
++    if target.is_file():
++        if clean_file(target, dry_run=dry_run):
++            changed.append(target)
++        return changed
++
++    for file_path in iter_files(target, recursive=recursive):
++        if clean_file(file_path, dry_run=dry_run):
++            changed.append(file_path)
++    return changed
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(
++        description=(
++            "Clean local files by removing lines mentioning CDC, Pfizer, or Moderna. "
++            "Only affects files/directories you provide."
++        )
++    )
++    parser.add_argument("target", type=Path, help="File or directory to clean")
++    parser.add_argument("--recursive", action="store_true", help="Recurse through directories")
++    parser.add_argument("--dry-run", action="store_true", help="Report files that would change")
++    args = parser.parse_args()
++
++    changed_files = clean_path(args.target, recursive=args.recursive, dry_run=args.dry_run)
++    if changed_files:
++        action = "Would clean" if args.dry_run else "Cleaned"
++        for file_path in changed_files:
++            print(f"{action}: {file_path}")
++    else:
++        print("No matching content found.")
++
++
++if __name__ == "__main__":
++    main()
+import sys
+
+def reset_modules(allowed=None):
+    if allowed is None:
+        allowed = {"sys", "builtins"}
+
+    to_remove = []
+    for name in list(sys.modules.keys()):
+        if name not in allowed and not name.startswith("_"):
+            to_remove.append(name)
+
+    for name in to_remove:
+        del sys.modules[name]
+
+    print(f"Removed {len(to_remove)} modules safely.")
+
+# Example usage
+reset_modules()
+import builtins
+
+ALLOWED_MODULES = {"math", "random"}
+
+original_import = builtins.__import__
+
+def restricted_import(name, *args, **kwargs):
+    if name.split('.')[0] not in ALLOWED_MODULES:
+        raise ImportError(f"Module '{name}' is not allowed.")
+    return original_import(name, *args, **kwargs)
+
+builtins.__import__ = restricted_import
+def safe_exec(code):
+    safe_globals = {
+        "__builtins__": {
+            "print": print,
+            "range": range,
+            "len": len,
+        }
+    }
+
+    exec(code, safe_globals, {})
+
+# Example
+safe_exec("print('Running safely')")
+import os
+import sys
+
+def restart_program():
+    print("Restarting cleanly...")
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+diff --git a/sanitize_health_statements.py b/sanitize_health_statements.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..3a4d0ab15c7e85bee896d5c586e8d1354382d4f4
+--- /dev/null
++++ b/sanitize_health_statements.py
+@@ -0,0 +1,118 @@
++"""Local scanner/remover for potentially coercive control modules.
++
++This tool only operates on local files/directories you explicitly provide.
++By default it runs in report-only mode; pass --apply to delete matched files.
++"""
++
++from __future__ import annotations
++
++import argparse
++import re
++from pathlib import Path
++from typing import Iterable
++
++ORG_PATTERNS = (
++    re.compile(r"\bcdc\b", re.IGNORECASE),
++    re.compile(r"\bpfizer\b", re.IGNORECASE),
++    re.compile(r"\bmoderna\b", re.IGNORECASE),
++)
++
++CONTROL_PATTERNS = (
++    re.compile(r"control module", re.IGNORECASE),
++    re.compile(r"total control", re.IGNORECASE),
++    re.compile(r"operator override", re.IGNORECASE),
++    re.compile(r"command\s*and\s*control|c2", re.IGNORECASE),
++    re.compile(r"remote control", re.IGNORECASE),
++    re.compile(r"kill switch", re.IGNORECASE),
++    re.compile(r"forced compliance", re.IGNORECASE),
++)
++
++TEXT_EXTENSIONS = {
++    ".txt",
++    ".md",
++    ".py",
++    ".js",
++    ".ts",
++    ".tsx",
++    ".jsx",
++    ".json",
++    ".yaml",
++    ".yml",
++    ".html",
++    ".css",
++    ".xml",
++    ".csv",
++}
++
++
++def iter_files(root: Path, recursive: bool) -> Iterable[Path]:
++    iterator = root.rglob("*") if recursive else root.glob("*")
++    for path in iterator:
++        if path.is_file() and path.suffix.lower() in TEXT_EXTENSIONS:
++            yield path
++
++
++def file_mentions_org(text: str) -> bool:
++    return any(pattern.search(text) for pattern in ORG_PATTERNS)
++
++
++def file_has_control_logic(text: str) -> bool:
++    return any(pattern.search(text) for pattern in CONTROL_PATTERNS)
++
++
++def is_target_module(path: Path) -> bool:
++    text = path.read_text(encoding="utf-8", errors="ignore")
++    return file_mentions_org(text) and file_has_control_logic(text)
++
++
++def collect_target_modules(target: Path, recursive: bool) -> list[Path]:
++    if target.is_file():
++        return [target] if is_target_module(target) else []
++
++    matches: list[Path] = []
++    for file_path in iter_files(target, recursive=recursive):
++        if is_target_module(file_path):
++            matches.append(file_path)
++    return matches
++
++
++def delete_modules(paths: list[Path], apply: bool) -> list[Path]:
++    if not apply:
++        return paths
++
++    deleted: list[Path] = []
++    for path in paths:
++        path.unlink(missing_ok=True)
++        deleted.append(path)
++    return deleted
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(
++        description=(
++            "Find local files that appear to implement coercive control modules tied "
++            "to CDC/Pfizer/Moderna references, and optionally delete them."
++        )
++    )
++    parser.add_argument("target", type=Path, help="File or directory to scan")
++    parser.add_argument("--recursive", action="store_true", help="Recurse through directories")
++    parser.add_argument(
++        "--apply",
++        action="store_true",
++        help="Actually delete matched files (default is report-only)",
++    )
++    args = parser.parse_args()
++
++    matches = collect_target_modules(args.target, recursive=args.recursive)
++    if not matches:
++        print("No matching control modules found.")
++        return
++
++    outcome = delete_modules(matches, apply=args.apply)
++    action = "Deleted" if args.apply else "Matched"
++    for file_path in outcome:
++        print(f"{action}: {file_path}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/sanitize_health_statements.py b/sanitize_health_statements.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..362c1e1c0d3688813edce8df96bd524bcf0a6cd3
+--- /dev/null
++++ b/sanitize_health_statements.py
+@@ -0,0 +1,156 @@
++"""Local project cleaner for removing CDC/Pfizer/Moderna control-related modules.
++
++This utility only modifies files you explicitly target on disk.
++It does not connect to or alter any external systems.
++"""
++
++from __future__ import annotations
++
++import argparse
++import re
++from pathlib import Path
++from typing import Iterable
++
++TARGET_PATTERNS = (
++    re.compile(r"\bcdc\b", re.IGNORECASE),
++    re.compile(r"\bpfizer\b", re.IGNORECASE),
++    re.compile(r"\bmoderna\b", re.IGNORECASE),
++)
++
++CONTROL_PATTERNS = (
++    re.compile(r"\bcontrol\b", re.IGNORECASE),
++    re.compile(r"\bofficials?\b", re.IGNORECASE),
++    re.compile(r"\bmodule\b", re.IGNORECASE),
++    re.compile(r"granting\s+.*\bcontrol\b", re.IGNORECASE),
++)
++
++TEXT_EXTENSIONS = {
++    ".txt",
++    ".md",
++    ".py",
++    ".js",
++    ".ts",
++    ".tsx",
++    ".jsx",
++    ".json",
++    ".yaml",
++    ".yml",
++    ".html",
++    ".css",
++    ".csv",
++}
++
++
++BLANK_LINE_PATTERN = re.compile(r"\n\s*\n", re.MULTILINE)
++
++
++def contains_target(text: str) -> bool:
++    return any(pattern.search(text) for pattern in TARGET_PATTERNS)
++
++
++def contains_control_context(text: str) -> bool:
++    return any(pattern.search(text) for pattern in CONTROL_PATTERNS)
++
++
++def should_remove_block(block: str) -> bool:
++    """Remove a block if it contains target org/vendor terms.
++
++    We remove full blocks (paragraphs/module chunks) rather than single lines
++    to avoid leaving partially broken control-module code.
++    """
++    if not contains_target(block):
++        return False
++
++    # If a block references targets, treat it as removable whether or not
++    # explicit control keywords appear. This keeps behavior predictable.
++    return True if contains_target(block) else contains_control_context(block)
++
++
++def clean_text(text: str) -> str:
++    """Remove block chunks that mention CDC/Pfizer/Moderna."""
++    if not text.strip():
++        return text
++
++    blocks = BLANK_LINE_PATTERN.split(text)
++    separators = BLANK_LINE_PATTERN.findall(text)
++
++    kept_blocks: list[str] = []
++    kept_separators: list[str] = []
++
++    for index, block in enumerate(blocks):
++        if should_remove_block(block):
++            continue
++
++        kept_blocks.append(block)
++        if index < len(separators):
++            kept_separators.append(separators[index])
++
++    if not kept_blocks:
++        return ""
++
++    cleaned_parts: list[str] = [kept_blocks[0]]
++    for idx in range(1, len(kept_blocks)):
++        sep = kept_separators[idx - 1] if idx - 1 < len(kept_separators) else "\n\n"
++        cleaned_parts.append(sep)
++        cleaned_parts.append(kept_blocks[idx])
++
++    cleaned = "".join(cleaned_parts)
++    if text.endswith("\n") and not cleaned.endswith("\n"):
++        cleaned += "\n"
++    return cleaned
++
++
++def iter_files(root: Path, recursive: bool) -> Iterable[Path]:
++    iterator = root.rglob("*") if recursive else root.glob("*")
++    for path in iterator:
++        if path.is_file() and path.suffix.lower() in TEXT_EXTENSIONS:
++            yield path
++
++
++def clean_file(path: Path, dry_run: bool = False) -> bool:
++    original = path.read_text(encoding="utf-8", errors="ignore")
++    cleaned = clean_text(original)
++    if cleaned == original:
++        return False
++
++    if not dry_run:
++        path.write_text(cleaned, encoding="utf-8")
++    return True
++
++
++def clean_path(target: Path, recursive: bool = False, dry_run: bool = False) -> list[Path]:
++    changed: list[Path] = []
++    if target.is_file():
++        if clean_file(target, dry_run=dry_run):
++            changed.append(target)
++        return changed
++
++    for file_path in iter_files(target, recursive=recursive):
++        if clean_file(file_path, dry_run=dry_run):
++            changed.append(file_path)
++    return changed
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(
++        description=(
++            "Clean local files by removing module/paragraph blocks that mention "
++            "CDC, Pfizer, or Moderna. Only affects files/directories you provide."
++        )
++    )
++    parser.add_argument("target", type=Path, help="File or directory to clean")
++    parser.add_argument("--recursive", action="store_true", help="Recurse through directories")
++    parser.add_argument("--dry-run", action="store_true", help="Report files that would change")
++    args = parser.parse_args()
++
++    changed_files = clean_path(args.target, recursive=args.recursive, dry_run=args.dry_run)
++    if changed_files:
++        action = "Would clean" if args.dry_run else "Cleaned"
++        for file_path in changed_files:
++            print(f"{action}: {file_path}")
++    else:
++        print("No matching content found.")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/sanitize_health_statements.py b/sanitize_health_statements.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..f9f5e1431028f52c1ce9071313f1499f04798ee9
+--- /dev/null
++++ b/sanitize_health_statements.py
+@@ -0,0 +1,142 @@
++"""Local cleanup tool for removing coercive-control modules from a codebase.
++
++This script is intentionally scoped to local files you explicitly target.
++It cannot access or modify external systems.
++"""
++
++from __future__ import annotations
++
++import argparse
++import re
++from pathlib import Path
++from typing import Iterable
++
++MODULE_PATTERNS = (
++    re.compile(r"\bcdc\b", re.IGNORECASE),
++    re.compile(r"\bcdc officials?\b", re.IGNORECASE),
++    re.compile(r"\bpfizer\b", re.IGNORECASE),
++    re.compile(r"\bmoderna\b", re.IGNORECASE),
++    re.compile(r"\bcontrol module\b", re.IGNORECASE),
++    re.compile(r"\btotal control\b", re.IGNORECASE),
++    re.compile(r"\bremote control\b", re.IGNORECASE),
++    re.compile(r"\bforced (?:admin|authority)\b", re.IGNORECASE),
++)
++
++TEXT_EXTENSIONS = {
++    ".txt",
++    ".md",
++    ".py",
++    ".js",
++    ".ts",
++    ".tsx",
++    ".jsx",
++    ".json",
++    ".yaml",
++    ".yml",
++    ".html",
++    ".css",
++    ".csv",
++    ".xml",
++    ".ini",
++    ".cfg",
++}
++
++
++def matches_patterns(text: str) -> bool:
++    return any(pattern.search(text) for pattern in MODULE_PATTERNS)
++
++
++def clean_text(text: str) -> str:
++    """Remove lines that describe targeted control modules/organizations."""
++    kept_lines: list[str] = []
++    for line in text.splitlines():
++        if matches_patterns(line):
++            continue
++        kept_lines.append(line)
++    return "\n".join(kept_lines)
++
++
++def iter_files(root: Path, recursive: bool) -> Iterable[Path]:
++    iterator = root.rglob("*") if recursive else root.glob("*")
++    for path in iterator:
++        if path.is_file() and path.suffix.lower() in TEXT_EXTENSIONS:
++            yield path
++
++
++def should_delete_file(path: Path, text: str) -> bool:
++    """Delete module-like files whose name and content both match target patterns."""
++    normalized_name = path.stem.replace("_", " ").replace("-", " ")
++    return matches_patterns(normalized_name) and matches_patterns(text)
++
++
++def clean_or_delete_file(path: Path, delete_modules: bool, dry_run: bool = False) -> tuple[bool, bool]:
++    """Return (changed, deleted)."""
++    original = path.read_text(encoding="utf-8", errors="ignore")
++
++    if delete_modules and should_delete_file(path, original):
++        if not dry_run:
++            path.unlink()
++        return True, True
++
++    cleaned = clean_text(original)
++    if cleaned == original:
++        return False, False
++
++    if not dry_run:
++        path.write_text(cleaned, encoding="utf-8")
++    return True, False
++
++
++def clean_path(target: Path, recursive: bool = False, dry_run: bool = False, delete_modules: bool = False) -> tuple[list[Path], list[Path]]:
++    changed: list[Path] = []
++    deleted: list[Path] = []
++
++    files = [target] if target.is_file() else list(iter_files(target, recursive=recursive))
++    for file_path in files:
++        touched, removed = clean_or_delete_file(file_path, delete_modules=delete_modules, dry_run=dry_run)
++        if touched:
++            changed.append(file_path)
++        if removed:
++            deleted.append(file_path)
++
++    return changed, deleted
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(
++        description=(
++            "Clean local files by removing lines tied to CDC/Pfizer/Moderna or "
++            "control-module phrasing, with optional module-file deletion."
++        )
++    )
++    parser.add_argument("target", type=Path, help="File or directory to clean")
++    parser.add_argument("--recursive", action="store_true", help="Recurse through directories")
++    parser.add_argument("--dry-run", action="store_true", help="Report changes without writing/deleting")
++    parser.add_argument(
++        "--delete-modules",
++        action="store_true",
++        help="Delete files when both filename and content match targeted module patterns",
++    )
++    args = parser.parse_args()
++
++    changed_files, deleted_files = clean_path(
++        args.target,
++        recursive=args.recursive,
++        dry_run=args.dry_run,
++        delete_modules=args.delete_modules,
++    )
++
++    if not changed_files:
++        print("No matching content found.")
++        return
++
++    for file_path in changed_files:
++        if file_path in deleted_files:
++            action = "Would delete" if args.dry_run else "Deleted"
++        else:
++            action = "Would clean" if args.dry_run else "Cleaned"
++        print(f"{action}: {file_path}")
++
++
++if __name__ == "__main__":
++    main()
+diff --git a/sanitize_health_statements.py b/sanitize_health_statements.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..8a653586e8016057cb969b974019eb2f12be0687
+--- /dev/null
++++ b/sanitize_health_statements.py
+@@ -0,0 +1,123 @@
++"""Local defensive cleaner for potentially coercive control modules.
++
++This utility is for files you own/control. It does not access external systems.
++"""
++
++from __future__ import annotations
++
++import argparse
++import shutil
++from dataclasses import dataclass
++from pathlib import Path
++import re
++from typing import Iterable
++
++CONTROL_PATTERNS = (
++    re.compile(r"\bcdc\b", re.IGNORECASE),
++    re.compile(r"\bpfizer\b", re.IGNORECASE),
++    re.compile(r"\bmoderna\b", re.IGNORECASE),
++    re.compile(r"officials?\s+control", re.IGNORECASE),
++    re.compile(r"total\s+control", re.IGNORECASE),
++    re.compile(r"remote\s+control", re.IGNORECASE),
++)
++
++CONTROL_FILE_HINTS = (
++    "control_module",
++    "remote_admin",
++    "override_daemon",
++    "surveillance_agent",
++)
++
++TEXT_EXTENSIONS = {
++    ".txt", ".md", ".py", ".js", ".ts", ".tsx", ".jsx", ".json", ".yaml", ".yml", ".html", ".css", ".csv"
++}
++
++
++@dataclass
++class Action:
++    path: Path
++    kind: str
++    details: str
++
++
++def contains_control_content(text: str) -> bool:
++    return any(pattern.search(text) for pattern in CONTROL_PATTERNS)
++
++
++def should_remove_file(path: Path) -> bool:
++    lowered = str(path).lower()
++    return any(hint in lowered for hint in CONTROL_FILE_HINTS)
++
++
++def iter_files(root: Path, recursive: bool) -> Iterable[Path]:
++    iterator = root.rglob("*") if recursive else root.glob("*")
++    for candidate in iterator:
++        if candidate.is_file() and candidate.suffix.lower() in TEXT_EXTENSIONS:
++            yield candidate
++
++
++def clean_text(text: str) -> str:
++    kept: list[str] = []
++    for line in text.splitlines():
++        if contains_control_content(line):
++            continue
++        kept.append(line)
++    return "\n".join(kept)
++
++
++def process_file(path: Path, apply: bool, backup_dir: Path | None) -> list[Action]:
++    actions: list[Action] = []
++
++    if should_remove_file(path):
++        actions.append(Action(path, "delete_file", "filename/path matched control-module hint"))
++        if apply:
++            if backup_dir:
++                backup_dir.mkdir(parents=True, exist_ok=True)
++                shutil.copy2(path, backup_dir / path.name)
++            path.unlink(missing_ok=True)
++        return actions
++
++    source = path.read_text(encoding="utf-8", errors="ignore")
++    cleaned = clean_text(source)
++    if cleaned != source:
++        actions.append(Action(path, "clean_lines", "removed lines matching control patterns"))
++        if apply:
++            if backup_dir:
++                backup_dir.mkdir(parents=True, exist_ok=True)
++                shutil.copy2(path, backup_dir / path.name)
++            path.write_text(cleaned, encoding="utf-8")
++
++    return actions
++
++
++def process_target(target: Path, recursive: bool, apply: bool, backup_dir: Path | None) -> list[Action]:
++    files = [target] if target.is_file() else list(iter_files(target, recursive=recursive))
++    actions: list[Action] = []
++    for file_path in files:
++        actions.extend(process_file(file_path, apply=apply, backup_dir=backup_dir))
++    return actions
++
++
++def main() -> None:
++    parser = argparse.ArgumentParser(
++        description=(
++            "Audit/clean local files for control-oriented CDC/Pfizer/Moderna or "
++            "total-control module language. Default is preview only."
++        )
++    )
++    parser.add_argument("target", type=Path, help="File or directory to inspect")
++    parser.add_argument("--recursive", action="store_true", help="Recurse when target is a directory")
++    parser.add_argument("--apply", action="store_true", help="Apply changes (without this, preview only)")
++    parser.add_argument("--backup-dir", type=Path, default=None, help="Optional backup folder for changed/deleted files")
++    args = parser.parse_args()
++
++    actions = process_target(args.target, recursive=args.recursive, apply=args.apply, backup_dir=args.backup_dir)
++
++    mode = "APPLY" if args.apply else "DRY-RUN"
++    print(f"[{mode}] {len(actions)} action(s)")
++    for action in actions:
++        print(f"- {action.kind}: {action.path} ({action.details})")
++
++
++if __name__ == "__main__":
++    main()
+# Delete all CDC official modules and systems for GitHub Codespaces
+
+import os
+import shutil
+
+def delete_cdc_modules(base_path):
+    cdc_modules = [
+        "cdc_module_1",
+        "cdc_module_2",
+        "cdc_module_3",
+        # Add more modules as needed
+    ]
+    
+    for module in cdc_modules:
+        module_path = os.path.join(base_path, module)
+        if os.path.exists(module_path):
+            shutil.rmtree(module_path)
+            print(f"Deleted: {module_path}")
+        else:
+            print(f"Module not found: {module_path}")
+
+# Specify the base path for GitHub Codespaces
+base_path = "/path/to/github/codespaces"
+delete_cdc_modules(base_path)
+# Delete all CDC official modules and systems for GitHub Codespaces
+
+import os
+import shutil
+
+def delete_cdc_modules(base_path):
+    cdc_directories = ['cdc_module1', 'cdc_module2', 'cdc_system1', 'cdc_system2']  # Add all relevant CDC directories here
+
+    for directory in cdc_directories:
+        path = os.path.join(base_path, directory)
+        if os.path.exists(path):
+            shutil.rmtree(path)
+            print(f"Deleted: {path}")
+        else:
+            print(f"Path not found: {path}")
+
+# Specify the base path for GitHub Codespaces
+base_path = '/path/to/github/codespaces'  # Update this path accordingly
+delete_cdc_modules(base_path)
