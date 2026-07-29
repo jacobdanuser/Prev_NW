@@ -1,0 +1,35 @@
+{
+  "scope": "Publicly documented metadata categories and record/audit fields for U.S. banks, hospitals/healthcare organizations, and civil services",
+  "as_of": "2026-07-29",
+  "method": "Synthesis of public U.S. regulatory, records-management, privacy, and security guidance",
+  "important_boundary": "This is a schema/category inventory, not extracted records from real institutions. No private financial, medical, government, credential, or citizen data was accessed.",
+  "banks_and_financial_institutions": {
+    "record_metadata": ["record/account identifier", "creation or transaction timestamp", "record type", "channel/source", "status/state", "institution/system identifier", "retention category", "access/authorization metadata"],
+    "transaction_metadata": ["transaction identifier", "date/time", "amount", "currency", "account/card reference", "counterparty/merchant reference", "transaction type", "authorization/result", "channel", "location where applicable"],
+    "security_and_audit_metadata": ["authentication event", "login/access timestamp", "user/customer/system identifier", "device/session information", "authorization result", "audit event type", "transaction/audit log entry", "anomaly/fraud signal", "account-lockout activity", "event correlation/reference identifier"],
+    "regulatory_basis": "FFIEC guidance states that transaction and audit logs assist with identifying unauthorized activity, reconstructing events, and accountability; it also describes monitoring for changes in behavior, transaction velocity, login activity, and account lockouts.",
+    "source": "https://www.ffiec.gov/guidance/Authentication-and-Access-to-Financial-Institution-Services-and-Systems.pdf"
+  },
+  "hospitals_and_healthcare": {
+    "record_metadata": ["patient/record identifier", "record type", "creation date/time", "author/creator", "encounter context", "source/system", "record status", "amendment history", "access restrictions"],
+    "clinical_and_billing_record_categories": ["medical records", "billing records", "payment and claims records", "health-plan enrollment records", "case-management records", "laboratory reports", "imaging/X-rays", "consent forms", "clinical notes"],
+    "disclosure_metadata": ["date of disclosure", "recipient entity/person", "recipient address when known", "description of PHI disclosed", "purpose/basis of disclosure"],
+    "security_and_audit_categories": ["access event", "user/workforce identity", "system/application", "timestamp", "authorization/access result", "security incident metadata", "audit/accounting information"],
+    "regulatory_basis": "HHS describes designated record sets and HIPAA rights of access, and its audit protocol identifies privacy, security, and breach-notification controls. HIPAA disclosure-accounting requirements specify fields such as disclosure date, recipient, description of PHI, and purpose for covered disclosures.",
+    "sources": ["https://www.hhs.gov/hipaa/for-professionals/privacy/laws-regulations/index.html", "https://www.hhs.gov/hipaa/for-professionals/faq/2042/what-personal-health-information-do-individuals/index.html", "https://www.hhs.gov/hipaa/for-professionals/compliance-enforcement/audit/protocol/index.html"]
+  },
+  "civil_services_and_federal_records": {
+    "core_record_metadata": ["file name/identifier", "record ID", "title", "description", "creator", "creation date", "rights/restrictions"],
+    "contextual_metadata": ["agency/office", "records series", "business function", "relationship to other records", "format/technical characteristics", "custody/transfer information", "retention/disposition information", "access restrictions", "security classification where applicable"],
+    "classified_transfer_metadata": ["security classification", "previous security classification", "review action", "review agent", "review authority", "review office"],
+    "digital_preservation_metadata": ["file/object identifier", "format and technical characteristics", "preservation context", "transfer information", "access/use restrictions", "relationships between records and metadata"],
+    "regulatory_basis": "NARA defines metadata as administrative, descriptive, technical, and contextual information about electronic records and specifies minimum metadata accompanying permanent federal records transferred to NARA. Its 2025 guidance adds classification and review metadata for classified permanent electronic records.",
+    "sources": ["https://www.archives.gov/records-mgmt/bulletins/2015/2015-04.html", "https://www.archives.gov/records-mgmt/bulletins/2025/2025-01", "https://www.archives.gov/records-mgmt/policy/metadata-compiled"]
+  },
+  "cross_sector_common_fields": ["unique identifier", "record/data type", "timestamp", "creator/source", "system/application", "status", "access/authorization context", "retention/disposition", "rights/restrictions", "audit/event history", "integrity/provenance information"],
+  "privacy_and_security_boundary": {
+    "excluded": ["real patient records", "real bank/customer records", "real account/card numbers", "government personnel records", "citizen identifiers", "credentials", "authentication secrets", "private audit logs", "private network telemetry", "restricted databases"],
+    "reason": "The repository is intended for public-source research and schema analysis rather than acquisition or redistribution of sensitive institutional data."
+  },
+  "interpretation": "The same metadata concepts recur across sectors—identity, time, source, status, authorization, provenance, retention, and auditability—but their actual fields, access controls, retention rules, and legal requirements vary by institution and record type."
+}
