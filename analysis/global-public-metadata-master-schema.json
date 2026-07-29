@@ -1,0 +1,22 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Global public-source metadata catalog and schema framework",
+  "coverage":"All sovereign states and dependent/territorial jurisdictions can be represented; this file is a schema/index rather than a claim that every national dataset has been exhaustively downloaded.",
+  "interpretation_of_underground_regions":"Subterranean/geological, underground infrastructure, mining, cave, tunnel, utility, and subsurface administrative datasets where publicly available. No clandestine or restricted underground-facility data is included.",
+  "country_record_schema":["country/jurisdiction","administrative level","agency/institution","dataset/record title","dataset identifier","record type","creator/publisher","date created","date updated","geographic coverage","temporal coverage","language","format","license/access terms","provenance","source URL","access/restriction status","retention/disposition where applicable","version","checksum/integrity field when publicly supplied"],
+  "government_and_civil_records":["legislation","regulations","gazettes","court/public docket metadata","elections","census","demographics","administrative boundaries","public budgets","procurement","public officials/organizational directories","records schedules","archival catalogs","open-data catalogs"],
+  "financial_metadata":["public financial datasets","central-bank statistics","exchange-rate datasets","public company filings","securities-market reference data","budget/appropriation records","procurement payment metadata"],
+  "health_metadata":["public health statistics","hospital/health-system aggregate datasets","disease surveillance aggregates","clinical-trial registries","health-service utilization aggregates","public health reporting metadata"],
+  "scientific_environmental_metadata":["weather","climate","air quality","water quality","geology","soil","land cover","biodiversity","seismic records","remote sensing catalogs","oceanographic records"],
+  "transport_and_infrastructure_metadata":["roads","rail","ports","airports","public transit","traffic aggregates","bridges","utilities","energy infrastructure datasets","telecommunications coverage datasets"],
+  "underground_subsurface_schema":["site/location identifier","depth or elevation reference","geologic unit","subsurface feature type","mine/tunnel/cave/utility type","survey date","survey method","geometry/coordinates where publicly released","material/geology","water/groundwater attributes","hazard classification","infrastructure ownership/operator where public","access status","source/provenance","accuracy/uncertainty"],
+  "historical_and_archival_metadata":["archive","collection/fonds","series","box/folder or catalog identifier","document identifier","creator","date/date range","description","language/script","physical/digital format","provenance","digitization status","access restriction","finding aid"],
+  "cross_dataset_standard_fields":["identifier","title","description","publisher","creator","date","update frequency","geographic scope","temporal scope","format","license","provenance","version","quality/accuracy","access status","related datasets"],
+  "recommended_country_index":{
+    "regions":["Africa","Americas","Asia","Europe","Oceania"],
+    "jurisdiction_classes":["sovereign state","dependent territory","autonomous region","special administrative region","international territory/zone","other public jurisdiction"]
+  },
+  "collection_method":"Use official national open-data portals, national statistical offices, archives, cadastral/geological agencies, central banks, public-health authorities, environmental agencies, and international repositories. Record the source and publication date for every dataset.",
+  "security_boundary":["No private personal data","No credentials or authentication secrets","No restricted financial accounts","No private medical records","No classified government information","No unauthorized network telemetry","No clandestine underground-facility intelligence","No proprietary source code"],
+  "limitations":["There is no finite universal list called 'every metadata set'; datasets change continuously and many countries publish thousands of catalogs and schemas.","The repository entry is therefore a master schema and collection plan, not a representation that every global dataset has already been extracted.","Public availability and legal access vary by jurisdiction and dataset."]
+}
