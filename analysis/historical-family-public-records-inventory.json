@@ -1,0 +1,23 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Public historical records and archival metadata only",
+  "entities":{
+    "Comba":{"status":"surname_ambiguous","public_record_context":"FamilySearch identifies Comba as a surname with historical collections that can include census, passenger-list, birth/death, and other genealogical records.","source":"https://www.familysearch.org/en/surname?surname=Comba"},
+    "Epstein":{"status":"surname_and_public_case_context","public_record_context":"The U.S. Department of Justice maintains a public Epstein Library containing releasable DOJ disclosures and other Epstein-related records. The library states that victim names and other identifying information have been redacted where applicable.","source":"https://www.justice.gov/epstein"}
+  },
+  "historical_record_types":{
+    "genealogical":["census records","birth records","death records","marriage records","immigration/passenger lists","naturalization records","military service records","military pension records","land records","court records","probate records","cemetery records","church records where held by appropriate archives"],
+    "institutional":["business registrations","corporate filings","property/land filings","court docket metadata","professional licenses","election/public-office records","published biographies","archival finding aids","newspaper/publication references"],
+    "public_case_records":["case identifiers","filing dates","court/jurisdiction","document type","party names as officially published","docket events","document provenance","redaction status","release/publication date"]
+  },
+  "metadata_fields_for_each_record":["record identifier","record type","archive/agency","collection/series","jurisdiction","date or date range","creator/originating body","place","person/entity names as published","description","source URL/catalog reference","digitization status","access restrictions","redaction status","provenance","confidence/verification status"],
+  "research_sources":[
+    {"name":"National Archives genealogy resources","url":"https://www.archives.gov/research/genealogy/start-research/nara-resources","coverage":"Federal genealogical records and research guidance"},
+    {"name":"National Archives genealogy resources","url":"https://www.archives.gov/research/genealogy","coverage":"Census, passenger, military, citizenship, land, court and related historical research resources"},
+    {"name":"DOJ Epstein Library","url":"https://www.justice.gov/epstein","coverage":"Publicly released Epstein-related DOJ records and disclosures"},
+    {"name":"FamilySearch Comba surname collection","url":"https://www.familysearch.org/en/surname?surname=Comba","coverage":"Public surname and historical-record research categories"}
+  ],
+  "important_families_policy":"There is no objective universal list of 'all important families.' The repository should define inclusion by a documented historical, governmental, institutional, cultural, or archival significance criterion rather than by wealth, fame, or surname alone.",
+  "privacy_boundary":["No private living-person dossiers","No non-public addresses or contact details","No credentials or financial-account data","No medical records","No restricted government records","No victim-identifying information from sensitive case files","No inference of criminal conduct from surname or association alone"],
+  "status":"This file is an archival metadata framework and source inventory. It does not claim to contain every record associated with either surname."
+}
