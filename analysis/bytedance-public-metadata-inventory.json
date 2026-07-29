@@ -1,0 +1,30 @@
+{
+  "scope": "Publicly documented metadata and data categories; not private user metadata or proprietary telemetry",
+  "as_of": "2026-07-29",
+  "terminology_note": "The official corporate site identifies the company as ByteDance. This inventory therefore treats 'BitDance' as an unverified variant rather than assuming it is an official corporate name.",
+  "sources": [
+    {"publisher":"ByteDance","url":"https://www.bytedance.com/en/","type":"official corporate site"},
+    {"publisher":"TikTok USDS Joint Venture LLC","url":"https://t.tiktok.com/legal/page/us/privacy-policy/en?lang=en","type":"US privacy policy","last_updated":"2026-07-15"},
+    {"publisher":"TikTok","url":"https://in.tiktok.com/legal/page/eea/privacy-policy/en","type":"EEA/UK/Switzerland privacy policy","last_updated":"2025-11-30"},
+    {"publisher":"TikTok","url":"https://t.tiktok.com/legal/page/us/terms-of-service/en","type":"US terms of service"}
+  ],
+  "publicly_documented_metadata_categories": {
+    "content_metadata": ["when content was created", "where content was created", "by whom content was created"],
+    "message_metadata": ["when a message or prompt was sent", "username that can associate content with an account"],
+    "ai_interaction_metadata": ["metadata associated with prompts, questions, files, and AI interactions"],
+    "technical_device_and_network": ["IP address", "user agent", "mobile carrier", "time zone settings", "advertising identifiers", "device model", "device system", "network type", "screen resolution", "operating system", "app names and file names/types", "keystroke patterns or rhythms", "battery state", "audio settings", "connected audio devices", "device IDs", "user IDs"],
+    "location": ["approximate location inferred from SIM region, IP address, and device settings", "approximate or precise location when location services are enabled"],
+    "content_characteristics": ["objects and scenery", "faces and body-part locations", "spoken-word text", "potential biometric identifiers/information such as faceprints and voiceprints where applicable"],
+    "cookies_and_similar_technologies": ["cookies", "web beacons", "pixels", "SDKs", "usage/interaction measurements"],
+    "third_party_sources": ["public profile information from linked services", "mobile advertising identifiers", "hashed email addresses and phone numbers", "cookie identifiers", "information from advertiser/measurement partners about pages visited, purchases, and apps downloaded"],
+    "account_and_transaction": ["username", "email", "phone number", "profile image", "account settings", "purchase history", "payment/billing/delivery information when applicable"]
+  },
+  "documented_uses": ["operate services", "personalization and recommendations", "advertising and measurement", "research and technology improvement", "safety/security and abuse detection", "legal compliance", "content and policy enforcement"],
+  "security_and_retention": {
+    "documented_controls": ["administrative controls", "physical controls", "technical safeguards", "authorization approval protocols", "localized storage mechanisms", "firewalls", "intrusion detection technologies"],
+    "retention": "The US policy says retention varies by data type, purpose, legal/contractual obligations, business interests, and other criteria; it does not provide one universal retention period."
+  },
+  "not_collected_here": ["private account records", "private device telemetry", "credentials", "restricted APIs", "non-public payloads", "proprietary source code", "internal ByteDance systems", "private user metadata"],
+  "classification": "public-source inventory",
+  "limitations": ["A privacy policy describes categories and practices; it is not a packet capture or complete technical telemetry specification.", "The inventory does not establish that every listed category is collected from every user or on every device.", "Jurisdiction, product, settings, permissions, and applicable law can change what is collected or processed."]
+}
