@@ -1,0 +1,44 @@
+{
+  "scope": "Publicly documented Visa payment-network, debit, credit, tokenization, transaction, and privacy metadata categories",
+  "extracted_at": "2026-07-29",
+  "entity_note": "Visa is the payment-network/operator context. Debit and credit describe account/card product types; they are not treated as separate companies.",
+  "sources": [
+    {"title":"Visa Global Privacy Notice","url":"https://corporate.visa.com/en/legal/global-privacy-notice.html"},
+    {"title":"Visa Token Service","url":"https://usa.visa.com/products/visa-token-service.html"},
+    {"title":"Visa Token Service Provisioning and Credential Management","url":"https://developer.visa.com/capabilities/token-service-provisioning"},
+    {"title":"Visa Intelligent Data Exchange API","url":"https://developer.visa.com/capabilities/visa-intelligent-data-exchange-api"},
+    {"title":"Visa Business Data Solutions","url":"https://developer.visa.com/capabilities/vbds/docs"},
+    {"title":"Visa Pay API endpoints","url":"https://developer.visa.com/capabilities/visa-pay/visa-pay-api-endpoints"},
+    {"title":"VisaNet Connect Issuing API Reference","url":"https://developer.visa.com/capabilities/visanet-connect-issuing/reference"}
+  ],
+  "privacy_metadata_categories": {
+    "identity_and_contact": ["name", "username", "mailing address", "email address", "telephone/mobile number", "other personal identifiers"],
+    "card_and_account": ["payment card number/PAN", "payment account reference/PAR token", "expiration date", "service code", "PIN verification data", "CVV"],
+    "transaction": ["transaction date", "transaction time", "transaction location", "transaction amount", "merchant information", "item-level data where applicable", "billing information", "shipping information"],
+    "device": ["device identifiers", "advertising ID when available", "device-related information used for authentication/fraud protection and device association"]
+  },
+  "public_api_transaction_metadata": {
+    "visa_pay_examples": ["unique transaction ID", "entity type", "account ID", "program ID", "card ID", "payment-card brand", "transaction code", "local amount", "settlement amount", "local currency", "settlement currency", "merchant name", "merchant city", "merchant state/country code", "merchant date/time", "network message type indicator", "response code", "authorization code", "retrieval reference number", "transaction identifier", "wallet account ID", "token", "original network data"],
+    "visanet_connect_issuing_examples": ["account type", "account balance amount", "currency code", "credit/debit indicator", "current ledger balance", "available balance", "transaction amount", "transaction currency", "additional transaction data", "deposit type", "transaction details"]
+  },
+  "debit_credit_specific": {
+    "account_types_documented_by_visa": ["SAVE (savings)", "CHEC (checking)", "CRED (credit card)", "UNIV (universal)", "UNKW (unknown)"],
+    "balance_direction": ["CRDT (credit)", "DBIT (debit)"],
+    "interpretation": "Visa's public API documentation distinguishes account type from whether a balance amount is credit/debit. A debit card and a credit card are therefore not equivalent metadata labels."
+  },
+  "tokenization_metadata": {
+    "token_types_and_fields": ["token", "token requestor/authorized token requestor", "token domain restrictions", "token lifecycle state", "transaction thresholds", "time limits", "device-specific payment token/DAN", "transaction cryptogram"],
+    "security_model": "Visa describes tokenization as replacing sensitive PAN information with a unique digital identifier, reducing exposure of the underlying account details during payment processing."
+  },
+  "fraud_and_risk_metadata": {
+    "publicly_documented_categories": ["authorization outcome", "fraud-risk signals", "compromise alerts", "risk decisioning rules", "authentication/risk scores", "enhanced card-not-present transaction data"],
+    "purpose": ["fraud detection", "authorization decisioning", "authentication", "risk management"]
+  },
+  "access_constraints": {
+    "public_documentation": true,
+    "production_access": "Some Visa APIs require registration, credentials, approval, issuer subscription, contracts, or applicable terms.",
+    "private_data_access": false
+  },
+  "not_extracted": ["real card numbers", "real CVVs", "PINs", "authentication credentials", "private cardholder records", "private transaction histories", "restricted production API responses", "private Visa network traffic", "proprietary source code"],
+  "provenance_note": "All fields are normalized from public Visa documentation and API schemas. This is a metadata inventory, not a dump of VisaNet traffic or private financial records."
+}
