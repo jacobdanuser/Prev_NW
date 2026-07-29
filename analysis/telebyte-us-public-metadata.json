@@ -1,0 +1,63 @@
+{
+  "entity": {
+    "name": "Telebyte, Inc.",
+    "location": "355 Marcus Blvd, Hauppauge, NY 11788, USA",
+    "public_site": "https://www.telebytespe.com/",
+    "source_basis": "Official Telebyte public product and technical documentation"
+  },
+  "extracted_at": "2026-07-29",
+  "metadata_scope": "Publicly documented technical/test metadata and outputs; no private telemetry or proprietary source code",
+  "software": {
+    "name": "Telebyte SPE Test Automation Software",
+    "platform": ["Windows 10", "Windows 11"],
+    "interfaces": ["TCP/IP", "ICMP Ping", "USB", "VISA", "RESTful API"],
+    "storage": ["SQL database", "method-of-procedure log files", "test reports"],
+    "outputs": ["pass/fail criteria", "waveforms", "tables", "live graphs", "time-correlated data telemetry", "test reports"]
+  },
+  "test_metadata": {
+    "dut": ["operating mode configuration", "10BASE-T1L register information", "MSE", "SNR", "receive errors", "power classification"],
+    "traffic": ["ICMP Ping", "10 Mbps full-duplex BER traffic", "PCS/protocol analysis"],
+    "cable": ["cable type", "cable length", "cable faults", "DC resistance", "current", "voltage at Side A", "voltage at Side B"],
+    "noise": ["alien crosstalk", "time-domain impulsive noise", "duration", "amplitude"],
+    "oscilloscope": ["waveform capture", "waveform analysis", "FFT", "power spectral density", "transmit power level"],
+    "power": ["slew rate", "voltage level", "current draw", "minimum/maximum current and voltage", "short-circuit condition", "differential ripple noise"],
+    "instrumentation": ["programmable power supply", "programmable load", "digital storage oscilloscope", "arbitrary waveform generator", "vector network analyzer", "digital multimeter", "Telebyte channel emulator", "power source probe", "powered-device/load probe"]
+  },
+  "model_4950_public_metadata": {
+    "function": "10BASE-T1L channel/cable emulation with integrated power monitoring and SCCP protocol analysis",
+    "current_monitor": "0 to +/-2.5 A",
+    "voltage_monitor": "0 to +/-60 VDC at each link end",
+    "data_logging": "Current and voltage logging; public documentation describes sample rates from 500 Sa/s to 500 kSa/s",
+    "sccp": ["timestamped reset/presence/write/read pulses", "CRC pass/fail", "voltage information", "power information", "power assignment", "class type information"],
+    "remote_interfaces": ["Telnet", "SSH CLI", "browser web interface"],
+    "embedded_system": "Linux SBC with built-in web server"
+  },
+  "model_4950_measurement_context": {
+    "cable_resistance_emulation": "1 to 80.5 ohms in 0.5-ohm increments",
+    "bandwidth": "DC to 20 MHz",
+    "power_support": "PoDL Type E power classes 10-15; public documentation also lists Ethernet-APL classes",
+    "noise_features": ["differential-mode noise injection", "AWGN", "power-line ripple noise"],
+    "fault_testing": ["short-circuit fault testing", "micro-interrupts for intermittent connection simulation"]
+  },
+  "model_cqt1l10_public_metadata": {
+    "product": "Telebyte Cable Qualifier",
+    "connectivity": ["Bluetooth 5.4 Low Energy", "USB firmware upgrade"],
+    "app_platforms": ["Android", "iOS", "Windows"],
+    "reporting": ["PDF reports", "share/download reports"],
+    "measurements": ["SNR", "ping packet loss", "DC loop resistance", "shield continuity", "cable fault detection", "cable length detection", "NVP calibration"]
+  },
+  "security_relevance": {
+    "observed_interfaces": ["TCP/IP", "REST", "SSH", "Telnet", "USB", "Bluetooth LE", "web interface"],
+    "interpretation": "These are publicly documented product-control and test interfaces. Their presence alone does not establish malicious behavior or unauthorized access.",
+    "no_attack_performed": true
+  },
+  "not_extracted": ["private customer records", "credentials", "private device telemetry", "intercepted traffic", "proprietary source code", "restricted binaries", "private infrastructure data", "non-public schemas"],
+  "source_urls": [
+    "https://www.telebytespe.com/about/",
+    "https://www.telebytespe.com/spe-test-automation-software/",
+    "https://www.telebytespe.com/home/model-4950/",
+    "https://www.telebytespe.com/cable-qualifier/",
+    "https://www.telebytespe.com/wp-content/uploads/2024/01/DS-Telebyte-SPE-Test-Automation-Software-Rev-3.2.7.pdf"
+  ],
+  "provenance_note": "Fields are extracted or normalized from public Telebyte documentation. The dataset is not a dump of Telebyte's internal metadata and should not be interpreted as one."
+}
