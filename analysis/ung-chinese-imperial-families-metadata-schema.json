@@ -1,0 +1,46 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Public historical/archival metadata and schemas; no private living-person dossiers",
+  "entity_resolution":{
+    "Ung":{"status":"ambiguous_surname","note":"Ung is used as a romanization/transliteration in multiple Chinese-dialect and Southeast Asian contexts. A specific Chinese character, locality, or historical person is required before attributing a lineage.","safe_fields":["surname spelling","Chinese character when documented","romanization system","historical locality","record source","date range","confidence"]},
+    "Chinese_royal_families":{"status":"historical_collective","note":"For research purposes, this dataset treats imperial houses and historically documented royal/princely lineages as archival entities rather than treating modern descendants as a single group."
+    }
+  },
+  "imperial_house_schema":["dynasty/house name","Chinese name","romanization","founding ruler","ruling period","capital(s)","territorial scope","succession relationship","imperial clan/surname","cadet branches","princely peerages","consort/affinal houses","imperial tombs/mausolea","genealogies","official histories","court records","archival collection","record identifier","document date","source/provenance","confidence"],
+  "major_imperial_houses_for_indexing":[
+    {"house":"Qin","clan_or_house":"Ying","historical_period":"221–206 BCE"},
+    {"house":"Han","clan_or_house":"Liu","historical_period":"202 BCE–220 CE"},
+    {"house":"Xin","clan_or_house":"Wang","historical_period":"9–23 CE"},
+    {"house":"Jin","clan_or_house":"Sima","historical_period":"266–420 CE"},
+    {"house":"Sui","clan_or_house":"Yang","historical_period":"581–618 CE"},
+    {"house":"Tang","clan_or_house":"Li","historical_period":"618–907 CE"},
+    {"house":"Song","clan_or_house":"Zhao","historical_period":"960–1279 CE"},
+    {"house":"Yuan","clan_or_house":"Borjigin","historical_period":"1271–1368 CE"},
+    {"house":"Ming","clan_or_house":"Zhu","historical_period":"1368–1644 CE"},
+    {"house":"Qing","clan_or_house":"Aisin Gioro","historical_period":"1636–1912 CE"}
+  ],
+  "record_schema":{
+    "genealogy_jiapu":["surname/clan","generation","ancestor/descendant relationship","birth/death dates when documented","place of origin","migration","ancestral hall","cemetery/tomb","biographical note","generation poem","source manuscript/collection","page/image identifier"],
+    "imperial_archives":["collection","series","document number","document type","author","originator/office","formation date","physical/digital form","dimensions or technical characteristics","collection URL","provenance","access status"],
+    "dynastic_history":["source title","dynasty","reign/era","person/entity","office/title","event","date","place","relationship","citation/provenance","translation/transcription status"],
+    "peerage_and_court":["title","rank","recipient","house/clan","appointment/inheritance","date","territory/fief where applicable","court office","succession","source"],
+    "affinal_and_related_houses":["relationship type","imperial house","associated clan/house","marriage/consort relationship","court role","document date","source","confidence"],
+    "archaeological_or_material_record":["object/site identifier","tomb/mausoleum","artifact type","date/period","excavation/inventory source","museum/collection","catalog number","condition","provenance","public access status"]
+  },
+  "public_sources":{
+    "familysearch_jiapu":"https://www.familysearch.org/en/chinese/cms/jiapusearch",
+    "national_palace_museum_qing_archives":"https://data.gov.tw/en/datasets/170274",
+    "national_palace_museum_qing_official_documents":"https://data.gov.tw/en/datasets/170275",
+    "national_palace_museum_collection_inventories":"https://www.npm.gov.tw/Articles.aspx?l=2&sno=03001525",
+    "historical_information_extraction_corpus":"https://arxiv.org/abs/2403.15088"
+  },
+  "source_findings":{
+    "jiapu":"Public genealogy guidance describes jiapu/zupu as clan lineage books containing origins, migrations, pedigrees, biographies, ancestral halls, cemetery maps, family rules, teachings, and generation poems. FamilySearch reports a collection exceeding 65,000 Chinese jiapu records.",
+    "qing_archives":"Taiwan's government open-data catalog exposes National Palace Museum Qing archive metadata including unified number, document number, document type, author, originator/official position, formation date, form, size, and collection website.",
+    "historical_text_analysis":"Public research datasets demonstrate that historical Chinese texts can be modeled with named entities and relations across dynastic periods; such datasets are useful for schema design but do not establish genealogical descent by themselves."
+  },
+  "related_affiliates_schema":["clan/house","cadet branch","consort/affinal clan","princely house","hereditary title","court office","military banner/organization where historically applicable","ancestral institution","temple/shrine","tomb/mausoleum","archival collection","historical source"],
+  "validation_rules":["Do not infer descent from surname alone","Require at least one cited historical record for each claimed relationship","Keep primary-source transcription separate from modern interpretation","Record alternate Chinese characters and romanizations separately","Distinguish dynasty membership from biological descent","Mark uncertain, disputed, legendary, and documentary claims separately","Do not convert historical association into claims about living people without specific public evidence"],
+  "privacy_boundary":["No private living-person genealogy","No private addresses/contact information","No genetic data from living individuals","No financial, medical, credential, or account data","No non-public government records"],
+  "provenance_note":"This is a research schema and public-source inventory. It is not a complete genealogical database and does not assert that every person with a surname belongs to an imperial or royal lineage."
+}
