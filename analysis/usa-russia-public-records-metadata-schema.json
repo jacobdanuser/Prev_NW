@@ -1,0 +1,25 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Public institutional, legal, archival, and historical metadata schemas for the United States and Russia",
+  "united_states":{
+    "primary_public_sources":["https://www.archives.gov/","https://www.archives.gov/era/about","https://www.archives.gov/records-mgmt/bulletins/2025/2025-01"],
+    "record_metadata":["record identifier","record title","record type","agency/component","creator/originator","creation date","date range","description","format/technical characteristics","rights/access restrictions","retention/disposition","provenance","relationship to other records"],
+    "federal_administration_metadata":["department/agency","bureau/component","office","position/title","records officer or records-management role where publicly listed","records series","schedule/authority","transfer/access status"],
+    "classified_record_metadata":["security classification","previous security classification","review action","review agent","review authority","review office"],
+    "public_data_sources":["Federal Register","National Archives Catalog","Access to Archival Databases","agency open-data portals","Congressional records","presidential libraries"],
+    "notes":"NARA describes ERA 2.0 as covering scheduling, transfer, processing, preservation, and access for electronic federal records. NARA's current guidance specifies minimum metadata for permanent electronic records and additional classification/review fields for classified permanent records."
+  },
+  "russia":{
+    "primary_public_sources":["https://archives.gov.ru/","https://archives.gov.ru/search-systems-catalog.shtml","https://publication.pravo.gov.ru/","https://pravo.gov.ru/"],
+    "archival_systems":["GIS UIAD — remote use of archival documents and finding aids","Archive Fund / Central Fund Catalogue systems"],
+    "record_metadata":["archive/fund identifier","collection/series","inventory/opis identifier","document identifier","document type","title/description","originator/creator","date/date range","place","format/carrier","provenance","access status","restriction status","digitization status","finding-aid reference"],
+    "legal_publication_metadata":["act/document identifier","document type","issuing authority","publication date","effective date where applicable","title","text version/status","amendments","publication source","machine-readable/open-data status"],
+    "historical_record_categories":["administrative/legal acts","management records","scientific/technical records","urban-planning records","film/photo/video/audio","manuscripts","correspondence","memoirs","electronic records","telemetric records"],
+    "open_data_metadata":["dataset name","format","update date","publisher/authority","source URL","reuse conditions","machine-readable status"],
+    "notes":"Rosarchive publicly describes GIS UIAD as a centralized Internet access system for federal archival information resources and finding aids. Russian archival law explicitly includes electronic and telemetric documents among archival materials. The official legal-information portal publishes legal acts and exposes machine-readable open-data catalogs."
+  },
+  "cross_country_schema":["jurisdiction","institution","archive/system","record identifier","record type","creator/originator","date","description","technical format","provenance","access/restriction status","retention/disposition","digitization status","source URL","confidence"],
+  "validation_rules":["Public metadata does not imply access to the underlying restricted record","Do not infer private-person information from archival catalog metadata","Keep historical records separate from current personal data","Preserve original language/script and normalized translations separately","Record source and provenance for every extracted field","Do not treat a catalog entry as evidence that the underlying document is publicly downloadable"],
+  "privacy_boundary":["No private living-person dossiers","No credentials","No restricted government records","No private medical or financial records","No private network telemetry","No classified material beyond publicly documented metadata schemas"],
+  "research_status":"Public-source schema inventory; no restricted databases or private institutional systems were accessed."
+}
