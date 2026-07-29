@@ -1,0 +1,30 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Public oceanographic, atmospheric, marine, climate, and terrestrial metadata schemas for the Bermuda region, Tropic of Cancer belt, and Sahara-linked environments",
+  "important_geography_note":"The Tropic of Cancer is a latitude (~23.44°N), not a single ecosystem. The Sahara is a terrestrial desert extending across North Africa and has no direct oceanic boundary. The Bermuda region is an Atlantic island/ocean region. These are therefore modeled as overlapping geographic/climate study regions rather than one environmental system.",
+  "bermuda_region":{
+    "domains":["North Atlantic oceanography","subtropical marine ecology","coral/reef and seagrass environments","coastal systems","atmospheric/ocean weather","currents and waves","marine geophysics","water chemistry"],
+    "metadata":["station/platform ID","latitude","longitude","timestamp","depth","temperature","salinity","pressure","current velocity/direction","wave height/period/direction","wind speed/direction","sea level","tide","dissolved oxygen","pH","chlorophyll","nutrients","species/observation ID","sampling method","instrument/platform","quality flag","provenance"]
+  },
+  "tropic_of_cancer_belt":{
+    "domains":["subtropical/tropical oceanography","marine biodiversity","air-sea interaction","sea-surface temperature","precipitation","cyclones/storms","currents","ocean carbon","coastal ecosystems"],
+    "metadata":["latitude/longitude","timestamp","ocean depth","sea-surface temperature","salinity","surface currents","wind","wave state","precipitation","pressure","cloud properties","chlorophyll/productivity","carbon variables","marine species/observation","habitat/ecosystem","remote-sensing product","quality/provenance"]
+  },
+  "sahara_linked_environment":{
+    "domains":["Sahara terrestrial climate","dust/aerosol transport","atmospheric chemistry","desert hydrology","groundwater","oasis systems","soil/geology","land cover","dust deposition to adjacent marine waters","North Atlantic/Mediterranean atmospheric connections"],
+    "metadata":["station/site ID","latitude","longitude","elevation","timestamp","air temperature","humidity","pressure","wind","precipitation","soil moisture","groundwater depth where public","geologic unit","soil type","land cover","dust/aerosol concentration","aerosol optical depth","particle size","dust source region","transport trajectory/product","ocean deposition where measured","quality flag","provenance"]
+  },
+  "global_ocean_schema":{
+    "physical":["latitude","longitude","depth","temperature","salinity","pressure","density","currents","waves","sea level","tides","sea ice where applicable"],
+    "chemical":["dissolved oxygen","pH","alkalinity","nutrients","dissolved inorganic carbon","partial pressure CO2","contaminant measurements where publicly available"],
+    "biological":["species/taxon","abundance","biomass","chlorophyll","plankton observations","habitat","benthic observations","eDNA/biological sample metadata where public"],
+    "atmospheric":["wind","air temperature","humidity","pressure","precipitation","cloud properties","aerosol/dust","radiation"],
+    "platform_and_provenance":["ship/platform ID","buoy/station ID","sensor/instrument","deployment/recovery time","sampling method","calibration metadata","quality-control flag","processing level","dataset version","publisher","source URL","license"]
+  },
+  "public_source_families":["NOAA/NCEI","NASA Earthdata","IOC/UNESCO Oceanographic Data and Information System","World Meteorological Organization","Copernicus Marine Service","GEBCO","Argo","national hydrographic/oceanographic agencies","national meteorological services","public scientific repositories"],
+  "subsurface_and_seafloor_schema":["bathymetric coordinates","depth","seafloor geology","sediment type","seismic/geophysical observation","hydrothermal/volcanic feature where publicly documented","submarine groundwater feature where public","survey method","survey date","resolution/accuracy","access status","provenance"],
+  "region_relationships":["Bermuda region -> North Atlantic marine/atmospheric datasets","Tropic of Cancer -> latitude-defined global belt crossing Atlantic, Pacific, and Indian Ocean regions and terrestrial areas","Sahara -> North African terrestrial/dust source region with atmospheric and marine deposition connections"],
+  "validation_rules":["Preserve coordinates and timestamps exactly as published","Distinguish observations from model outputs and remote-sensing products","Record vertical reference/datum for depth and elevation","Separate measured variables from derived products","Do not infer causation from geographic correlation alone","Respect dataset licensing and access restrictions","Do not treat public environmental metadata as private vessel, facility, or individual tracking data"],
+  "security_and_privacy_boundary":["No private vessel tracking","No restricted military/oceanographic data","No private personal location data","No restricted infrastructure data","No proprietary sensor firmware/source code","No unauthorized telemetry"],
+  "status":"Schema and public-source collection framework; not an exhaustive download of all oceanic datasets."
+}
