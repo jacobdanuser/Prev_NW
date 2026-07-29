@@ -1,0 +1,25 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Publicly documented metadata, archival, statistical, and cultural-heritage schemas for Egypt and Nubia",
+  "egypt":{
+    "public_statistics_metadata":["reference ID","title","country","producer","sponsor","collection","creation date","last modified","study description","data description","data access","variables","questionnaires/technical documents","DDI export","Dublin Core resource description"],
+    "official_open_data_metadata":["title","description","keywords/tags","publisher","contact email","temporal coverage","spatial coverage","update frequency","license","access URL","API endpoint","language","data format"],
+    "public_archival_metadata":["archive/repository","collection","record/register type","date range","geographic scope","creator/originator","document identifier","access status","digitization status","source/provenance"],
+    "public_record_categories":["population/census","vital statistics","health","education","labor","agriculture","trade","transport","utilities","environment","culture","prices/economic statistics","housing","land/property registers","historical newspapers","decrees and agreements"],
+    "source_examples":["CAPMAS metadata catalog","Egypt Open Data Policy","Public Archiving House/RTA archives"],
+    "sources":["https://censusinfo.capmas.gov.eg/metadata-en-v4.2/index.php/catalog/central","https://ai.gov.eg/SynchedFiles/en/Resources/Open%20Data%20Policy.pdf","https://www.rta.gov.eg/en/pah-archives"]
+  },
+  "nubia":{
+    "geographic_scope":"Historical Nubian region spanning areas of present-day southern Egypt and northern Sudan; exact geographic boundaries vary by historical period and research context.",
+    "heritage_metadata":["site/monument name","site identifier","country","governorate/region","archaeological period","site type","component/property designation","coordinates when publicly released","description","conservation status","World Heritage status","campaign/history","source/provenance"],
+    "archival_metadata":["archive/collection","document identifier","document type","creator/participant","date","place/region","topic/tags","original medium","digitized format","reference number","rights holder","access/licensing status"],
+    "campaign_metadata":["UNESCO campaign record","site/monument","rescue/conservation activity","date range","participating institution","document/photo/film/audio reference","provenance","rights information"],
+    "intangible_heritage_metadata":["community/project","heritage domain","documentation activity","location","publisher/partner","date","record type","digitization status","rights/provenance"],
+    "sources":["https://whc.unesco.org/en/list/88","https://www.unesco.org/archives/multimedia/place/nubia","https://www.unesco.org/en/articles/strenghtening-collaboration-preservation-archives-nubian-campaign","https://www.unesco.org/archives/multimedia/document-3532"],
+    "documented_archive_context":"UNESCO reports that Egypt's Ministry of Tourism and Antiquities Documentation Centre holds archaeological research/excavation documents dating from around 1956 and documents, maps, and photographs relating to the 1960–1980 Nubian rescue campaign. UNESCO also describes efforts to improve access across Nubian archives held in multiple institutions."
+  },
+  "research_schema":["jurisdiction","region","institution","collection/dataset","record identifier","record type","creator/publisher","date/date range","geographic coverage","temporal coverage","language/script","format","description","provenance","rights/license","access status","digitization status","confidence"],
+  "validation_rules":["Do not treat Nubian cultural heritage as synonymous with modern Egyptian or Sudanese administrative boundaries","Preserve Arabic, Nubian, and other original-language names separately from normalized transliterations","Distinguish archaeological evidence from genealogical or historical interpretation","Record the exact archive/source for each claim","Do not infer living-person identity from historical records without specific public evidence"],
+  "privacy_boundary":["No private living-person records","No restricted archaeological location information","No private government databases","No private medical/financial records","No credentials or private telemetry"],
+  "source_findings":{"egypt":"CAPMAS publicly exposes a metadata catalog with hundreds of studies and thousands of variables, and its documentation describes metadata standards and DDI/Dublin Core exports.","nubia":"UNESCO's public archive indexes dozens of Nubia-related audiovisual records and documents the international preservation campaign and associated archival collections."}
+}
