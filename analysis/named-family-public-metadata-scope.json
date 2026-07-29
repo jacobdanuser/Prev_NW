@@ -1,0 +1,60 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Public-source metadata research only",
+  "named_entities": [
+    {"label":"Gonzalez","status":"ambiguous","reason":"Multiple people and families share this surname; a specific public figure, organization, or jurisdiction is required for identity resolution."},
+    {"label":"Sussex","status":"ambiguous","reason":"Could refer to people/family, geographic entities, organizations, or titles; no single entity assumed."},
+    {"label":"Miller","status":"ambiguous","reason":"Common surname; no specific person or organization assumed."},
+    {"label":"Lancaster","status":"ambiguous","reason":"Could refer to people/family, geographic entities, organizations, or institutions."},
+    {"label":"Winslow","status":"ambiguous","reason":"No unique person or organization specified."},
+    {"label":"Salazar","status":"ambiguous","reason":"Common surname; no specific person or organization assumed."},
+    {"label":"Danuser","status":"ambiguous","reason":"No specific public individual, organization, or record set specified."},
+    {"label":"Hisco","status":"ambiguous","reason":"Could refer to multiple organizations or people; identity not established."},
+    {"label":"Hitchko","status":"ambiguous","reason":"No unique public entity established from the supplied name."},
+    {"label":"Behrens","status":"ambiguous","reason":"Common surname; no specific person or organization assumed."},
+    {"label":"Greggorys","status":"ambiguous","reason":"No unique public entity established from the supplied name."},
+    {"label":"Trumps","status":"ambiguous","reason":"Could refer to multiple members of a family or the Trump Organization; a specific public entity is required for accurate attribution."}
+  ],
+  "public_metadata_schema_for_named_entities":[
+    "public name and aliases",
+    "public role/title",
+    "public organization or affiliation",
+    "publicly documented dates relevant to the role or entity",
+    "public office/business address when officially published",
+    "public filings and official records",
+    "public statements and publications",
+    "source URL and publication date",
+    "provenance and confidence",
+    "record type and jurisdiction"
+  ],
+  "federal_agency_administration": {
+    "source_basis":"NARA and OPM public records-management and leadership datasets",
+    "public_metadata_categories":[
+      "agency",
+      "component/subagency",
+      "position title",
+      "position description",
+      "leadership/management category",
+      "appointment or reporting information where publicly published",
+      "agency certification/status",
+      "records series",
+      "record identifier",
+      "creator",
+      "creation date",
+      "description",
+      "rights/access restrictions",
+      "retention/disposition authority",
+      "technical format metadata",
+      "review/declassification metadata for applicable classified permanent records"
+    ],
+    "current_public_leadership_source":"https://www.opm.gov/about-us/open-government/plum-reporting/",
+    "records_metadata_source":"https://www.archives.gov/records-mgmt/policy/metadata-compiled",
+    "classification_metadata_source":"https://www.archives.gov/records-mgmt/bulletins/2025/2025-01",
+    "note":"Federal agencies have agency-specific mission records in addition to government-wide administrative records. This inventory does not attempt to acquire internal agency databases or non-public personnel records."
+  },
+  "privacy_boundary":{
+    "excluded":["private-person metadata","non-public personnel files","SSNs","DOBs used for identity verification","private addresses","credentials","private communications","restricted government records","private financial or medical records"],
+    "reason":"The requested surnames do not uniquely identify public entities, and private-person data should not be assembled merely from a family name."
+  },
+  "research_status":"No individual-family dataset was asserted where identity was ambiguous. The repository contains a reusable public-metadata schema and federal-agency metadata scope instead."
+}
