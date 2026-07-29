@@ -1,0 +1,17 @@
+{
+  "observed_at": "2026-07-29",
+  "repository": "jacobdanuser/Prev_NW",
+  "repository_id": "1160473427",
+  "visibility": "public",
+  "archived": false,
+  "default_branch": "main",
+  "permissions_observed": ["admin", "maintain", "pull", "push", "triage"],
+  "merge_settings_observed": {
+    "allow_auto_merge": false,
+    "allow_merge_commit": false,
+    "allow_rebase_merge": true,
+    "allow_squash_merge": true,
+    "allow_update_branch": false
+  },
+  "caveat": "These are repository properties exposed by the connected GitHub interface at inspection time. They do not reveal private GitHub safety logic or prove that any particular security feature is enabled."
+}
