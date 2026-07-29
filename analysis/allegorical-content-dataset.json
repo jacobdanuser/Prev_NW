@@ -1,0 +1,26 @@
+{
+  "dataset_version": "1.0",
+  "generated_at": "2026-07-29",
+  "repository": "jacobdanuser/Prev_NW",
+  "method": "GitHub repository lexical search plus inspection of selected source content",
+  "classification_policy": {
+    "allegorical_or_fictional": "Metaphorical, fictional, game-like, or philosophical language without demonstrated malicious behavior",
+    "security_relevant_term_only": "Security vocabulary observed without behavioral evidence",
+    "behavior_requires_review": "Insufficient evidence for a behavioral classification",
+    "malicious_behavior_confirmed": "Reserved for concrete evidence of harmful behavior; none assigned in this dataset"
+  },
+  "observations": [
+    {"path":"metaphysical_restrictions.py","signals":["metaphysical","telekinesis","telepathy","time manipulation","reality warping","energy","entropy","causality","restriction"],"classification":"allegorical_or_fictional","basis":"Inspected code implements enums, dataclasses, numeric calculations, lists, and local state checks."},
+    {"path":"Nys.dhy.sah","signals":["malware","attack"],"classification":"security_relevant_term_only","basis":"Search index returned lexical matches; file behavior was not established from the search result."},
+    {"path":"Krea__k","signals":["malware","attack"],"classification":"security_relevant_term_only","basis":"Search index returned lexical matches; file behavior was not established from the search result."},
+    {"path":"k","signals":["malware"],"classification":"security_relevant_term_only","basis":"Search index returned a lexical match; file behavior was not established from the search result."},
+    {"path":"SharePoint-PnP","signals":["malware"],"classification":"security_relevant_term_only","basis":"Search index returned a lexical match; file behavior was not established from the search result."},
+    {"path":"Lancaster/force","signals":["malware","attack"],"classification":"security_relevant_term_only","basis":"Search index returned lexical matches; file behavior was not established from the search result."},
+    {"path":"music","signals":["attack"],"classification":"security_relevant_term_only","basis":"Search index returned a lexical match; file behavior was not established from the search result."},
+    {"path":"self.system","signals":["attack"],"classification":"security_relevant_term_only","basis":"Search index returned a lexical match; file behavior was not established from the search result."},
+    {"path":"numpy","signals":["attack"],"classification":"security_relevant_term_only","basis":"Search index returned a lexical match; file behavior was not established from the search result."},
+    {"path":"Issues:)","signals":["attack"],"classification":"security_relevant_term_only","basis":"Search index returned a lexical match; file behavior was not established from the search result."}
+  ],
+  "negative_finding": "No malicious_behavior_confirmed classification was assigned based solely on allegorical terminology or repository search results.",
+  "limitations": ["Search indexing is not equivalent to full repository static analysis", "Filename and keyword matches do not establish intent", "No executable code was run as part of this dataset collection"]
+}
