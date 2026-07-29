@@ -1,0 +1,23 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Public-source metadata and schema framework for Africa and South America",
+  "coverage_note":"Africa is treated as the continent and South America as the continent/subregion. This is a catalog/schema framework, not a claim that every dataset on either continent has been exhaustively extracted.",
+  "africa":{
+    "jurisdiction_classes":["sovereign states","dependent/associated territories where applicable","regional economic communities","subnational governments","continental institutions"],
+    "core_metadata":["country","administrative level","institution","dataset title","dataset identifier","publisher","creator","creation/update date","geographic coverage","temporal coverage","language","format","license/access terms","provenance","source URL","version","quality/accuracy","access restrictions"],
+    "public_record_domains":["census and demographics","civil registration","health","education","agriculture","land and cadastral records","environment and climate","geology and mining","water resources","transport","energy","telecommunications","trade and customs","budgets and procurement","elections","legislation","courts/public legal information","archives and cultural heritage","scientific research"],
+    "continental_and_regional_sources":["African Union","African Development Bank","UNECA","WHO AFRO","UN Statistics Division","World Bank","regional economic communities and national statistics offices"],
+    "subsurface_schema":["site identifier","geographic coordinates where publicly released","depth/elevation","geologic formation","mineral/resource type","survey date","survey method","water/groundwater attributes","hazard","ownership/operator when public","accuracy","source/provenance","access status"]
+  },
+  "south_america":{
+    "jurisdiction_classes":["sovereign states","subnational governments","regional/international institutions","indigenous/community territories where publicly mapped and legally published"],
+    "core_metadata":["country","administrative level","institution","dataset title","dataset identifier","publisher","creator","creation/update date","geographic coverage","temporal coverage","language","format","license/access terms","provenance","source URL","version","quality/accuracy","access restrictions"],
+    "public_record_domains":["census and demographics","civil registration","health","education","agriculture","land/cadastre","environment and biodiversity","climate","geology/mining","water resources","transport","energy","telecommunications","trade/customs","public budgets/procurement","elections","legislation/courts","archives/cultural heritage","scientific research"],
+    "regional_sources":["UN Economic Commission for Latin America and the Caribbean","World Bank","Inter-American Development Bank","PAHO","national statistics offices","national archives","national geological and environmental agencies"],
+    "subsurface_schema":["site identifier","coordinates where publicly released","depth/elevation","geologic unit","mine/cave/tunnel/groundwater feature","survey date","survey method","material/geology","hazard classification","operator/ownership when public","accuracy/uncertainty","source/provenance","access status"]
+  },
+  "cross_region_schema":["jurisdiction","institution","dataset/collection","record identifier","record type","creator/publisher","date/date range","geographic coverage","temporal coverage","language/script","format","description","provenance","license/rights","access status","digitization status","quality/confidence","version","related records/datasets"],
+  "research_rules":["Preserve original language and script separately from normalized translations/transliterations","Distinguish official administrative boundaries from historical/cultural/geographic regions","Do not infer private-person identity from public aggregate datasets","Treat geological/subsurface coordinates according to published access restrictions","Record source and retrieval/publication date for every dataset","Do not treat a catalog record as proof that its underlying restricted data are downloadable"],
+  "privacy_and_security_boundary":["No private personal records","No credentials","No private financial or medical records","No restricted government records","No classified information","No unauthorized network telemetry","No clandestine underground-facility intelligence","No proprietary source code"],
+  "recommended_next_step":"Populate the schema country-by-country from official national open-data portals, statistical offices, archives, geological/environmental agencies, and regional institutions, retaining provenance for each record."
+}
