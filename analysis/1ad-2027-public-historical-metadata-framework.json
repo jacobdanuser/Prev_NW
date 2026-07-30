@@ -1,0 +1,27 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Public-source historical metadata framework covering approximately 1 AD through 2027.",
+  "coverage_statement":"This is a structured framework for surviving public archival and archaeological metadata, not a literal scan of every historical record. Records from antiquity may be fragmentary, undigitized, disputed, lost, or known only through later catalogs and scholarship.",
+  "periods":[
+    {"period":"1-299 AD","domains":["Roman administrative records","inscriptions","coinage","legal texts","military records","trade and taxation","religious texts","manuscripts","archaeological contexts","maps and itineraries"]},
+    {"period":"300-599","domains":["Late Roman/Byzantine records","Christian manuscripts","imperial/legal texts","inscriptions","coinage","trade","archaeology","regional administrative records"]},
+    {"period":"600-999","domains":["Byzantine records","Islamic manuscripts and administrative documents","Chinese historical records","European medieval charters","religious archives","coinage","trade","archaeological records"]},
+    {"period":"1000-1299","domains":["royal charters","legal records","religious institutions","trade and taxation","manuscripts","maps","coinage","archaeology","diplomatic correspondence"]},
+    {"period":"1300-1499","domains":["state and city archives","commercial ledgers","legal records","maps","manuscripts","printing-era transition","maritime records","tax registers","genealogical records"]},
+    {"period":"1500-1599","domains":["colonial/imperial administration","indigenous and colonial encounters","royal records","maps","maritime voyages","trade/customs","printed books","land/property records","legal records"]},
+    {"period":"1600-1799","domains":["colonial administration","state correspondence","wars/diplomacy","scientific publications","navigation","printing","taxation","company records","property and legal records"]},
+    {"period":"1800-1899","domains":["census","government registries","industrial records","railroads","telegraph","banking","corporate records","newspapers","scientific publications","photography","military and immigration records"]},
+    {"period":"1900-1949","domains":["modern administrative records","federal investigations","financial regulation","world wars","radio","aviation","census","corporate records","early electronic records"]},
+    {"period":"1950-1999","domains":["Cold War records","civil-rights records","satellite data","computer records","digital archives","financial systems","scientific datasets","FOIA/declassification","early internet metadata"]},
+    {"period":"2000-2015","domains":["web archives","social platforms","cloud services","digital government records","cybersecurity","public datasets","9/11 records","financial technology"]},
+    {"period":"2016-2026","domains":["Git repositories","package registries","APIs","cloud systems","AI systems","cybersecurity advisories","digital public records","platform transparency","public service status","scientific/health datasets"]},
+    {"period":"2027","domains":[],"status":"future year; no future records represented"}
+  ],
+  "normalized_schema":["record_id","collection_id","creator","custodian","institution","record_type","title","description","date_start","date_end","place","jurisdiction","language","script","material_or_format","subject","person_or_entity","event_id","catalog_identifier","archive_identifier","publication_status","digitization_status","access_status","restriction_status","classification_status","provenance","source_url","retrieval_date","version","revision_history","confidence","coverage_note"],
+  "ancient_and_medieval_source_types":["inscription","manuscript","papyrus","parchment","tablet","coin","seal","charter","chronicle","legal code","tax register","census-like register","trade ledger","religious text","map/itinerary","archaeological context","museum object catalog"],
+  "historical_identity_rules":["Preserve historical names and alternate spellings as metadata","Do not assume a modern national identity maps directly onto an ancient political entity","Distinguish original records from later copies, translations, catalog descriptions, and scholarly interpretations","Record uncertainty in dates, authorship, provenance, and attribution","Do not infer events merely because surviving records are absent"],
+  "source_families":["national archives","national libraries","university special collections","museum catalogs","archaeological databases","epigraphic databases","numismatic catalogs","public-domain digitization projects","WorldCat/OCLC","Internet Archive","Library of Congress","Smithsonian Institution","National Archives and Records Administration"],
+  "limitations":["No global complete metadata corpus exists for 1 AD onward","Survival bias is severe for ancient and medieval records","Digitization is uneven","Catalog descriptions can be revised","Some collections have legal, preservation, ownership, or donor restrictions","Archaeological metadata may document an object or context without exposing all underlying evidence","Modern records can also be private, restricted, or destroyed"],
+  "security_privacy_boundary":["public archival/catalog metadata only","no unauthorized access","no classified material obtained through unauthorized means","no private modern records","no credentials or secrets","no destructive probing","no re-identification of living private persons"],
+  "status":"Historical metadata framework added to Prev_NW, extending the timeline to 1 AD."
+}
