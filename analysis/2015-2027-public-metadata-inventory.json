@@ -1,0 +1,32 @@
+{
+  "updated_at":"2026-07-29",
+  "requested_period":"2015-2027",
+  "scope":"Public-source metadata inventory for the 2015 through 2027 period, with 2027 treated as a future year because the current date is July 29, 2026.",
+  "coverage_statement":"This is a normalized source map and metadata schema, not a literal extraction of every record created during the period. Historical and future records may be private, restricted, deleted, non-digitized, inaccessible, or not yet created. No claim of complete coverage is made.",
+  "period_status":{"2015-2026":"historical/current public-source coverage","2027":"future period; no future records are represented"},
+  "metadata_domains":[
+    "software/package registries",
+    "Git repositories and public development activity",
+    "cybersecurity advisories and vulnerability disclosures",
+    "public government records and legislation",
+    "financial/regulatory public records",
+    "public scientific datasets and publications",
+    "public health datasets",
+    "public corporate records",
+    "public archival/declassified records",
+    "public web/service status and incident records"
+  ],
+  "RubyGems_metadata":["gem name","version","platform","authors","license","description","dependencies","required Ruby version","required RubyGems version","source/documentation/bug-tracker/changelog URIs","SHA-256/checksum","built/published timestamp","download count","yanked status","security advisory","provenance/signature metadata"],
+  "GitHub_metadata":["repository ID","owner","visibility","created/updated/pushed timestamps","default branch","commit SHA","tree SHA","release/tag","issue/PR identifier","event type","actor identifier when public","event timestamp","workflow/run metadata when public","security-alert metadata when authorized","license","topics","archival status"],
+  "cybersecurity_metadata":["CVE/GHSA/advisory identifier","affected product/package","affected version range","fixed version","publication date","severity","CVSS where published","CWE where published","advisory source","remediation","exploit-status claim if officially documented","withdrawn/revised status"],
+  "government_metadata":["agency","record group","document identifier","date","jurisdiction","law/regulation identifier","action","publication/release date","FOIA status","redaction status","classification/declassification status","archival identifier","source provenance"],
+  "financial_metadata":["institution/entity","date","filing/report identifier","regulatory action","public transaction/financial category","amount when public","jurisdiction","source","revision status"],
+  "scientific_health_metadata":["dataset/publication identifier","publisher","collection date","release date","version","geographic scope","methodology","variables","quality notes","revision history","access restrictions","source provenance"],
+  "web_service_metadata":["service/component","incident ID","status","impact","created/updated/resolved timestamps","maintenance window","public status source","postmortem/reference","revision history"],
+  "normalized_schema":["record_id","domain","entity","entity_id","record_type","event_id","source","source_type","source_url","source_identifier","created_at","updated_at","published_at","released_at","effective_date","version","status","access_status","restriction_status","redaction_status","classification_status","declassification_date","revision_history","provenance","confidence","coverage_note"],
+  "security_and_privacy_boundary":["public-source data only","no private account data","no passwords/API keys/tokens","no classified or unlawfully obtained records","no bypassing access controls","no private financial/health information","no re-identification of individuals from aggregate datasets","do not execute untrusted packages merely to collect metadata"],
+  "important_API_limitations":{"GitHub":"GitHub's public events API only exposes events from the past 30 days, so it cannot by itself reconstruct the entire 2015-2027 event history. Historical data requires archived/public repository records or other authorized sources.","RubyGems":"RubyGems provides public APIs for gem/version/download/activity information, but API availability and historical retention vary by endpoint and dataset.","future_2027":"2027 is not yet complete; it is represented only as a future-period marker, not as fabricated data."},
+  "validated_official_sources":["https://guides.rubygems.org/rubygems-org-api/","https://guides.rubygems.org/security/","https://docs.github.com/en/rest/activity/events","https://docs.github.com/en/rest/secret-scanning/secret-scanning","https://www.archives.gov/","https://www.govinfo.gov/"],
+  "quality_rules":["Preserve original source and retrieval date","Distinguish metadata from underlying content","Do not interpret missing data as deletion without documentary evidence","Keep allegations separate from findings","Keep security advisories separate from proof of exploitation","Preserve historical versions rather than overwriting changed metadata","Mark future periods explicitly","Record confidence and known coverage gaps"],
+  "status":"2015-2027 public metadata inventory uploaded for longitudinal research; 2027 is explicitly future/unavailable as of 2026-07-29."
+}
