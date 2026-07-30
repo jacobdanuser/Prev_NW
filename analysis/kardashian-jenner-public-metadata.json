@@ -1,0 +1,23 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Publicly available metadata about the Kardashian-Jenner public figures, businesses, media activity, and reported public metrics",
+  "privacy_boundary":"Only public-source information is cataloged. No private contact details, precise private locations, private communications, credentials, private account data, or inferred sensitive/neural information.",
+  "people":{
+    "Kris Jenner":{"public_roles":["media personality","entrepreneur","manager"],"public_business_context":["Jenner Communications","management of family businesses/careers"],"source_provenance":"Forbes public profile and reporting"},
+    "Kim Kardashian":{"public_roles":["media personality","entrepreneur","SKIMS cofounder","actor/producer/public figure"],"public_business_context":["SKIMS","SKKN by Kim","former KKW Beauty context"],"public_metric_example":{"SKIMS_valuation_reported":"$5 billion after 2025 funding round","Forbes_estimated_net_worth":"$1.9 billion as of July 2026"},"source_provenance":"Forbes public profile"},
+    "Kendall Jenner":{"public_roles":["model","entrepreneur"],"public_business_context":["818 Tequila"],"public_metric_example":{"Forbes_reported_818_2022_sales":"approximately $25 million","Forbes_reported_818_cases_2022":"more than 123,000"},"source_provenance":"Forbes public profile"},
+    "Kylie Jenner":{"public_roles":["media personality","entrepreneur"],"public_business_context":["Kylie Cosmetics"],"source_provenance":"Public business/media reporting"},
+    "Kourtney Kardashian":{"public_roles":["media personality","entrepreneur"],"public_business_context":["Poosh and other publicly reported ventures"],"source_provenance":"Public business/media reporting"},
+    "Khloe Kardashian":{"public_roles":["media personality","entrepreneur"],"public_business_context":["Good American and other publicly reported ventures"],"source_provenance":"Public business/media reporting"}
+  },
+  "business_metadata":["brand/company name","founder/cofounder relationship","business category","launch date","ownership/stake only when publicly reported","funding/valuation only when publicly reported","revenue/sales only when publicly reported","partner/investor","product category","public corporate announcement","status","source","publication date","retrieval date","confidence"],
+  "media_metadata":["program/title","network/platform","season/episode where publicly documented","production role","release date","public appearance/event","publication","interview","source","publication date"],
+  "public_social_metrics":["platform","public account/brand identifier","follower count when publicly displayed/reported","engagement metric when publicly reported","measurement timestamp","source","measurement methodology","confidence"],
+  "legal_public_record_metadata":["jurisdiction","case/document identifier","public filing date","case type","parties as publicly named","procedural status","court action","disposition where public","official source","retrieval date"],
+  "timeline_schema":["event_id","person/entity","date","event type","description","related business/media entity","source","publication date","confidence","superseded status"],
+  "meta_metadata":["field definition","source URL","publisher","publication date","retrieval date","source type","data version","transformation/normalization","confidence","corroboration status","license/usage constraints"],
+  "source_notes":["Forbes public profiles/reporting were used for selected business and public financial metrics.","Public metrics are time-sensitive and should retain their measurement date rather than being treated as permanent values.","Rumors and unverified social-media claims are not treated as factual records."],
+  "security_privacy_boundary":["No private addresses","No private phone/email information","No private messages","No account credentials","No private financial records","No precise location tracking","No neural/mental-state inference","No unauthorized data collection"],
+  "source_references":["https://www.forbes.com/profile/kim-kardashian/","https://www.forbes.com/profile/kendall-jenner/","https://www.forbes.com/profile/kris-jenner/","https://www.forbes.com/sites/jemimamcevoy/2022/06/14/keeping-up-with-the-kardashians-meet-the-woman-who-made-a-fortune-helping-build-the-familys-billion-dollar-business-empire/"],
+  "status":"Public-source Kardashian-Jenner metadata inventory uploaded for research and provenance tracking."
+}
