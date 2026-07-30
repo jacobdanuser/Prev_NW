@@ -1,0 +1,17 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Publicly documented GitHub Copilot metadata and data-category schema",
+  "identity_and_account":["GitHub account/organization context","Copilot plan/license context","enterprise/organization policy context","seat/entitlement metadata"],
+  "interaction_and_usage":["Copilot feature used","request/interaction event category","usage timestamps","accept/reject/edit interaction categories","suggestion/response metadata where documented","usage metrics and limits where applicable"],
+  "prompt_and_context":["prompt/input category","code/context supplied to Copilot","repository/file context category","language/editor context","model/service context","generated-output category"],
+  "editor_and_device":["IDE/editor type","Copilot extension/version","operating system","application version","device/diagnostic category","network/connectivity diagnostics where documented"],
+  "repository_and_code_context":["repository identifier/context","file path/context category","branch/context category","language","code-completion context","workspace/project context","public/private repository setting"],
+  "security_and_audit":["organization policy","content exclusion settings","audit-log event category where available","authentication/security event metadata","policy enforcement result","enterprise administration metadata"],
+  "privacy_and_retention":["data-use category","training/data-sharing setting where applicable","retention category","privacy setting","regional/legal basis category","deletion/export request metadata"],
+  "api_and_integration":["API/service identifier","integration type","application/client identifier","request metadata category","rate-limit category","authentication method category","response metadata category"],
+  "provenance":["official documentation URL","documentation publication/update date","feature/version scope","region/plan dependency","source type","confidence","notes"],
+  "important_distinctions":["Publicly documented metadata categories are not equivalent to access to GitHub's private backend telemetry.","Repository/code context may be processed as part of a Copilot interaction without making that context publicly available.","Availability and retention can depend on product, plan, organization policy, feature, and current GitHub documentation."],
+  "collection_rules":["Use official GitHub/Copilot privacy, product, API, and enterprise documentation","Record exact source and date for every field/category","Separate public documentation from inferred implementation details","Do not collect private prompts, private repository contents, credentials, or private telemetry without authorization"],
+  "security_boundary":["No credentials or tokens","No private Copilot prompts/outputs","No private repository contents","No unauthorized telemetry collection","No internal service endpoints","No proprietary source code"],
+  "status":"Public documentation metadata schema uploaded for defensive/research cataloging."
+}
