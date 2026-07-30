@@ -1,0 +1,12 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Metadata about publicly documented records that were deleted, withdrawn, redacted, withheld, restricted, classified, declassified, or superseded in connection with 9/11 historical research.",
+  "purpose":"Track the documentary lifecycle and provenance of records without bypassing access controls or reproducing material that remains unlawfully inaccessible.",
+  "record_status":["public","redacted","withheld","restricted","classified","declassified","deleted","withdrawn","superseded","archived","unknown"],
+  "schema":["record_id","title","description","custodian","agency","original_source","creation_date","publication_or_release_date","removal_or_restriction_date","status","status_change_date","legal_authority_or_reason","FOIA_request_number_if_public","FOIA_exemption_if_public","declassification_date","archival_location","finding_aid_identifier","publicly_available_copy","replacement_or_successor_record","change_history","provenance","confidence","verification_status"],
+  "9_11_source_collections":["National Archives 9/11 Commission Records","National Archives FAA 9/11 Records","9/11 Commission Final Report and staff materials","NIST World Trade Center Investigation","FBI public 9/11 records","public congressional records","official FOIA releases"],
+  "research_method":["identify authoritative record or finding aid","capture documented status changes","record legal/administrative basis when publicly available","compare archival versions where lawfully accessible","link successor or replacement records","preserve retrieval date and provenance","separate documented absence from evidence of deletion"],
+  "interpretation_rules":["A missing webpage does not prove intentional deletion","A FOIA exemption does not establish the contents of withheld material","Redaction metadata does not establish what the redacted text said","Declassification status applies only to material actually released/declassified","A secondary copy should not be treated as an authentic original without provenance","Do not infer causation from document timing or metadata alone"],
+  "security_boundary":["Do not bypass authentication or access controls","Do not obtain classified or restricted material through unauthorized means","Do not expose private victim/family information","Do not publish credentials or access mechanisms","Do not reconstruct protected intelligence sources or methods"],
+  "status":"Public-source documentary metadata schema for lawful archival and historical research."
+}
