@@ -1,0 +1,25 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Public-source metadata review extending the Federal Reserve/FBI/White House-related crime research into the 1920s (1920-1929).",
+  "coverage_note":"This is a source and metadata inventory, not a claim that every 1920s criminal record has been scanned. Federal investigative recordkeeping changed over time, and many records remain archival, restricted, or incompletely described online.",
+  "chronology":{
+    "1920":"FBI documents the September 16, 1920 Wall Street bombing near the U.S. Assay Office and J.P. Morgan building. The FBI notes that more than 30 people were killed initially and approximately 300 injured; responsibility was not immediately established.",
+    "1921":"The FBI Central Records System was established and later modified as the Bureau assumed additional responsibilities. NARA's RG 65 contains FBI investigative records from this period.",
+    "1924":"NARA records show Classification 29 (Bank Fraud and Embezzlement) was established in 1924 for investigations into fraud against financial institutions protected by federal statutes. The Bureau's central filing system also incorporated predecessor records around this period.",
+    "1924_civil_rights":"NARA states Classification 44 was established in a January 1924 Hoover memorandum; early files primarily concerned Ku Klux Klan activity and civil-rights violations.",
+    "1929":"Federal Reserve historical statistical tables include year-end banking-system data for 1929, useful as financial/economic metadata but not as crime records."
+  },
+  "source_collections":[
+    {"source":"National Archives RG 65 - FBI Central Records","coverage":"1896-1996","metadata":["record group","classification","case-file series","date range","finding aid","format","security-classification indicator","archival location"],"source":"https://www.archives.gov/research/investigations/fbi/central-records"},
+    {"source":"NARA Classification 29 - Bank Fraud and Embezzlement","coverage":"established 1924","metadata":["classification number","investigative subject","financial institution category","case-file series","access/finding-aid status"],"source":"https://www.archives.gov/research/investigations/fbi/classifications/029-bank-fraud.html"},
+    {"source":"NARA Classification 44 - Civil Rights","coverage":"records predating 1924; classification established 1924","metadata":["classification","legal basis","subject","geographic jurisdiction","case-file series","historical context","access status"],"source":"https://www.archives.gov/research/investigations/fbi/classifications/044-civil-rights.html"},
+    {"source":"FBI Wall Street Bombing 1920","coverage":"September 16, 1920","metadata":["event date","location","victim count as reported","injury count as reported","investigative history","photographic evidence","source provenance"],"source":"https://www.fbi.gov/history/cases-and-criminals/wall-street-bombing-1920"},
+    {"source":"Federal Reserve historical statistical tables","coverage":"1918-1983 in cited table","metadata":["year","currency in circulation","Federal Reserve Bank credit","member-bank reserves","other Federal Reserve accounts","table/version","source publication"],"source":"https://www.federalreserve.gov/publications/2020-ar-statistical-tables.htm"}
+  ],
+  "crime_metadata_schema":["event_id","year","date","crime_type","location","victim/entity","property/financial institution","amount/loss when documented","agency","jurisdiction","legal authority","investigative classification","case-file series","disposition","source","archival_identifier","access_status","confidence"],
+  "financial_metadata_schema":["year","institution","Federal Reserve district where applicable","bank type","balance-sheet category","reserves","currency","Federal Reserve credit","failure/merger/liquidation event","source","table identifier","data vintage","revision status"],
+  "restricted_record_metadata":["record_id","classification","date range","custodian","finding aid","public description","security-classified indicator","FOIA/access status","restriction reason if public","declassification/release date","provenance","confidence"],
+  "interpretation_rules":["Do not treat archival classification as evidence that a person committed a crime","A record's existence does not establish guilt","A missing online catalog entry does not mean a record was destroyed","Separate historical financial statistics from criminal investigative records","Do not infer contents of restricted/classified records","Preserve the distinction between federal jurisdiction and state/local investigations","The 1920 Wall Street bombing should be recorded as an investigated historical bombing; attribution must follow documented evidence rather than inference"],
+  "security_boundary":["public archival metadata only","no unauthorized access","no classified material","no private personal records","no credentials","no nonpublic investigative methods","no operational security information"],
+  "status":"1920s public-source archival metadata extension prepared for Prev_NW."
+}
