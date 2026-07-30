@@ -1,0 +1,33 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Public-source metadata inventory covering U.S. counter-terrorism designations and public organizational metadata for Jehovah's Witnesses and the Church of Scientology.",
+  "classification_rule":"Terrorist designation is recorded only when made by an identified competent authority. Religious affiliation is not treated as evidence of terrorism or criminality.",
+  "terrorism_designation_metadata":{
+    "sources":["OFAC Counter Terrorism Sanctions","OFAC Sanctions List Service","U.S. State Department Foreign Terrorist Organization resources"],
+    "fields":["entity name","aliases","designation type","designation authority","program/tag","designation date","jurisdiction","legal authority","sanctions status","delisting/removal date if applicable","source URL","publication/update date","provenance"],
+    "current_source_note":"OFAC's counter-terrorism framework includes multiple legal authorities and maintains SDN/non-SDN sanctions data. OFAC's Sanctions List Service provides downloadable current list data and its recent-actions archive records updates.",
+    "example_current_update":"OFAC reported counter-terrorism designation actions on July 23, 2026; current records should be retrieved from the live sanctions service rather than treated as a static list.",
+    "sources":["https://ofac.treasury.gov/sanctions-programs-and-country-information/counter-terrorism-sanctions","https://ofac.treasury.gov/sanctions-list-service","https://ofac.treasury.gov/recent-actions/sanctions-list-updates"]
+  },
+  "jehovahs_witnesses":{
+    "organization_metadata":["organization name","religious denomination","Governing Body","committee structure","branch/organizational structure","congregation structure","meeting format","publications","historical timeline","official website","source date"],
+    "governance":"The official JW.org description says the Governing Body provides direction worldwide and has six committees overseeing areas including legal matters, personnel, publishing, and other organizational functions.",
+    "financial_metadata":["donation model","donation channels","local/worldwide contribution categories","public financial-reporting practice","paid/unpaid clergy status","funding description","planned-giving categories"],
+    "official_financial_description":"Jehovah's Witnesses state that their worldwide work is primarily financed by voluntary donations, that no specific tithe or percentage is required, and that meetings have no admission charge or collections. They also describe congregation financial reports as being provided monthly at meetings.",
+    "sources":["https://www.jw.org/en/jehovahs-witnesses/faq/donations-worldwide-work-finances-money/","https://www.jw.org/en/jehovahs-witnesses/faq/governing-body-jw-helpers/","https://www.jw.org/en/library/brochures/What-Does-God-Require-of-Us/How-Jehovahs-Witnesses-Are-Organized/"]
+  },
+  "church_of_scientology":{
+    "organization_metadata":["organization name","Church of Scientology International","local church entity","ecclesiastical hierarchy","field groups","missions","Class V/Central Organizations","Continental Liaison Offices","Sea Organization","board/director structure","geographic scope","official website"],
+    "official_structure_description":"Scientology's official materials describe an ecclesiastical hierarchy spanning field auditors, religious groups, missions, larger Church organizations, and international ecclesiastical management through Church of Scientology International and Continental Liaison Offices. Individual churches are separately incorporated and governed by their own boards.",
+    "financial_metadata":["publicly described religious-service categories","donation/contribution categories where publicly documented","payment/service metadata only when officially published","financial/legal status source","tax-status documentation where officially available"],
+    "privacy_metadata":"The organization's public privacy notice describes its ecclesiastical structure and related humanitarian programs; it should be treated as an organizational-policy source rather than independent verification of every organizational claim.",
+    "public_legal_history_metadata":["case name","court","case number","year","party","procedural posture","disposition","official government source","FOIA exemption category where applicable"],
+    "official_sources":["https://www.scientology.org/faq/the-organization-of-scientology/how-is-the-church-of-scientology-structured.html","https://www.scientology.org/faq/the-organization-of-scientology/how-are-churches-of-scientology-administered.html","https://www.scientology.org/privacy-notice.html"],
+    "government_source_example":"U.S. Department of Justice archived FOIA reports document historical litigation involving Church of Scientology entities and federal agencies. These entries are legal-record metadata and do not by themselves establish criminal conduct by the religion or its members.",
+    "government_source":"https://www.justice.gov/archive/oip/annual_report/1981/decided.htm"
+  },
+  "cross_organization_schema":["entity","entity type","jurisdiction","public status","organization structure","leadership/governance","financial model category","legal/regulatory records","designation status","source","publication date","retrieval date","source type","provenance","confidence","historical/current flag","revision date"],
+  "quality_controls":["Separate official self-description from government findings and independent reporting","Do not equate religious beliefs or membership with criminality","Do not equate civil litigation with criminal conviction","Record designation authority and legal basis for terrorism classifications","Use current OFAC/State Department data for live designation status","Preserve historical status and delisting events","Distinguish voluntary donations from mandatory fees and from paid services","Do not infer private finances from public organizational metadata"],
+  "privacy_security_boundary":["No private member lists","No private religious beliefs","No donor identities","No private financial records","No private addresses/contact information","No credentials","No surveillance of religious individuals","No targeting information","No unauthorized collection"],
+  "status":"Public-source organizational and legal metadata inventory uploaded for comparative research."
+}
