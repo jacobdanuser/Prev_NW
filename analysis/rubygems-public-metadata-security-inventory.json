@@ -1,0 +1,31 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Public-source metadata and security inventory for RubyGems.org and RubyGems package specifications.",
+  "coverage":"Public documentation, API schemas, service-status metadata, and publicly disclosed security information. This is not a scan of private RubyGems infrastructure, user accounts, private API keys, or nonpublic telemetry.",
+  "metadata_layers":{
+    "gem_specification":["name","version","authors","email when public","summary","description","licenses","homepage","required_ruby_version","required_rubygems_version","platform","dependencies","development_dependencies","files","extensions","metadata links","source_code_uri","documentation_uri","bug_tracker_uri","changelog_uri","funding_uri","built_at","created_at","sha","spec_sha","yanked status"],
+    "gem_metadata_constraints":"RubyGems specification metadata is a string-to-string hash; keys may be up to 128 bytes and values up to 1024 bytes, with UTF-8/no binary data requirements.",
+    "api_metadata":["API version","endpoint category","gem name","version","platform","download counts","reverse dependencies","latest version","creation/update timestamps","activity records","authorization requirement","rate-limit documentation"],
+    "service_metadata":["component","component ID","service status","incident ID","incident impact","incident status","created/updated/resolved timestamps","maintenance status","provider/region component","uptime period"],
+    "security_metadata":["advisory date","affected mechanism","affected client/version range","potential exposure","observed abuse evidence","remediation","revocation status","fixed version/commit","credential type","scope of impact","source provenance"]
+  },
+  "current_security_record":{
+    "date":"2026-07-22",
+    "topic":"Possible leak of legacy API keys via improper cache configuration",
+    "status":"RubyGems reported that a CDN caching bug could expose one account's legacy API key to another user for up to an hour under affected authentication conditions.",
+    "scope":"RubyGems stated that legacy keys were revoked; scoped keys created through the UI/CLI and short-lived OIDC/trusted-publisher keys were not affected by this specific issue.",
+    "remediation":"RubyGems reported deploying cache-control and Vary-header changes in commit d3d11c0 on 2026-07-09, purging affected cached objects, and revoking legacy keys.",
+    "abuse_assessment":"RubyGems reported no evidence of malicious use in the access-log window it reviewed, while noting that the available logs covered only a recent portion of the estimated exposure period.",
+    "source":"https://blog.rubygems.org/2026/07/22/security-advisory-legacy-api-key-leak.html"
+  },
+  "security_controls_publicly_documented":[
+    {"control":"Gem content validation","description":"RubyGems describes push-time checks over gem contents, metadata, and checksums.","source":"https://blog.rubygems.org/2026/04/09/protecting-rubygems-from-the-outside-in.html"},
+    {"control":"Static/dynamic analysis and metadata review","description":"RubyGems has publicly described automated static and dynamic analysis, behavioral checks, metadata review, risk scoring, and manual escalation for higher-risk gems.","source":"https://blog.rubygems.org/2025/08/25/rubygems-security-response.html"},
+    {"control":"Trusted publishing/OIDC","description":"RubyGems documents short-lived OIDC/trusted-publisher credentials as distinct from legacy API keys.","source":"https://guides.rubygems.org/rubygems-org-api/"},
+    {"control":"Service status telemetry","description":"RubyGems.org publishes component status, incidents, maintenance, and uptime information through its status service.","source":"https://status.rubygems.org/api"}
+  ],
+  "normalized_schema":["gem_name","version","platform","publisher/author","license","description","dependency","development_dependency","metadata_key","metadata_value","created_at","updated_at","built_at","download_count","sha","spec_sha","yanked","source_uri","documentation_uri","bug_tracker_uri","changelog_uri","security_advisory","affected_version","fixed_version","service_incident","incident_status","source_url","retrieval_date","provenance","confidence"],
+  "research_boundaries":["Use public APIs and documentation only","Do not collect or publish API keys, passwords, tokens, or private account data","Do not probe private infrastructure or attempt unauthorized access","Do not execute potentially malicious gems as part of metadata collection","Treat a package's metadata or automated risk score as an indicator, not proof of malicious intent","Preserve package version and timestamp because gem metadata changes over time"],
+  "official_sources":["https://guides.rubygems.org/rubygems-org-api/","https://guides.rubygems.org/rubygems-org-api-v2/","https://guides.rubygems.org/specification-reference/","https://status.rubygems.org/api","https://blog.rubygems.org/2026/07/22/security-advisory-legacy-api-key-leak.html","https://blog.rubygems.org/2026/04/09/protecting-rubygems-from-the-outside-in.html","https://blog.rubygems.org/2025/08/25/rubygems-security-response.html"],
+  "status":"Public RubyGems metadata/security inventory uploaded for repository research."
+}
