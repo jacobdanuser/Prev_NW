@@ -1,0 +1,49 @@
+{
+  "schema_version":"1.0",
+  "registry_id":"PREV_NW-METACODE-2026-07-29",
+  "scope":"Consolidated defensive/public-source metadata schema registry for the previously created analyses in Prev_NW.",
+  "source_inventory":[
+    "analysis/repo-code-sequential-analysis.json",
+    "analysis/repo-code-metadata-deep-inventory.json",
+    "analysis/2015-2027-public-metadata-inventory.json",
+    "analysis/rubygems-public-metadata-security-inventory.json",
+    "analysis/atomic-universal-source-code-audit-2026-07-29.json",
+    "security/dark-web-public-source-metadata-scanner.py",
+    "security/neural-malware-analysis-schema.json",
+    "security/frontend-leakage-metadata-scanner.py",
+    "security/afghanistan-terrorism-public-source-metadata-collector.py",
+    "security/usa-russia-public-source-metadata-collector.py",
+    "security/usa-russia-terrorism-public-source-metadata-collector.py",
+    "security/usa-russia-terrorism-sourced-locations-metacodes.json"
+  ],
+  "metacode_groups": {
+    "provenance":{"source_id":"stable source identifier","source_url":"canonical public URL when applicable","publisher":"source publisher","publication_date":"ISO-8601 or null","retrieved_at":"ISO-8601","document_hash_sha256":"SHA-256 of analyzed bytes when available","source_type":"public_url|government_release|court_record|academic|news|dataset|local_document|code|other","jurisdiction":"legal/geographic jurisdiction","language":"source language","collection_method":"manual|authorized_api|local_document|public_url|static_analysis"},
+    "artifact":{"path":"repository-relative path","file_type":"file extension or format","mime_type":"MIME type when known","size_bytes":"integer or null","architecture":"PE|ELF|Mach-O|script|document|unknown","sha256":"content hash","compiler_metadata":"when present","digital_signature_status":"valid|invalid|absent|unknown"},
+    "code":{"symbol":"function/class/constant identifier","line":"source line when available","ast_node":"AST category when available","imports":"dependency identifiers","filesystem":"read/write operations","process":"process creation/control operations","network":"network operations","registry":"registry operations where applicable","persistence":"persistence indicators","dynamic_execution":"dynamic evaluation/import indicators","obfuscation":"encoding/packing/obfuscation indicators","control_flow":"control-flow summary"},
+    "security":{"finding_id":"stable finding identifier","category":"credential|secret|internal_host|private_ip|source_map|debug_endpoint|obfuscation|persistence|network|filesystem|process|other","severity":"info|low|medium|high|critical","evidence":"redacted/minimal evidence","confidence":"low|medium|high","recommendation":"remediation guidance","ioc_type":"hash|domain|ip|url|path|string|none","ioc_value":"redacted or non-sensitive indicator"},
+    "location":{"country":"ISO-3166 when applicable","region":"ISO-3166-2 when applicable","city_or_district":"source-supported locality","site_type":"publicly reported location type","latitude":"only when legitimately public and appropriate","longitude":"only when legitimately public and appropriate","precision":"country|region|city|site|unknown","location_source":"source_id"},
+    "organization":{"entity_name":"source-identified organization","organization_status":"mentioned|designated|accused|charged|convicted|sanctioned|disputed|unknown","evidence_status":"source_statement|court_finding|official_designation|independent_reporting|unverified|contradicted","jurisdiction":"jurisdiction supporting the status","confidence":"low|medium|high"},
+    "event":{"event_id":"stable event identifier","event_type":"attack|investigation|indictment|prosecution|conviction|sanction|designation|counterterrorism|cybercrime|other","event_date":"ISO-8601 or range","location_id":"reference to location metadata","source_id":"reference to provenance metadata","status":"reported|official|adjudicated|disputed|unknown"},
+    "neural":{"domain":"biological|computational","biological_modality":"EEG|ECoG|MEG|fMRI|EMG|other|unknown","sampling_rate_hz":"numeric or null","channels":"numeric or null","sensor_metadata":"authorized dataset metadata only","model_architecture":"computational model architecture","layers":"integer or null","parameters":"integer or null","tensor_shapes":"metadata only","dataset_id":"public/authorized dataset identifier","measurement_units":"units when applicable","boundary":"Do not infer private thoughts, mental states, or unmeasured neural activity."},
+    "temporal":{"observed_at":"ISO-8601","valid_from":"ISO-8601 or null","valid_to":"ISO-8601 or null","temporal_status":"historical|current|undated|future_claim"},
+    "privacy":{"privacy_level":"public|sensitive|restricted","personal_identifier":"avoid unless necessary and lawful","credential_status":"not_collected|redacted","private_location_status":"not_collected|redacted|publicly_supported"},
+    "integrity":{"hash_algorithm":"SHA-256","content_hash":"hash value","analysis_timestamp":"ISO-8601","tool_version":"scanner/analysis version","chain_of_custody":"provenance notes"}
+  },
+  "controlled_vocabulary": {
+    "terrorism_topics":["attack","financing","recruitment","propaganda","sanctions","designation","investigation","indictment","prosecution","conviction","counterterrorism","court_proceeding","law_enforcement","cybercrime","arms_trafficking","hostage_taking"],
+    "countries":["US","RU","AF","EG","other ISO-3166 code"],
+    "organization_examples":["ISIS/ISIL/Daesh","Al-Qaeda","Taliban","Al-Shabaab","Boko Haram","Hamas","Hezbollah"]
+  },
+  "analysis_rules":[
+    "A keyword match is not evidence of affiliation, criminal conduct, terrorist status, or intent.",
+    "A location is not evidence that an individual or organization operated there.",
+    "Separate source statements, official designations, court findings, accusations, and verified facts.",
+    "Do not treat simulated neural variables as biological neural measurements.",
+    "Do not store credentials, private keys, authentication tokens, or unnecessary private-person data.",
+    "Do not use restricted or unauthorized access as a collection method.",
+    "Malware analysis is limited to detection, classification, containment, and forensics; no payload generation or deployment."
+  ],
+  "reproduction_status":"Schema/metacode registry reproduced from the repository's previously created analysis categories. It is not a claim that every external world's metadata has been exhaustively collected.",
+  "recommended_record_id":"<source_id>:<artifact_hash>:<event_id>:<location_precision>",
+  "version":"2026-07-29"
+}
