@@ -1,0 +1,28 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Publicly documented metadata categories and schemas across major social-media and social-content platforms",
+  "important_limit":"There is no finite, stable list of every social-media app worldwide. This inventory uses major platform categories and official public documentation; it is not a backend telemetry dump or exhaustive extraction of every app.",
+  "platform_groups":{
+    "social_networks":["Facebook","Instagram","LinkedIn","X","Threads","Bluesky","Mastodon","VK","Weibo","WeChat"],
+    "short_video_and_media":["TikTok","YouTube","Snapchat","Twitch","Pinterest"],
+    "community_and_forum":["Reddit","Discord","Quora","Stack Exchange"],
+    "messaging_social":["WhatsApp","Telegram","Signal","Messenger"],
+    "professional_and_creator":["LinkedIn","YouTube","Twitch","Patreon","Substack"],
+    "regional_platforms":["LINE","KakaoTalk","Naver services","Douyin","Kuaishou","Bilibili","Niconico","NAVER Cafe","regional equivalents"]
+  },
+  "common_metadata_schema":["platform","account/user identifier","username/handle","display name","profile metadata","content identifier","content type","creation/publication timestamp","edit/deletion timestamp where documented","caption/title/description","hashtags/topics","mentions/tags","engagement events","followers/following or relationship metadata","moderation/status metadata","device/application metadata","network/IP metadata","cookie/local-storage identifiers","location metadata","referrer/source metadata","search/activity history","advertising/interest signals","API/public-availability status","retention category","privacy setting/context","provenance/source URL"],
+  "content_metadata":["media type","file/container information","dimensions/duration","encoding/codec where exposed","upload timestamp","publication timestamp","content provenance","content credentials/C2PA where supported","synthetic/AI disclosure","geographic metadata when intentionally published","language","alt text/caption metadata","visibility/access setting"],
+  "interaction_metadata":["like/reaction","comment/reply","share/repost","save/bookmark","follow/subscribe","mention/tag","view/play event","search event","click/link event","notification event","moderation/report event","recommendation interaction"],
+  "technical_metadata":["IP address","general location derived from IP","precise location when permissioned","device model","operating system","application version","browser","language/locale","time zone","network/carrier information","device identifiers","advertising identifiers","cookies/similar technologies","session/authentication event metadata","crash/performance diagnostics"],
+  "privacy_and_advertising_metadata":["inferred interests","advertising interactions","ad delivery/context","measurement/conversion events","preferences","audience/segment information","partner/third-party source categories","cross-service activity where policy permits","privacy choices/consent status"],
+  "platform_documentation_examples":{
+    "X":"X publicly documents categories including account/profile information, device and connection information, location, usage/log data, cookies, advertising information, and public API access.",
+    "Instagram_Meta":"Meta/Instagram documentation describes account/profile, content and metadata, device/network information, activity, location, cookies/similar technologies, partner information, and inferences/advertising categories.",
+    "Snapchat":"Snap publicly documents Snap/Chat metadata such as date, time, sender and receiver, plus account, device, activity and location categories.",
+    "YouTube":"YouTube documents search/watch activity, account data, location, device information, recommendations/advertising use, and content metadata. YouTube also supports C2PA-based content-origin disclosures when valid credentials are present."
+  },
+  "provenance_schema":["platform","official policy/API/help source","source publication/update date","field/category","public/private/restricted classification","feature/region dependency","retention statement","access mechanism","confidence","notes"],
+  "recommended_collection_method":"Catalog official privacy policies, developer/API documentation, help-center documentation, data-download documentation, and public transparency reports. Preserve the exact source and date rather than scraping private accounts or platform infrastructure.",
+  "security_boundary":["No passwords or authentication secrets","No private messages","No private account exports","No private contact lists","No private device identifiers","No precise individual location tracking","No unauthorized API access","No scraping of protected/private content","No proprietary source code","No backend telemetry acquired without authorization"],
+  "status":"Global public metadata schema uploaded for comparative research. Platform-specific fields should be validated against current official documentation before treating them as authoritative."
+}
