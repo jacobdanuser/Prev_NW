@@ -1,0 +1,18 @@
+{
+  "schema_version":"1.0",
+  "scope":"Public-source metadata registry for popular singer groups, with GIRLGROUP as a controlled source/category label.",
+  "category_code":"GIRLGROUP",
+  "category_definition":"A music group whose members are primarily women; popularity must be measured with a stated metric and date rather than assumed.",
+  "source_cause_schema":{"cause_code":"GIRLGROUP","cause_type":"classification","basis":"publicly documented group composition and music-industry classification","source_id":null,"confidence":"low|medium|high"},
+  "popularity_schema":{"metric":"chart_position|streams|sales|certifications|social_following|concert_attendance|search_interest|other","value":null,"unit":null,"measurement_date":null,"territory":null,"source_id":null},
+  "entity_schema":{"group_name":null,"members":[],"country_or_market":null,"formation_date":null,"active_status":"active|inactive|disbanded|unknown","genre":[],"label_or_agency":null,"official_source":null},
+  "representative_groups_to_research":["TWICE","BLACKPINK","NewJeans","IVE","aespa","LE SSERAFIM","ITZY","Red Velvet","(G)I-DLE","BABYMONSTER","KISS OF LIFE","FIFTY FIFTY","Little Mix","Spice Girls","Destiny's Child","Fifth Harmony","TLC","The Pussycat Dolls","Girls Aloud","Sugababes","Danity Kane"],
+  "metacodes":{"entity_type":"music_group","category":"GIRLGROUP","relationship":"member|producer|label|collaborator|event|technology|other","evidence_status":"source_statement|official_record|dataset_measurement|derived_calculation|unverified","confidence":"low|medium|high","temporal_status":"historical|current|undated","geospatial_precision":"country|region|city|site|unknown","privacy_level":"public|sensitive|restricted","integrity":"sha256_when_available"},
+  "immersive_media":{"vMeta":["virtual_event","avatar","digital_asset","virtual_identity","platform","timestamp","version","hash"],"vCode":["repository","file_path","language","version","commit_hash","dependencies","api_calls","permissions","license"],"MR":["spatial_mapping","passthrough","anchors","hand_tracking","scene_understanding"],"AR":["surface_detection","world_anchors","camera_metadata","overlay_assets","spatial_audio"],"VR":["headset","6dof_tracking","controllers","virtual_scene","haptics","spatial_audio"]},
+  "location_schema":{"country":null,"region":null,"city":null,"venue":null,"precision":"country|region|city|site|unknown","source_id":null,"private_location_policy":"Do not infer private residence or current location."},
+  "association_schema":{"entity":null,"relationship_type":"group_membership|collaboration|performance|production|event|public_mention|other","relationship_status":"documented|reported|disputed|unverified","source_id":null,"confidence":"low|medium|high"},
+  "legal_boundary":"Do not infer criminality, intent, or wrongdoing from popularity, group membership, metadata, associations, geography, or automated keyword matches. Legal claims require an identified source and evidence status.",
+  "neural_boundary":"Do not infer neural activity, mental state, or cognitive state from music, performance, social-media activity, avatars, or AR/VR participation.",
+  "source_requirements":["Prefer official artist/group/label sources, chart organizations, certification bodies, reputable datasets, and dated reporting.","Record the exact metric and measurement date for any popularity claim.","Keep public professional associations separate from private relationships."],
+  "note":"This is a research schema and representative entity registry, not an exhaustive real-time ranking of all girl groups worldwide."
+}
