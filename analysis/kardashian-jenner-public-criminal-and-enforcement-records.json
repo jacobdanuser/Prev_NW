@@ -1,0 +1,41 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Public-source review for criminal charges, convictions, and regulatory enforcement involving Kardashian-Jenner public figures; official government sources prioritized.",
+  "important_distinction":"A civil regulatory enforcement action, lawsuit, allegation, arrest, indictment, and criminal conviction are different legal states. This file does not label a person criminal merely because they were sued, investigated, or subject to a civil enforcement action.",
+  "findings":[
+    {
+      "person":"Kim Kardashian",
+      "matter":"SEC anti-touting enforcement",
+      "category":"civil securities enforcement, not criminal conviction",
+      "date":"2022-10-03",
+      "finding":"SEC charged Kardashian with unlawfully touting a crypto asset security without disclosing compensation. The SEC order states she received $250,000 for the Instagram promotion. She agreed to pay $1.26 million in penalties, disgorgement, and interest, cooperate with the investigation, and not promote crypto asset securities for three years.",
+      "status":"settled administrative enforcement matter; no criminal conviction identified in the official source",
+      "source":"https://www.sec.gov/newsroom/press-releases/2022-183"
+    },
+    {
+      "person":"Caitlyn Jenner",
+      "matter":"2015 Malibu/Pacific Coast Highway fatal collision",
+      "category":"fatal traffic collision; not identified as criminal conviction",
+      "date":"2015-02-07",
+      "finding":"Public reporting states Jenner was involved in a multi-vehicle collision that resulted in the death of Kim Howe. The Los Angeles County District Attorney declined criminal prosecution; civil litigation followed.",
+      "status":"no criminal charge/conviction identified in the reviewed public record",
+      "source_note":"The available search result was secondary rather than an official DA disposition page, so this item is marked lower-confidence than the SEC record.",
+      "source":"https://legalclarity.org/did-bruce-jenner-kill-someone-investigation-and-lawsuits/"
+    },
+    {
+      "person":"Kris Jenner / Jenner family",
+      "matter":"2016 federal cyberstalking/hacking case involving a third party",
+      "category":"victim-related criminal case; not criminal conduct by Jenner",
+      "date":"2016-08-18",
+      "finding":"The U.S. Attorney's Office for the Central District of California announced charges against a woman accused of stalking Kristen Jenner and others, hacking an email account, accessing Jenner's Instagram account without authorization, and publishing personal information. The government identified Jenner and family members as victims/targets of the alleged conduct.",
+      "status":"does not establish criminal conduct by the Kardashian-Jenner family",
+      "source":"https://www.justice.gov/usao-cdca/pr/bay-area-woman-arrested-federal-stalking-and-computer-hacking-charges-stemming"
+    }
+  ],
+  "negative_search_result":"In the official DOJ/SEC searches performed for this review, no criminal conviction of Kim, Kourtney, Khloe, Kendall, Kylie, or Kris Jenner was identified. The search did identify the SEC civil enforcement action against Kim Kardashian and the DOJ case in which Kris Jenner/family members were victims. Absence from these searched sources is not proof that no other record exists in every jurisdiction or court system.",
+  "excluded_claims":["unverified social-media allegations","rumors","claims that civil lawsuits constitute criminal convictions","claims of tax evasion, fraud, money laundering, theft, drug crimes, or other offenses without reliable legal documentation","guilt inferred from association with another person"],
+  "recommended_record_states":["allegation","investigation","arrest","charge","indictment","civil enforcement","civil judgment","criminal conviction","acquittal","dismissed","settled","no prosecution","appeal","unknown"],
+  "research_method":["search official DOJ sources","search SEC enforcement records","search public court/government records where indexed","separate criminal from civil matters","preserve legal status and source provenance","do not infer criminality from association or allegation"],
+  "privacy_boundary":["public records only","no private identifying information","no private addresses/contact information","no confidential records","no nonpublic investigative data","no inferred criminality from neural or behavioral metadata"],
+  "status":"Public-source legal/enforcement review uploaded for research and provenance tracking."
+}
