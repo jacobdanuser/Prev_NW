@@ -1,0 +1,15 @@
+{
+  "schema_version":"1.0",
+  "scope":"Public-source metadata for Lola Young; no private, classified, or inferred personal data.",
+  "entity":{"entity_name":"Lola Young","entity_type":"public_person","identity_note":"English singer-songwriter; disambiguate from similarly named individuals using source context."},
+  "collection_scope":["public biography","music releases and performances","public interviews and statements","publicly documented professional activity","publicly documented legal or regulatory matters when supported by authoritative sources"],
+  "source_schema":{"source_id":null,"url":null,"publisher":null,"publication_date":null,"retrieved_at":null,"source_type":"official|government|court_record|regulatory|academic|news|public_dataset|repository|other","jurisdiction":null,"document_hash_sha256":null,"provenance_notes":null},
+  "metacodes":{"entity_status":"publicly_identified","evidence_status":"source_statement|official_record|court_finding|dataset_measurement|derived_calculation|unverified","confidence":"low|medium|high","temporal_status":"historical|current|future_claim|undated","privacy_level":"public|sensitive|restricted","geospatial_precision":"country|region|city|site|unknown","integrity":"sha256_when_available"},
+  "professional_metadata":{"role":"singer-songwriter","work_type":"music|performance|interview|other","release_title":null,"release_date":null,"label_or_publisher":null,"credited_role":null,"source_id":null},
+  "legal_criminality_schema":{"record_id":null,"jurisdiction":null,"event_type":"investigation|allegation|charge|civil_action|criminal_case|conviction|acquittal|sanction|regulatory_action|other","date":null,"court_or_agency":null,"case_identifier":null,"source_id":null,"status":"reported|filed|pending|adjudicated|dismissed|disputed|unknown","evidence_status":"source_statement|official_record|court_finding|verified_public_record|unverified","confidence":"low|medium|high","notes":"Do not infer criminality from association, rumors, lyrics, appearance, location, or keyword matches."},
+  "location_schema":{"country":null,"region":null,"city_or_district":null,"location_type":"public_event|venue|professional_activity|public_record|other","precision":"country|region|city|site|unknown","source_id":null,"private_location_policy":"Do not collect or infer private residence/current-location data."},
+  "neural_boundary":"No neural activity, mental state, medical condition, or cognitive state is inferred from music, interviews, photographs, social-media activity, or public behavior.",
+  "privacy_boundary":"Do not store private addresses, credentials, private communications, personal identifiers unnecessary for the research purpose, or non-public location data.",
+  "factuality_rule":"A public-source mention is not independently verified merely because it appears in a source. Preserve source type, evidence status, jurisdiction, date, and confidence separately.",
+  "collection_boundary":"Public and authorized sources only; no unauthorized access, private surveillance, credential collection, or classified-data extraction."
+}
