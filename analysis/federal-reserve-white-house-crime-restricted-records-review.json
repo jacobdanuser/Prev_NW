@@ -1,0 +1,50 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Public-source review of documented theft/robbery crimes involving Federal Reserve-related property and crimes connected to the White House, plus metadata for restricted records.",
+  "important_correction":"A 'robbery of the Federal Reserve' and a 'robbery of the White House' are not established as generic historical events by the sources reviewed. The public record instead contains specific Federal Reserve-related robberies and the Watergate burglary involving the Democratic National Committee headquarters in the Watergate complex, which was connected to the Nixon White House. Watergate was not a burglary of the White House building.",
+  "federal_reserve_related_crime":{
+    "confirmed_example":{
+      "event":"1950 Brink's robbery",
+      "date":"1950-01-17",
+      "location":"Boston, Massachusetts",
+      "description":"The FBI reports that the robbers stole more than $1.2 million in cash plus approximately $1.5 million in checks and other securities. FBI jurisdiction included the case because part of the loot consisted of cash, checks, postal notes, and U.S. money orders belonging to the Federal Reserve Bank and Veterans Administration district office in Boston.",
+      "investigation_metadata":["Boston Police Department","FBI","grand jury","arrests/indictments","recovered currency","missing proceeds","source provenance"],
+      "source":"https://www.fbi.gov/history/cases-and-criminals/brinks-robbery"
+    },
+    "other_public_source_context":{
+      "fbi_bank_robbery_program":"The FBI states that robbing a national bank or state member bank of the Federal Reserve System became a federal crime in 1934 and publishes historical bank-crime statistics.",
+      "statute":"18 U.S.C. § 2113 covers federal bank robbery and theft; the Federal Reserve's public statute page reproduces the provision and defines the relevant bank category.",
+      "sources":["https://www.fbi.gov/investigate/violent-crime/bank-robbery","https://www.fbi.gov/investigate/violent-crime/bank-robbery/bank-crime-reports","https://www.federalreserve.gov/frrs/statutes/section-2113-bank-robbery-and-theft.htm"]
+    }
+  },
+  "white_house_related_crime":{
+    "watergate":{
+      "date":"1972-06-17",
+      "location":"Watergate complex, Washington, D.C.",
+      "event":"Burglary of Democratic National Committee headquarters",
+      "finding":"The FBI states that five men were arrested after breaking into the DNC headquarters. Subsequent investigations established connections to President Richard Nixon's campaign staff; the FBI describes the subsequent cover-up and resulting criminal/political consequences.",
+      "important_distinction":"The burglary occurred at the DNC headquarters in the Watergate complex, not inside the White House.",
+      "public_record_collection":"FBI Vault Watergate files include records from the investigation and related matters from 1972 through 1979.",
+      "sources":["https://vault.fbi.gov/watergate/","https://www.fbi.gov/history/history-of-the-fbi/crime-and-corruption-across-america","https://www.fbi.gov/history/field-office-histories/fbi-washingtondc-history"]
+    },
+    "white_house_records":{
+      "public_record_types":["presidential records","White House visitor records","historical White House recordings","FOIA/archival records"],
+      "source":"https://www.archives.gov/presidential-records",
+      "note":"National Archives maintains presidential records; individual historical administrations have distinct access, archival, and legal restrictions. A record's restricted status does not establish that it documents a crime."
+    }
+  },
+  "restricted_classified_redacted_metadata":{
+    "fields":["record identifier","agency/custodian","record title","creation date","release date","status","redaction extent","FOIA request number if public","FOIA exemption if public","classification/declassification status","restriction authority","archival finding aid","successor/replacement record","revision history","public copy URL","provenance","confidence"],
+    "federal_reserve_records":"The Federal Reserve Board publicly describes systems of records containing supervisory/enforcement and special-examination information concerning suspected criminal activity, suspicious activity under the Bank Secrecy Act, legal violations, witnesses, dates, dollar amounts, and investigatory/enforcement comments. These are records categories, not evidence that any particular person committed a crime.",
+    "source_federal_reserve_records":"https://www.federalreserve.gov/frrs/rules/systems-of-records-of-the-federal-reserve-system.htm",
+    "foia_boundary":"The Federal Reserve states that public records are available through its reading rooms, while nonpublic records generally require a FOIA request and may be protected by exemptions or law-enforcement exclusions.",
+    "source_foia":"https://www.federalreserve.gov/foia/about_foia.htm",
+    "national_archives_boundary":"NARA explains that FOIA provides access to executive-branch records subject to statutory exemptions and exclusions; it also manages archival presidential records according to applicable law.",
+    "source_nara_foia":"https://www.archives.gov/foia"
+  },
+  "crime_metadata_schema":["event_id","crime_type","date","location","victim/entity","property/category","amount_or_loss_when_public","agency","case_identifier","jurisdiction","legal_basis","investigation_status","arrest/charge/conviction/disposition","source","publication_date","archival_identifier","evidence_status","confidence"],
+  "restricted_record_schema":["record_id","custodian","record_type","creation_date","status","restriction_basis","FOIA_exemption","redaction_status","declassification_date","release_date","archival_location","public_description","source","provenance","confidence"],
+  "interpretation_rules":["Do not treat a record category as proof of a specific crime","Do not infer criminality from a person's appearance in a record","Separate allegation, investigation, arrest, charge, conviction, civil action, and administrative enforcement","Do not infer the contents of a classified or redacted record from its metadata","A missing record does not prove destruction or deliberate deletion","Do not equate Watergate with a physical burglary of the White House","Do not equate a Federal Reserve-related bank robbery with a theft from the Federal Reserve Board itself"],
+  "security_boundary":["public records and metadata only","no bypassing FOIA restrictions","no classified material","no private financial records","no credentials","no nonpublic investigative methods","no operational security details","no unauthorized access instructions"],
+  "status":"Public-source historical/legal metadata review prepared from official Federal Reserve, FBI, and National Archives sources."
+}
