@@ -1,0 +1,17 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Research schema for documenting candidate causes, affected areas, neural activity, causal evidence, and metadata lineage",
+  "causal_event":["event_id","timestamp","event_type","candidate_cause","source","intervention_or_observation","intensity_or_exposure_category","duration","preceding_conditions","following_effects"],
+  "affected_area":["anatomical_region","brain_atlas","coordinate_system","sensor/electrode/channel","hemisphere","region_of_interest","spatial_resolution","measurement_method"],
+  "neural_activity":["modality","signal_type","amplitude","frequency/power","phase","latency","firing_rate","spike_train","event_related_potential/field","connectivity","functional_connectivity","effective_connectivity","BOLD/hemodynamic response","signal_to_noise_ratio","artifact_status","quality_metrics"],
+  "physiological_context":["stimulus/event marker","reaction time","movement/kinematics","eye tracking","heart rate","respiration","EMG","skin conductance","task condition","behavioral response"],
+  "temporal_metadata":["pre-event baseline","event onset","neural response onset","latency","peak response","offset","duration","sampling rate","clock synchronization","timestamp provenance"],
+  "causal_evidence":["temporal precedence","experimental manipulation","control/comparator","randomization","dose-response pattern where applicable","mechanistic evidence","replication","effect size","confidence interval","statistical model","confounder assessment","alternative explanation","causal identification method","causality confidence"],
+  "analysis_metadata":["raw/processed/derived status","preprocessing pipeline","filtering","artifact rejection","normalization","feature extraction","statistical method","multiple-comparison correction","software/version","model/version","random seed where relevant","analysis timestamp"],
+  "meta_metadata":["field definition","data type","unit","schema/version","namespace","source system","collection method","collection timestamp","transformation history","calibration","validation rule","lineage","uncertainty","quality score","retention category","access classification","privacy classification","license","publisher","documentation source"],
+  "standards":["BIDS","BIDS-EEG","BIDS-iEEG","BIDS-MEG","BIDS-fMRI","NWB","NIfTI","DICOM","EDF"],
+  "causal_inference_rules":["Correlation does not establish causation","A neural signal following an event does not by itself establish that the event caused the signal","Separate observed association from experimentally supported causation","Record confounders and alternative explanations","Preserve raw and derived measurements separately","Report uncertainty and model assumptions","Do not infer an individual's thoughts, intentions, memories, or medical condition solely from metadata or a neural signal"],
+  "provenance":["dataset identifier","study/session identifier","instrument/system","researcher/lab","source publication","source URL","dataset version","commit/version identifier","transformation lineage","license/access status"],
+  "privacy_security_boundary":["No private neural recordings","No identifiable participant data","No biometric identifiers","No private clinical records","No unauthorized device telemetry","No re-identification","No credentials"],
+  "status":"Public/research-oriented causal and neural metadata schema uploaded for reproducibility and scientific cataloging."
+}
