@@ -1,0 +1,31 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Publicly documented platform metadata and data-category schemas for X, Instagram, and Snapchat; no private account exports or unauthorized access",
+  "platforms":{
+    "X":{
+      "public_metadata_categories":["display name","username","profile image","posts/content","post date/time","application/version","public profile information","public interactions","reposts","likes","replies","mentions/tags","public broadcast metadata","lists","bookmarks","communities","public location attached to posts when enabled"],
+      "platform_generated_categories":["IP address and connection data","browser/device information","device and advertising identifiers","operating system","carrier","language","memory","apps installed","battery level","approximate location","precise location when enabled","access times","pages visited","referring webpage","search terms/IDs","cookie identifiers","ad interaction data","link interaction data","inferred interests/age/gender and related profiles"],
+      "api_scope":"X states that its APIs provide programmatic access to public X data by default; non-public endpoints such as Direct Messages require additional authorization.",
+      "sources":["https://x.com/en/privacy","https://help.x.com/en/rules-and-policies/x-api"],
+      "retention_note":"X's current privacy policy describes different retention periods by category, including profile/usage information, cookies/device/location/log information, and ad interaction information."
+    },
+    "Instagram":{
+      "public_metadata_categories":["username","name/display name where public","profile photo","public profile information","public posts/reels/media metadata","caption/description","publication timestamp","hashtags","mentions/tags","likes/comments and engagement signals where publicly visible","public follower/following relationship information where visible","public account category/professional information where displayed","public location information attached to content where enabled"],
+      "platform_data_categories_documented_by_Meta_family_policies":["account and profile information","content and metadata","messages/communications metadata","device information","network/IP information","cookies and similar technologies","usage/activity information","location information","information from partners and third-party services","inferences/preferences and advertising-related signals"],
+      "note":"Instagram is part of Meta's services. Exact fields and availability vary by feature, account settings, region, and current Meta policy/API access. This repository records category-level public documentation rather than private Instagram account data.",
+      "sources":["https://privacycenter.instagram.com/policy","https://www.facebook.com/privacy/policies"]
+    },
+    "Snapchat":{
+      "metadata_definition":"Snap states that metadata associated with Snaps and Chats includes information such as date, time, sender, and receiver, and distinguishes metadata from message content.",
+      "public_metadata_categories":["public profile name","username","profile picture","Snapcode","Public Profile","public Stories","Spotlight submissions","Snap Map public content","public content publication/view metadata where disclosed"],
+      "account_and_activity_categories":["login history","account information","user/public profiles","Snap history","saved chat history","Memories","purchase/shop history","support history","friends","location","search history","Bitmoji"],
+      "device_and_technical_categories":["hardware model","operating system version","device memory","platform advertising identifiers","unique application identifiers","apps installed","unique device identifiers","device usage data","browser type","keyboard configuration","language","battery level","time zone","IP address/general location"],
+      "location_categories":["IP-derived general location","location metadata from Snaps/camera-roll uploads","precise location when permission is enabled"],
+      "sources":["https://help.snapchat.com/hc/en-us/articles/7012318664852-About-Snap-and-Chat-Metadata","https://help.snapchat.com/hc/en-us/articles/22535044112532-Learn-About-How-Snap-Uses-Data","https://help.snapchat.com/hc/en-us/articles/7012305371156-How-do-I-download-my-data-from-Snapchat"],
+      "retention_note":"Snap states that most Snap/Chat metadata is deleted after 30 days, while information may be retained longer when needed and personal identifiers may be removed for analytics."
+    }
+  },
+  "cross_platform_schema":["platform","account/content identifier","record type","timestamp","creator/source","content/publication context","engagement/interactions","device/application context","network/log context","location context","privacy setting/context","API/public availability","retention category","provenance/source URL","access status"],
+  "security_and_privacy_boundary":["No password or authentication secrets","No private messages","No private account exports","No private contact lists","No precise location tracking of individuals","No private device identifiers","No unauthorized API access","No scraped private/protected content","No proprietary source code"],
+  "method":"Category-level extraction from official public privacy, help, and API documentation. It does not represent a dump of platform backend telemetry or individual-user records."
+}
