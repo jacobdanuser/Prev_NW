@@ -1,0 +1,28 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Publicly documented metadata, retention, privacy, and measurable usage/operational metrics for OpenAI and Anthropic/Claude",
+  "limitation":"This is a public-documentation analysis, not access to private backend telemetry, internal databases, undisclosed metrics, private prompts, or proprietary source code.",
+  "openai":{
+    "metadata_categories":["account/profile","credentials and authentication metadata","payment/transaction information","prompts and generated content","uploaded files/media","connected-service data","usage/analytics data","device and technical information","network/location information","cookies/similar technologies","API abuse-monitoring logs","organization/enterprise metadata","audit/compliance events","privacy/training settings","retention/deletion/export request metadata"],
+    "api_and_business_distinctions":["API abuse-monitoring logs may contain prompts/responses and derived metadata such as classifier outputs","OpenAI states that business/API inputs and outputs are not used for training by default","Qualifying API customers can use retention controls including Zero Data Retention"],
+    "documented_metric_categories":["request count","input/output token usage","latency","errors","rate-limit events","model","usage tier","billing/cost","safety/abuse classification categories","audit/compliance event counts","privacy-request counts"],
+    "public_privacy_metric_example":{"year":"2025","global_requests":{"access":5986331,"deletion":6705206,"correction":351297},"source":"OpenAI California Privacy Rights Reporting"},
+    "retention_example":"OpenAI documentation describes a default 30-day retention period for qualifying API abuse-monitoring logs, subject to documented exceptions and product/configuration differences.",
+    "sources":["https://openai.com/business-data/","https://platform.openai.com/docs/models/default-usage-policies-by-endpoint","https://openai.com/policies/privacy-policy/california-privacy-rights-reporting/","https://help.openai.com/en/articles/9261474-compliance-apis-for-enterp"]
+  },
+  "anthropic_claude":{
+    "metadata_categories":["account/profile","prompts and outputs","technical/device information","usage and safety information","feedback and associated conversation context","API/application metadata","organization/workspace metadata","location/network categories","privacy/training settings","retention/deletion metadata"],
+    "commercial_api_retention":"Anthropic documents a standard 30-day backend deletion period for commercial API inputs/outputs, subject to contractual arrangements and documented safety/legal exceptions.",
+    "consumer_retention":"Anthropic documents a standard 30-day backend deletion period for consumer Claude conversations, with different retention possible when users opt into model improvement or under safety/legal circumstances.",
+    "training_retention":"Anthropic documents that consumer users who opt into model improvement can have applicable new/resumed conversations and coding sessions retained for up to five years.",
+    "safety_retention":"Anthropic documents that conversations flagged for Usage Policy violations may be retained for up to two years and associated trust-and-safety classifier scores for up to seven years.",
+    "enterprise_controls":"Claude Enterprise supports custom retention controls; Anthropic documentation describes a 30-day minimum for configurable retention.",
+    "documented_usage_metrics":["API request count","input tokens","output tokens","uncached input tokens","cache creation input tokens","cache read input tokens","model","workspace","API key grouping where authorized","service tier","context window","usage timestamps","cost/usage reporting"],
+    "admin_reporting":"Anthropic's Admin API documentation describes organization usage reports that can group usage by API key, workspace, model, service tier, and context window and report uncached input, cache creation, cache read, and output token measurements.",
+    "sources":["https://privacy.anthropic.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data","https://privacy.anthropic.com/en/articles/10023548-how-long-do-you-store-my-data","https://privacy.anthropic.com/en/articles/10440198-custom-data-retention-controls-for-claude-enterprise","https://docs.anthropic.com/zh-CN/api/admin-api/usage-cost/get-messages-usage-report"]
+  },
+  "comparative_metrics_schema":["provider","product","account/organization context","request timestamp","request count","model","input tokens","output tokens","cached input tokens","cache creation tokens","cache read tokens","context window","service tier","latency","error category","rate-limit event","cost/usage category","safety classification category","retention category","training/data-use setting","audit/compliance category","data-residency/processing region","source/provenance"],
+  "analysis_principles":["Separate consumer, commercial/API, and enterprise products","Distinguish documented metadata categories from private telemetry","Record exact product/version and documentation date","Do not infer undocumented internal implementation details","Treat retention periods as policy/documentation claims rather than universal guarantees","Preserve source provenance for every metric"],
+  "privacy_security_boundary":["No private prompts or outputs","No private account data","No credentials/API keys","No private repository contents","No internal backend telemetry","No unauthorized API access","No proprietary source code"],
+  "status":"Public-source OpenAI and Anthropic/Claude metadata and metrics analysis uploaded for comparative research."
+}
