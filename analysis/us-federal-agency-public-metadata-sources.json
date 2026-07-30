@@ -1,0 +1,55 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Public-source metadata inventory for U.S. federal agencies, with focused coverage of CDC, FBI, U.S. Secret Service, CIA, and federal open-data infrastructure.",
+  "important_limit":"This inventory catalogs publicly released dataset/document metadata and source systems. It does not collect classified, restricted, private-person, operational, investigative, intelligence-source, or internal telemetry data.",
+  "federal_catalog":{
+    "name":"Data.gov",
+    "role":"Central federal open-data metadata catalog; it provides metadata and links to agency-hosted datasets rather than hosting the underlying data files.",
+    "documented_metadata":["dataset title","description","keywords","identifier","publisher/organization","access URL","publication/issue date","metadata last-checked date","metadata last-modified date","access level","license/rights","spatial/temporal coverage","distribution/resource metadata","contact information","data format","API information"],
+    "current_catalog_metric":"Data.gov reported 363,232 datasets on July 28, 2026.",
+    "standard":"DCAT-US v3.0 is the current federal metadata standard documented by Data.gov for dataset, API, and data-service inventories.",
+    "sources":["https://data.gov/","https://data.gov/user-guide/","https://resources.data.gov/resources/dcat-us3/"]
+  },
+  "CDC":{
+    "public_systems":["Data.CDC.gov","CDC WONDER"],
+    "metadata_categories":["dataset title","publisher","dataset owner","topic","description","creation date","data last updated","metadata last updated","public access level","references","bureau code","contact","methodology","geographic coverage","health topic","release/version information"],
+    "public_data_domains":["chronic disease","infectious disease","environmental health","injury/violence","mental health","immunization","mortality","births","cancer","occupational health","global health","public health surveillance","web metrics"],
+    "privacy_boundary":"CDC WONDER states that its datasets are for statistical reporting and analysis and prohibits attempts to identify individuals or linking data for identification purposes.",
+    "sources":["https://chronicdata.cdc.gov/","https://wonder.cdc.gov/welcome.html","https://wonder.cdc.gov/datause.html"]
+  },
+  "FBI":{
+    "public_systems":["Uniform Crime Reporting (UCR)","Crime Data Explorer (CDE)","FBI Vault","FOIA resources"],
+    "metadata_categories":["program","dataset/report identifier","reporting agency","jurisdiction","reporting period","crime/offense category","incident category","arrest category","clearance category","law-enforcement employee category","release date","revision/version","methodology","coverage","quality notes","source/provenance"],
+    "public_data_programs":["NIBRS","Summary Reporting System","Hate Crime Statistics","LEOKA","Expanded Homicide Data","crime/arrest data"],
+    "current_release_note":"The FBI publishes UCR data monthly through the Crime Data Explorer; its 2025 First Look release was based on submissions from more than 17,000 agencies covering 96% of the population.",
+    "vault_metadata":["FOIA case/document identifier","title/subject","release status","release date","document/media type","collection","page/document count where published","redaction/release information","source provenance"],
+    "sources":["https://www.fbi.gov/how-we-can-help-you/more-fbi-services-and-information/ucr/","https://www.fbi.gov/news/press-releases/fbi-releases-monthly-crime-and-law-enforcement-data","https://vault.fbi.gov/"]
+  },
+  "USSS":{
+    "name":"United States Secret Service",
+    "public_source_types":["annual reports","official news/releases","public mission information","public budget/procurement documents","FOIA-released material where available"],
+    "public_metadata_categories":["report year","mission area","office/program category","protective operations category","investigative operations category","training category","mission-support category","financial infrastructure protection category","public event/report date","document identifier","publication status","source/provenance"],
+    "public_annual_report_structure":"The FY2023 annual report organizes public accomplishments into Protective Operations, Investigative Operations, Training, and Mission Support and identifies offices including Strategic Intelligence and Information and Investigations.",
+    "security_boundary":"Do not infer or catalog nonpublic protective details, current protective movements, vulnerabilities, operational procedures, investigative case data, or personnel-sensitive information.",
+    "sources":["https://www.secretservice.gov/sites/default/files/reports/2024-01/fy23-annual-report-final-pages.pdf","https://www.secretservice.gov/"]
+  },
+  "CIA":{
+    "public_systems":["CIA FOIA Electronic Reading Room","CIA public resources/publications"],
+    "metadata_categories":["FOIA case number","document title/subject","collection","release/publication date","document type","classification before review where published","release/redaction status","historical collection","document identifier","provenance","publication/update date"],
+    "public_release_boundary":"CIA states that its Electronic Reading Room provides declassified documents and historical materials released through FOIA, while some information remains protected by national-security requirements.",
+    "research_rule":"Use only information declassified or released through official U.S. Government channels; avoid intelligence sources/methods and operational details that are not officially released.",
+    "sources":["https://www.cia.gov/resources/","https://www.cia.gov/readingroom/collection/foia-collection","https://www.cia.gov/site-policies/","https://www.cia.gov/about/organization/prepublication-classification-review-board"]
+  },
+  "other_federal_agency_metadata":{
+    "coverage_method":"Use Data.gov organization catalogs and DCAT-US metadata to enumerate additional federal agencies and their public datasets rather than attempting to copy every underlying dataset.",
+    "normalized_fields":["agency","dataset identifier","title","description","keywords","publisher","contact","access level","license","distribution","format","API endpoint category","temporal coverage","spatial coverage","update frequency","issued date","modified date","metadata modified date","provenance","quality","version","schema","security/privacy classification"],
+    "agency_categories":["health","justice","defense","intelligence","finance","labor","transportation","energy","environment","science","agriculture","education","housing","commerce","homeland security","foreign affairs","veterans","social services","general administration"],
+    "source":"https://data.gov/"
+  },
+  "recommended_ingestion_source_code_model":{
+    "pipeline":["discover public catalog","capture metadata only","normalize DCAT-US fields","record source URL and retrieval date","validate schema","redact prohibited identifiers","store provenance","version changes","generate audit record"],
+    "record_fields":["source_agency","source_system","source_url","dataset_or_document_id","metadata_snapshot_time","schema_version","content_version","public_access_level","provenance","license","quality_flags","privacy_flags","change_hash","notes"],
+    "do_not_ingest":["classified information","restricted operational data","private personal information","private investigative records","credentials/tokens","nonpublic intelligence sources or methods","precise protective/security vulnerabilities","unauthorized telemetry","malware/payloads"]
+  },
+  "status":"Public federal-agency metadata source inventory prepared from official agency and federal open-data sources. It is a source map and schema, not a claim to possess every agency record or every underlying dataset."
+}
