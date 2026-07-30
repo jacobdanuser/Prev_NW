@@ -1,0 +1,26 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Publicly documented Apple Macintosh/macOS metadata plus metadata-about-metadata (meta-metadata) schema",
+  "macintosh_metadata":{
+    "hardware":["Mac model identifier","model family","hardware generation","CPU/Apple silicon architecture","memory configuration","storage/device class","display characteristics","firmware/boot metadata categories","serial-number field category (value excluded)","hardware capability metadata"],
+    "operating_system":["macOS version/build","kernel/system version category","system architecture","installed software/version metadata","security-update status","system configuration category","locale/language","time zone"],
+    "files_and_filesystems":["file name/path category","file type/UTI","size","creation/modification/access timestamps","permissions/ownership category","extended attributes","Finder metadata category","filesystem type","volume identifier/category","file flags","resource-fork metadata category","quarantine metadata category"],
+    "applications":["application identifier/bundle ID","application version","code-signing metadata","team/developer identity category","entitlements category","installation/update metadata","launch/event metadata","crash-report category"],
+    "network_and_system_events":["network interface category","connection event","IP/network metadata category","DNS/network diagnostic category","system log category","process/event category","performance metrics","power/battery metrics","sleep/wake events"],
+    "security":["Gatekeeper assessment category","code-signing status","notarization status","SIP configuration category","FileVault/encryption status category","XProtect/security-update category","privacy permission category","authentication event category","firewall/security configuration category"],
+    "user_data_boundary":["user account identifier category","home-directory metadata category","iCloud/service metadata category","application usage category","location permission/category","privacy settings"],
+    "developer_metadata":["Xcode/project metadata","SDK version","Swift/Objective-C language metadata","build configuration","deployment target","package/dependency metadata","code-signing configuration","build artifact metadata"]
+  },
+  "meta_metadata":{
+    "definition":"Metadata describing the metadata itself: its schema, origin, meaning, collection method, transformation history, quality, version, and access conditions.",
+    "schema_fields":["metadata field name","field definition","data type","unit","allowed values","schema/version","namespace","source system","source field","collection method","collection timestamp","processing/transformation","normalization rules","validation rules","quality/confidence","precision/resolution","provenance","lineage","retention category","access classification","privacy classification","license/rights","owner/publisher","documentation URL","last updated date"],
+    "lineage":["source artifact","source system","collector/process","transformation step","derived field","destination dataset","version/commit identifier","audit event"],
+    "quality_metrics":["completeness","accuracy","consistency","timeliness","uniqueness","validity","coverage","uncertainty","error rate","missing-value rate"],
+    "governance":["schema owner","data steward","version","change history","approval status","retention policy","access policy","classification","legal basis where applicable"]
+  },
+  "cross_platform_schema":["platform","artifact/event identifier","metadata field","value type","timestamp","source","collection mechanism","schema version","transformation","provenance","quality","retention","access classification","privacy classification","license"],
+  "recommended_public_sources":["Apple Platform Security documentation","Apple Developer Documentation","Apple Support documentation","macOS security/privacy documentation","Apple File System documentation where publicly available","public Apple developer samples/documentation","public macOS diagnostics documentation"],
+  "validation_rules":["Do not treat a metadata category as evidence that its value is accessible in a given environment","Separate documented fields from inferred/internal fields","Preserve exact macOS and hardware versions","Keep identifiers such as serial numbers, account IDs, and precise locations out of public datasets unless explicitly authorized and appropriately redacted","Distinguish file metadata from file contents","Record transformations and derivations in the meta-metadata layer"],
+  "security_privacy_boundary":["No passwords or authentication secrets","No private iCloud contents","No private personal files","No unredacted serial numbers or device identifiers","No private location history","No unauthorized telemetry","No proprietary Apple source code","No bypass of macOS security controls"],
+  "status":"Public documentation-oriented Macintosh metadata and meta-metadata schema uploaded for research and inventory purposes."
+}
