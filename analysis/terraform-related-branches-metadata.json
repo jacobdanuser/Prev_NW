@@ -1,0 +1,22 @@
+{
+  "updated_at":"2026-07-29",
+  "scope":"Metadata inventory of Terraform-related code and infrastructure branches/workstreams",
+  "repo_branch_scan":{"query":"terraform","matches":0,"note":"No branch in Prev_NW currently matched the literal 'terraform' branch-name query. This file therefore catalogs related Terraform branch categories rather than copying or creating unrelated branches."},
+  "related_branch_categories":{
+    "configuration":["terraform-config","hcl-config","tf-json-config","variables","locals","outputs","data-sources","resources","modules"],
+    "providers":["provider-config","provider-constraints","provider-lock","provider-schema","provider-upgrades"],
+    "modules":["module-development","module-release","module-registry","module-tests","module-docs"],
+    "state_and_backend":["state-management","backend-config","state-migration","state-locking","state-recovery"],
+    "planning_and_operations":["plan","apply","destroy","import","refresh","drift-detection","upgrade"],
+    "testing_and_validation":["fmt","validate","unit-tests","integration-tests","policy-tests","static-analysis"],
+    "security_and_compliance":["secret-scanning","policy-as-code","iac-security","dependency-audit","compliance"],
+    "ci_cd":["terraform-ci","plan-on-pull-request","apply-on-merge","release","automation","environment-promotion"],
+    "documentation_and_metadata":["registry-metadata","module-docs","provider-docs","examples","changelog","license"],
+    "ecosystem_variants":["Terraform","OpenTofu","HCL","Terraform Registry","OpenTofu Registry","Terragrunt-compatible workflows"]
+  },
+  "branch_metadata_schema":["branch name","base branch","head commit","purpose","Terraform/OpenTofu version","provider versions","module versions","configuration paths","state/backend category","CI workflow","policy/security checks","test status","last update","owner/maintainer","provenance","related pull requests"],
+  "artifact_schema":["file path","artifact type","Terraform/OpenTofu version","provider/module dependency","resource/data-source type","schema/version","sensitivity marker","source commit","license","documentation reference"],
+  "validation_rules":["Do not assume a branch is Terraform-related solely from its name","Distinguish Terraform from OpenTofu and other compatible tooling","Record exact versions for reproducibility","Never copy credentials or secrets from state/configuration","Treat Terraform state as potentially sensitive","Keep branch metadata separate from configuration contents","Record provenance for every imported public artifact"],
+  "security_boundary":["No credentials or API keys","No private state files","No unauthorized infrastructure access","No destructive operations","No proprietary provider source code"],
+  "status":"Metadata inventory uploaded; no additional branches were created or modified."
+}
